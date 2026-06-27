@@ -1,0 +1,28 @@
+# Phase 0 differential-testing harness -- pinned Python dependencies.
+#
+# Versions are frozen from the venv that the harness was built and verified
+# against (./.venv). Install with:
+#     ./.venv/bin/python -m pip install -r tests/harness/requirements.txt
+#
+# SYSTEM BINARIES (NOT pip-installable -- the harness calls these as external
+# subprocesses, never links them in; their licenses do not bind the shipped
+# tool). Install separately, e.g. on macOS:
+#     brew install exiftool ffmpeg chromaprint
+#   - exiftool              ground-truth metadata extractor + real-seed injector
+#   - ffmpeg                PCM/frame decode for content-identity + perceptual
+#   - fpcalc (chromaprint)  audio fingerprint; OPTIONAL at runtime -- any
+#                           audio-fingerprint path must degrade/skip when fpcalc
+#                           is absent and must never crash at import.
+
+# --- direct harness deps ---
+pytest==9.1.0
+jsonschema==4.26.0
+numpy==2.4.6
+scipy==1.17.1
+pillow==12.2.0
+ImageHash==4.3.2
+mutagen==1.47.0
+piexif==1.1.3
+pikepdf==10.8.0
+pyacoustid==1.3.1
+PyExifTool==0.5.6

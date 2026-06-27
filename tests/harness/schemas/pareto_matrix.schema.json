@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ParetoMatrix",
+  "type": "object",
+  "required": ["format", "tool", "generated_at", "harness_version", "cells", "scrubber_fingerprint"],
+  "properties": {
+    "format": {"type": "string"},
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "invocation": {"type": "string"}
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"},
+    "harness_version": {"type": "string"},
+    "cells": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["adversary", "fidelity", "verdict"],
+        "properties": {
+          "adversary": {"enum": ["A1", "A2", "A3"]},
+          "fidelity": {"enum": ["F1", "F2", "F3"]},
+          "verdict": {"enum": ["pass", "fail", "not_applicable", "not_tested"]},
+          "reason": {"type": "string"},
+          "noise_floor": {
+            "type": "object",
+            "required": ["deterministic", "repeats"],
+            "properties": {
+              "deterministic": {"type": "boolean"},
+              "repeats": {"type": "integer", "minimum": 1},
+              "variable_loci": {"type": "array", "items": {"$ref": "#/definitions/locus"}}
+            }
+          },
+          "leaks": {"type": "array", "items": {"$ref": "#/definitions/leak"}},
+          "perceptual": {
+            "type": "object",
+            "properties": {
+              "checked": {"type": "boolean"},
+              "metric": {"type": ["string", "null"]},
+              "distance": {"type": ["number", "null"]},
+              "threshold": {"type": ["number", "null"]},
+              "preserved": {"type": ["boolean", "null"]}
+            }
+          },
+          "corpus": {"type": "object"},
+          "evidence_dir": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "scrubber_fingerprint": {
+      "type": "object",
+      "required": ["checked", "verdict"],
+      "properties": {
+        "checked": {"type": "boolean"},
+        "verdict": {"enum": ["pass", "fail", "not_tested"]},
+        "mandatory_constants_excluded": {"type": "array", "items": {"type": "object"}},
+        "signatures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "space": {"type": "string"},
+              "bytes_hex": {"type": "string"},
+              "decoded": {"type": "string"},
+              "evidence": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "locus": {
+      "type": "object",
+      "required": ["space"],
+      "properties": {
+        "space": {"enum": ["byte", "field", "structural"]},
+        "offset": {"type": ["integer", "null"]},
+        "length": {"type": ["integer", "null"]},
+        "feature_id": {"type": ["string", "null"]},
+        "annotated_as": {"type": ["string", "null"]},
+        "hex_context": {"type": ["string", "null"]}
+      }
+    },
+    "leak": {
+      "type": "object",
+      "required": ["kind", "locus", "correlates_with"],
+      "properties": {
+        "kind": {"enum": ["variant_correlated", "source_fingerprint"]},
+        "locus": {"$ref": "#/definitions/locus"},
+        "correlates_with": {"type": "string"},
+        "evidence": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

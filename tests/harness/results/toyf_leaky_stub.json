@@ -1,0 +1,95 @@
+{
+  "format": "toyf",
+  "tool": {
+    "name": "leaky_stub",
+    "version": "0.1",
+    "invocation": "leaky_stub(in,out,F)"
+  },
+  "generated_at": "2026-06-14T18:53:58.570546+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "variant_correlated_leak",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      },
+      "leaks": [
+        {
+          "kind": "variant_correlated",
+          "locus": {
+            "space": "byte",
+            "offset": 62,
+            "length": 16,
+            "feature_id": "byte@62:16",
+            "annotated_as": "tlv@3",
+            "hex_context": "7468652d77686f6c652d73657407001041414141414141414141414141414141"
+          },
+          "correlates_with": "metadata_variant:record_type_7",
+          "evidence": "v0=41414141414141414141414141414141; v1=42424242424242424242424242424242; v2=43434343434343434343434343434343"
+        }
+      ],
+      "evidence_dir": "tests/harness/results/evidence/toyf_A1_F1"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "source_fingerprint",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 3,
+        "variable_loci": []
+      },
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "byte",
+            "offset": 65,
+            "length": 1,
+            "feature_id": "byte@65:1",
+            "annotated_as": "tlv@6",
+            "hex_context": "2d77686f6c652d736574a0000453524330"
+          },
+          "correlates_with": "source:tlv@6",
+          "evidence": "src0=30; src1=31"
+        }
+      ],
+      "evidence_dir": "tests/harness/results/evidence/toyf_A2_F1"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "544f5946",
+        "decoded": "TOYF"
+      }
+    ],
+    "signatures": []
+  }
+}

@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+
+# Claude Code personal scope (never commit)
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Test corpus — large binaries and (potentially sensitive) real samples.
+# Track generators/manifests, not the files themselves.
+tests/corpus/originals/
+tests/corpus/scrubbed/
+tests/corpus/**/*.jpg
+tests/corpus/**/*.jpeg
+tests/corpus/**/*.png
+tests/corpus/**/*.pdf
+tests/corpus/**/*.docx
+tests/corpus/**/*.mp4
+tests/corpus/**/*.mp3
+tests/corpus/**/*.heic
+tests/corpus/**/*.raw
+tests/corpus/**/*.cr2
+tests/corpus/**/*.cr3
+tests/corpus/**/*.nef
+tests/corpus/**/*.arw
+tests/corpus/**/*.dng
+
+# Scratch / reports
+scratch/
+*.log
