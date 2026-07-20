@@ -1,0 +1,85 @@
+{
+  "format": "jpeg",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p1",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-07-14T17:57:49.980226+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "handler_not_implemented"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "handler_not_implemented"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "pending_dqt_peerset_experiment_E3"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "pending_dqt_peerset_experiment_E3"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "pending_dqt_peerset_experiment_E3"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "ffd8",
+        "decoded": "\u00ff\u00d8"
+      },
+      {
+        "bytes_hex": "ffd9",
+        "decoded": "\u00ff\u00d9"
+      }
+    ],
+    "signatures": []
+  }
+}

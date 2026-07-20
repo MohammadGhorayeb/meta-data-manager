@@ -41,6 +41,32 @@ tests/corpus/**/*.nef
 tests/corpus/**/*.arw
 tests/corpus/**/*.dng
 
+# Real / personal test images anywhere in the repo — potentially sensitive
+# (passports, selfies, GPS-tagged photos). Never commit the binaries; track
+# only generators, manifests, and result JSON. Force-add a genuinely needed
+# doc image with `git add -f`.
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+*.png
+*.PNG
+*.heic
+*.HEIC
+*.tif
+*.tiff
+*.webp
+*.gif
+# Ad-hoc scrub scratch files at the repo root (test_*.JPG, *_clean.jpg, etc.)
+/test_*
+*_clean.*
+*_TOOL.*
+
+# Real-seed corpus lives outside the repo (~/metadata-research/); this guards
+# against a copy ever landing inside it.
+**/originals/
+**/scrubbed/
+
 # Scratch / reports
 scratch/
 *.log
