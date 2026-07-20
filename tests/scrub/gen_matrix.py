@@ -1,11 +1,11 @@
 """Generate the JPEG Pareto matrix for our scrubber from real harness runs.
 
 Honesty rule (CLAUDE.md): a cell is only `pass`/`fail` if we measured it. Right
-now that is **A1@F1** (validated by the differential oracle). Everything else is
-`not_tested` with a reason:
-  - A1@F2/F3            handlers not built yet (M3/M4)
-  - A2@F1/F2/F3         needs the DQT peer-set experiment E3 (M3) — we do NOT
-                        pre-assert the expected "A2 requires F3" result
+now that is **A1@F1 and A1@F2** (validated by the differential oracle).
+Everything else is `not_tested` with a reason:
+  - A1@F3              handler not built yet (M4)
+  - A2@F1/F2/F3        needs the DQT peer-set experiment E3 (M3) — we do NOT
+                       pre-assert the expected "A2 requires F3" result
 The A3 row is auto-emitted as not_tested/out_of_scope by matrix.assemble().
 
 Run:  ./.venv/bin/python -m tests.scrub.gen_matrix
@@ -40,14 +40,22 @@ def build_doc(tmpdir: str) -> dict:
     plugin = JpegPlugin()
     scrubber = _scrubber()
 
-    # --- measured cell: A1 @ F1 ---
+    # --- measured cells: A1 @ F1 and A1 @ F2 ---
     variants = corpus.make_jpeg_a1_variants(tmpdir, n_variants=3, n_repeats=5)
     a1f1 = leak.evaluate_a1(scrubber, plugin, variants, "F1", n=5,
                             sentinel_field="metadata_variant")
+    cells = [a1f1]
+
+    import shutil
+    if shutil.which("jpegtran") is not None:
+        variants_f2 = corpus.make_jpeg_a1_variants(tmpdir, n_variants=3, n_repeats=5)
+        a1f2 = leak.evaluate_a1(scrubber, plugin, variants_f2, "F2", n=5,
+                                sentinel_field="metadata_variant")
+        cells.append(a1f2)
+    else:
+        cells.append(Cell("A1", "F2", V.NOT_TESTED, reason="jpegtran_unavailable"))
 
     # --- not-yet-measured cells (honest placeholders) ---
-    cells = [a1f1]
-    cells.append(Cell("A1", "F2", V.NOT_TESTED, reason="handler_not_implemented"))
     cells.append(Cell("A1", "F3", V.NOT_TESTED, reason="handler_not_implemented"))
     for f in ("F1", "F2", "F3"):
         cells.append(Cell("A2", f, V.NOT_TESTED,

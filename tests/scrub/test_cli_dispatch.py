@@ -46,10 +46,12 @@ def test_cli_main_unsupported_format_exit3(tmp_path, capsys):
 
 
 def test_cli_main_unimplemented_fidelity_exit5(tmp_path):
+    # F3 is the still-unimplemented JPEG tier (F1/F2 are built); it must fail
+    # closed with exit 5 and write no output.
     src = tmp_path / "in.jpg"
     dst = tmp_path / "out.jpg"
     src.write_bytes(corpus.make_base_jpeg())
-    rc = cli.main([str(src), str(dst), "--fidelity", "F2"])
+    rc = cli.main([str(src), str(dst), "--fidelity", "F3"])
     assert rc == 5
     assert not dst.exists()
 

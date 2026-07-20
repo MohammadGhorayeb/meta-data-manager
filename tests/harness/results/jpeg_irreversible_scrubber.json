@@ -5,7 +5,7 @@
     "version": "0.1.0-p1",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-07-14T17:57:49.980226+00:00",
+  "generated_at": "2026-07-20T18:55:20.177071+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -21,8 +21,12 @@
     {
       "adversary": "A1",
       "fidelity": "F2",
-      "verdict": "not_tested",
-      "reason": "handler_not_implemented"
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
     },
     {
       "adversary": "A1",

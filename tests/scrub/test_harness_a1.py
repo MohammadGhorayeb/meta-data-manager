@@ -8,6 +8,7 @@ harness's own `SubprocessScrubber` to prove the CLI wiring the harness will use.
 """
 from __future__ import annotations
 
+import shutil
 import sys
 
 import pytest
@@ -17,6 +18,9 @@ from tests.harness.contract import ScrubResult, SubprocessScrubber, V
 from tests.harness.oracle import fingerprint_guard, leak
 from tests.harness.plugins.jpeg import JpegPlugin
 from tests.scrub import corpus
+
+_needs_jpegtran = pytest.mark.skipif(
+    shutil.which("jpegtran") is None, reason="jpegtran (libjpeg-turbo) not installed")
 
 
 class InProcessScrubber:
@@ -41,6 +45,20 @@ def test_a1_f1_no_variant_correlated_leak(tmp_path):
     assert cell.leaks == []
     assert cell.floor is not None and cell.floor.deterministic, \
         "noise floor must be empty (F1 is deterministic)"
+
+
+@_needs_jpegtran
+def test_a1_f2_no_variant_correlated_leak(tmp_path):
+    """M3 gate: A1@F2. Content-identical / metadata-variant files, losslessly
+    re-encoded, must collapse to no variant-correlated diff and an empty floor.
+    (A2@F2 remains red — the surviving DQT — and is the job of experiment E3.)"""
+    variants = corpus.make_jpeg_a1_variants(str(tmp_path), n_variants=3, n_repeats=5)
+    cell = leak.evaluate_a1(InProcessScrubber(), JpegPlugin(), variants, "F2",
+                            n=5, sentinel_field="metadata_variant")
+    assert cell.verdict == V.PASS, f"A1@F2 leaks: {[l.correlates_with for l in cell.leaks]}"
+    assert cell.leaks == []
+    assert cell.floor is not None and cell.floor.deterministic, \
+        "noise floor must be empty (F2 is deterministic)"
 
 
 def test_a1_floor_is_empty_for_our_scrubber(tmp_path):
