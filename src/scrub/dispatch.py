@@ -34,4 +34,6 @@ def default_dispatcher() -> Dispatcher:
     d = Dispatcher()
     from .formats.jpeg.handler import JpegHandler
     d.register(JpegHandler())
+    from .formats.png.handler import PngHandler
+    d.register(PngHandler())
     return d

@@ -21,8 +21,9 @@ def test_dispatch_resolves_jpeg_by_magic():
 
 def test_dispatch_unsupported_raises():
     d = default_dispatcher()
+    # A PDF header: no image handler claims it (JPEG=FFD8FF, PNG=89504E47…).
     with pytest.raises(UnsupportedFormatError):
-        d.resolve(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+        d.resolve(b"%PDF-1.7\r\n" + b"\x00" * 16)
 
 
 def test_cli_scrub_file_end_to_end(tmp_path):
