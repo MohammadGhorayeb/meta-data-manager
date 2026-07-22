@@ -13,7 +13,10 @@ def _cell(doc, adv, fid):
 
 
 def test_matrix_builds_and_validates(tmp_path):
-    doc = gen_matrix.build_doc(str(tmp_path))
+    # Empty a2_corpus_dir keeps this hermetic: A2 stays honestly not_tested
+    # rather than depending on a machine-specific peer corpus. The measured-A2
+    # path (experiment E3) is covered by test_e3_dqt.
+    doc = gen_matrix.build_doc(str(tmp_path), a2_corpus_dir=str(tmp_path))
     matrix.validate(doc)   # raises on schema violation
 
     assert _cell(doc, "A1", "F1")["verdict"] == "pass"

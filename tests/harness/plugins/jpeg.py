@@ -51,3 +51,46 @@ class JpegPlugin:
         # Format-required byte invariants, excluded from the fingerprint guard so
         # SOI/EOI aren't mistaken for a tool signature.
         return [b"\xff\xd8", b"\xff\xd9"]
+
+    def structural_features(self, path: str) -> dict:
+        """A2 structural fingerprint channel (p1 plan W2/E3; fields.py hook).
+
+        Exposes the content-independent *encoder* structure that the variance
+        engine tests for producer separation — above all the quantization
+        tables (DQT), the fingerprint Kornblum showed classifies the producer
+        and that survives F1/F2 by definition. Also emits the Huffman-table
+        digest, the marker skeleton, and SOF geometry so E3 can see which
+        structural facts separate producers and which the scrubber normalizes.
+
+        All values are hashable tokens (hex strings / tuples) so they drop
+        straight into the variance grid. Returns {} on any parse failure — a
+        structural feature we cannot read is not a silent pass, it is absent.
+        """
+        import hashlib
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+            structure = seg.walk(data)
+        except Exception:
+            return {}
+
+        def _sha(chunks: bytes) -> str:
+            return hashlib.sha1(chunks).hexdigest()[:16]
+
+        dqt = b"".join(s.payload for s in structure.by_kind("dqt"))
+        dht = b"".join(s.payload for s in structure.by_kind("dht"))
+
+        feats: dict = {
+            "dqt": _sha(dqt) if dqt else "none",
+            "dht": _sha(dht) if dht else "none",
+            "markers": tuple(s.kind for s in structure.segments),
+        }
+        sof = next((s for s in structure.segments if s.kind.startswith("sof")), None)
+        if sof is not None and len(sof.payload) >= 6:
+            p = sof.payload
+            precision = p[0]
+            ncomp = p[5]
+            sampling = tuple(p[7 + i * 3] for i in range(ncomp)
+                             if 7 + i * 3 < len(p))
+            feats["sof"] = (sof.kind, precision, ncomp, sampling)
+        return feats

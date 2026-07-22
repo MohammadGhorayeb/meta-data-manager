@@ -5,7 +5,7 @@
     "version": "0.1.0-p1",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-07-20T18:55:20.177071+00:00",
+  "generated_at": "2026-07-22T17:51:41.069956+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -37,20 +37,102 @@
     {
       "adversary": "A2",
       "fidelity": "F1",
-      "verdict": "not_tested",
-      "reason": "pending_dqt_peerset_experiment_E3"
+      "verdict": "fail",
+      "reason": "dqt_producer_fingerprint_survives (Kornblum, E3): struct:dqt, struct:markers, struct:sof",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:dqt",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (distinct across 3 of 3)",
+          "evidence": "struct:dqt constant within producer (max_within=1), differs across (3)"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:markers",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (distinct across 3 of 3)",
+          "evidence": "struct:markers constant within producer (max_within=1), differs across (3)"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:sof",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (distinct across 2 of 3)",
+          "evidence": "struct:sof constant within producer (max_within=1), differs across (2)"
+        }
+      ]
     },
     {
       "adversary": "A2",
       "fidelity": "F2",
-      "verdict": "not_tested",
-      "reason": "pending_dqt_peerset_experiment_E3"
+      "verdict": "fail",
+      "reason": "dqt_producer_fingerprint_survives (Kornblum, E3): struct:dqt, struct:markers, struct:sof",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:dqt",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (distinct across 3 of 3)",
+          "evidence": "struct:dqt constant within producer (max_within=1), differs across (3)"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:markers",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (distinct across 2 of 3)",
+          "evidence": "struct:markers constant within producer (max_within=1), differs across (2)"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:sof",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (distinct across 2 of 3)",
+          "evidence": "struct:sof constant within producer (max_within=1), differs across (2)"
+        }
+      ]
     },
     {
       "adversary": "A2",
       "fidelity": "F3",
       "verdict": "not_tested",
-      "reason": "pending_dqt_peerset_experiment_E3"
+      "reason": "handler_not_implemented"
     },
     {
       "adversary": "A3",
