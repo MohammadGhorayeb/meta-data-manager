@@ -45,15 +45,26 @@ def test_cli_main_unsupported_format_exit3(tmp_path, capsys):
     assert not dst.exists(), "no output on failure (fail closed)"
 
 
-def test_cli_main_unimplemented_fidelity_exit5(tmp_path):
-    # F3 is the still-unimplemented JPEG tier (F1/F2 are built); it must fail
-    # closed with exit 5 and write no output.
+def test_cli_main_fidelity_error_exit5():
+    # All JPEG tiers (F1/F2/F3) are implemented, so the FidelityError path is
+    # exercised directly: a handler asked for a tier it does not offer must fail
+    # closed with exit 5 (mapped in cli._EXIT).
+    from src.scrub.errors import FidelityError
+    from src.scrub.formats.jpeg.handler import JpegHandler
+    h = JpegHandler()
+    with pytest.raises(FidelityError):
+        h.scrub(b"\xff\xd8\xff", "F9")  # not in fidelities
+
+
+@pytest.mark.filterwarnings("ignore:.*malformed MPO.*")
+def test_cli_main_f3_success_exit0(tmp_path):
+    # F3 (canonical lossy re-encode) works end-to-end and writes clean output.
     src = tmp_path / "in.jpg"
     dst = tmp_path / "out.jpg"
     src.write_bytes(corpus.make_base_jpeg())
     rc = cli.main([str(src), str(dst), "--fidelity", "F3"])
-    assert rc == 5
-    assert not dst.exists()
+    assert rc == 0
+    assert dst.exists()
 
 
 def test_cli_main_success_exit0(tmp_path):

@@ -5,7 +5,7 @@
     "version": "0.1.0-p1",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-07-22T17:51:41.069956+00:00",
+  "generated_at": "2026-07-22T18:26:07.137581+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -31,8 +31,21 @@
     {
       "adversary": "A1",
       "fidelity": "F3",
-      "verdict": "not_tested",
-      "reason": "handler_not_implemented"
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": false,
+        "repeats": 5,
+        "variable_loci": [
+          {
+            "space": "field",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:File:FileName",
+            "annotated_as": null,
+            "hex_context": null
+          }
+        ]
+      }
     },
     {
       "adversary": "A2",
@@ -59,12 +72,12 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:markers",
+            "feature_id": "struct:sof",
             "annotated_as": null,
             "hex_context": null
           },
-          "correlates_with": "producer (distinct across 3 of 3)",
-          "evidence": "struct:markers constant within producer (max_within=1), differs across (3)"
+          "correlates_with": "producer (distinct across 2 of 3)",
+          "evidence": "struct:sof constant within producer (max_within=1), differs across (2)"
         },
         {
           "kind": "source_fingerprint",
@@ -72,12 +85,12 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:sof",
+            "feature_id": "struct:markers",
             "annotated_as": null,
             "hex_context": null
           },
-          "correlates_with": "producer (distinct across 2 of 3)",
-          "evidence": "struct:sof constant within producer (max_within=1), differs across (2)"
+          "correlates_with": "producer (distinct across 3 of 3)",
+          "evidence": "struct:markers constant within producer (max_within=1), differs across (3)"
         }
       ]
     },
@@ -106,12 +119,12 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:markers",
+            "feature_id": "struct:sof",
             "annotated_as": null,
             "hex_context": null
           },
           "correlates_with": "producer (distinct across 2 of 3)",
-          "evidence": "struct:markers constant within producer (max_within=1), differs across (2)"
+          "evidence": "struct:sof constant within producer (max_within=1), differs across (2)"
         },
         {
           "kind": "source_fingerprint",
@@ -119,20 +132,20 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:sof",
+            "feature_id": "struct:markers",
             "annotated_as": null,
             "hex_context": null
           },
           "correlates_with": "producer (distinct across 2 of 3)",
-          "evidence": "struct:sof constant within producer (max_within=1), differs across (2)"
+          "evidence": "struct:markers constant within producer (max_within=1), differs across (2)"
         }
       ]
     },
     {
       "adversary": "A2",
       "fidelity": "F3",
-      "verdict": "not_tested",
-      "reason": "handler_not_implemented"
+      "verdict": "pass",
+      "reason": "no encoder-structural feature separates producers after scrub (DQT normalized); residuals NOT tested here: PRNU sensor noise (Lukas, structural impossibility), primary-quantization traces (Sorell, E4)"
     },
     {
       "adversary": "A3",

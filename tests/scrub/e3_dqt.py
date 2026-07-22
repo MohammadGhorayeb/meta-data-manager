@@ -109,10 +109,18 @@ def evaluate_cell(fidelity: str, corpus_dir: str = DEFAULT_CORPUS):
                             f"{len(r['producers'])})",
             evidence=f"{fid} constant within producer (max_within="
                      f"{v.max_within}), differs across ({v.n_between})"))
-    verdict = V.FAIL if r["a2_fail"] else V.PASS
-    reason = ("dqt_producer_fingerprint_survives (Kornblum, E3): "
-              + ", ".join(sorted(r["struct_fingerprints"]))) if r["a2_fail"] else \
-             "no encoder-structural feature separates producers after scrub"
+    if r["a2_fail"]:
+        verdict = V.FAIL
+        reason = ("dqt_producer_fingerprint_survives (Kornblum, E3): "
+                  + ", ".join(sorted(r["struct_fingerprints"])))
+    else:
+        verdict = V.PASS
+        # Pass-with-residuals: E3 covers the structural/DQT channel only. Signal
+        # residuals the experiment does NOT probe so the matrix never over-claims.
+        reason = ("no encoder-structural feature separates producers after scrub "
+                  "(DQT normalized); residuals NOT tested here: PRNU sensor noise "
+                  "(Lukas, structural impossibility), primary-quantization traces "
+                  "(Sorell, E4)")
     return Cell("A2", fidelity, verdict, leaks=leaks, reason=reason)
 
 
@@ -130,7 +138,7 @@ def main(corpus_dir: str = DEFAULT_CORPUS) -> None:
     for p, paths in groups.items():
         print(f"  {p}: {len(paths)} scenes")
     print()
-    for fidelity in ("raw", "F1", "F2"):
+    for fidelity in ("raw", "F1", "F2", "F3"):
         r = run_condition(fidelity, corpus_dir)
         print(f"[{fidelity:3}] DQT: {_fmt(r['dqt'])}   "
               f"| struct fingerprints: {sorted(r['struct_fingerprints'])}   "

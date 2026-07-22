@@ -24,7 +24,8 @@ def test_matrix_builds_and_validates(tmp_path):
     # A1@F2 is measured (pass) when jpegtran is present, else honest not_tested.
     expected_f2 = "pass" if shutil.which("jpegtran") else "not_tested"
     assert _cell(doc, "A1", "F2")["verdict"] == expected_f2
-    # unmeasured points are honestly not_tested, not silently "pass"
+    # A1@F3 is measured (F3 re-encodes deterministically -> variants collapse).
+    assert _cell(doc, "A1", "F3")["verdict"] == "pass"
+    # A2 without a peer corpus stays honestly not_tested, not silently "pass".
     assert _cell(doc, "A2", "F1")["verdict"] == "not_tested"
-    assert _cell(doc, "A1", "F3")["verdict"] == "not_tested"
     assert doc["scrubber_fingerprint"]["verdict"] == "pass"

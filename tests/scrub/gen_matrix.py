@@ -55,20 +55,24 @@ def build_doc(tmpdir: str, a2_corpus_dir: str | None = None) -> dict:
     else:
         cells.append(Cell("A1", "F2", V.NOT_TESTED, reason="jpegtran_unavailable"))
 
-    cells.append(Cell("A1", "F3", V.NOT_TESTED, reason="handler_not_implemented"))
+    # A1@F3: F3 re-encodes deterministically, so content-identical / metadata-
+    # variant files still collapse to no leak.
+    variants_f3 = corpus.make_jpeg_a1_variants(tmpdir, n_variants=3, n_repeats=5)
+    a1f3 = leak.evaluate_a1(scrubber, plugin, variants_f3, "F3", n=5,
+                            sentinel_field="metadata_variant")
+    cells.append(a1f3)
 
     # --- A2: measured by experiment E3 (DQT peer-set) when a peer corpus is
-    #     present; otherwise honest not_tested. F3 handler not built yet. ---
+    #     present; otherwise honest not_tested. Now covers F1/F2/F3. ---
     from tests.scrub import e3_dqt
     corpus_dir = a2_corpus_dir or e3_dqt.DEFAULT_CORPUS
     have_corpus = len(e3_dqt.group_corpus(corpus_dir)) >= 2
-    for f in ("F1", "F2"):
+    for f in ("F1", "F2", "F3"):
         if have_corpus:
             cells.append(e3_dqt.evaluate_cell(f, corpus_dir))
         else:
             cells.append(Cell("A2", f, V.NOT_TESTED,
                               reason="pending_dqt_peerset_experiment_E3"))
-    cells.append(Cell("A2", "F3", V.NOT_TESTED, reason="handler_not_implemented"))
 
     # --- fingerprint guard over diverse inputs ---
     diverse = corpus.diverse_jpeg_inputs(tmpdir, n=4)
