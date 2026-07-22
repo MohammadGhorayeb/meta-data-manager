@@ -26,7 +26,12 @@ import tempfile
 from tests.harness.oracle import fields, variance
 from tests.harness.plugins.jpeg import JpegPlugin
 
-DEFAULT_CORPUS = os.path.expanduser("~/metadata-research/step2/originals")
+# The peer corpus lives inside the repo at tests/corpus/e3/ (git-ignored binaries
+# — see that dir's README). Resolved relative to the repo root so the experiment
+# is self-contained; group_corpus() returns {} on a fresh clone (no images) and
+# callers fall back to not_tested honestly.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+DEFAULT_CORPUS = os.path.join(_REPO_ROOT, "tests", "corpus", "e3")
 
 # structural features that are producer-choices (candidate fingerprints), vs
 # content-derived facts (size/geometry) that legitimately vary by scene.

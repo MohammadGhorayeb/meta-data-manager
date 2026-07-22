@@ -67,6 +67,12 @@ tests/corpus/**/*.dng
 **/originals/
 **/scrubbed/
 
+# E3 peer-corpus images: present on disk, never committed (real photos, some with
+# visible personal content). Only the folder's README is tracked.
+tests/corpus/e3/*.jpg
+tests/corpus/e3/*.jpeg
+!tests/corpus/e3/README.md
+
 # Scratch / reports
 scratch/
 *.log
