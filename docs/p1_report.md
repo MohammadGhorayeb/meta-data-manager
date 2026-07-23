@@ -1,6 +1,6 @@
 # Irreversible Metadata Scrubber — Progress & Testing Report
 
-**Phase 1: Images (JPEG and PNG)**  ·  Author: Mohammad Ghorayeb  ·  Date: 2026-07-23
+**Phase 1: Images (JPEG and PNG)**
 
 ---
 
