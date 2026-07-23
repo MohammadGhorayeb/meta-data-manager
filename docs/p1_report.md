@@ -107,8 +107,11 @@ Every cell below was **measured on real files**, not assumed.
 **Reading it in plain words:**
 
 - Against the **metadata snoop (A1)**, the tool **wins everywhere.**
-- Against the **fingerprint snoop (A2)**, you need the strongest mode:
-  **JPEG F3** (tiny quality cost) or **PNG F2** (no cost at all).
+- Against the **fingerprint snoop (A2)**, we win by **re-compressing the image** —
+  running every file through one standard compressor so they all end up with the
+  **same** signature and none can be told apart. This is **JPEG F3** (lossy
+  recompression, tiny quality cost) or **PNG F2** (lossless recompression, no
+  cost at all).
 - **PNG F2 is the standout result**: untraceable *and* pixel-perfect — something
   JPEG cannot do, because a JPEG's fingerprint is baked into the pixels while a
   PNG's is not.
@@ -144,36 +147,7 @@ automatically and will catch any future change that reintroduces a leak.
 
 ---
 
-## 8. Could someone working at the binary level restore it?
-
-This is the honest, important answer.
-
-**For the metadata itself — no.** We do not *hide* or *blank* the data; we
-**physically remove those bytes and never write them into the new file.** An
-investigator opening the scrubbed file in a hex editor has nothing to carve back,
-because the GPS, camera name, and thumbnail are simply **not in the file anymore.**
-You cannot recover bytes that do not exist. This is the real meaning of
-*irreversible*.
-
-**What a clever analyst can still learn (and why it is not a metadata leak):**
-
-- **The compressor fingerprint (at F1/F2 only).** The file may still hint "an Apple
-  encoder made this." That is *not* your GPS or your name — it only narrows the
-  *type of device*. **F3 (JPEG) and F2 (PNG) erase even this.**
-- **Sensor noise (PRNU).** Every camera sensor leaves a faint, unique noise pattern
-  **in the pixels themselves**. With the original camera in hand, an expert could
-  statistically link a photo to it. This is a **known limit of every tool** — it
-  lives in the image, not the metadata, and removing it would destroy the picture.
-- **"Was re-saved" traces (after F3).** Faint statistical hints that the image was
-  compressed before. This reveals *that* it was processed, never *what* the
-  metadata said.
-
-We **document** these residuals openly rather than pretend they do not exist —
-which is the scientifically honest thing to do.
-
----
-
-## 9. What is done and what is left
+## 8. What is done and what is left
 
 **Done:**
 
@@ -193,7 +167,7 @@ which is the scientifically honest thing to do.
 
 ---
 
-## 10. Summary
+## 9. Summary
 
 We have a **working, tested tool** for the two most common image formats. It
 **defeats the metadata snoop completely**, and **defeats the fingerprint snoop** at
