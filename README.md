@@ -1,5 +1,7 @@
 # Irreversible Metadata Scrubber
 
+[![CI](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml)
+
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
 ## Status
@@ -57,6 +59,14 @@ src/scrub/
   formats/jpeg/            JPEG handler: segments walker + f1/f2/f3
   formats/png/             PNG handler: chunk walker (CRC) + f1/f2
 ```
+
+## Continuous integration
+Every push to `main` and every pull request runs `.github/workflows/ci.yml`, visible to the whole team as a check (and the badge above). Each run:
+- installs the tools (exiftool, jpegtran, ffmpeg) and dependencies, then runs the **full test suite** — the regression guard for all prior + new work;
+- generates a **scrub-flow report** on the run's Summary page: synthetic samples (no real user data) shown **before → after** scrubbing across F1/F2/F3, with metadata-tag counts, embedded-thumbnail/trailer checks, and the encoder-DQT fingerprint before vs after;
+- uploads the scrubbed sample files as a downloadable artifact.
+
+Run the same report locally with `python scripts/scrub_flow_report.py --out scrub_artifacts`. To make a green build **required before merge**, enable branch protection on `main` (Settings → Branches) and require the `test-and-scrub-flow` check.
 
 ## Working with Claude Code
 `CLAUDE.md` carries the project definition, framework, build approach, working style, and tooling so each session starts on the same page. Keep it lean; put detail in `docs/`.

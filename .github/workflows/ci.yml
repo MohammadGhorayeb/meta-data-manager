@@ -1,0 +1,82 @@
+name: CI
+
+# Runs on every push to main and every pull request targeting main — so the
+# whole team sees a green/red check before and after merge.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel an in-progress run if the same branch/PR is pushed again.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-scrub-flow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: tests/harness/requirements.txt
+
+      # System binaries the scrubber/harness shell out to (never linked):
+      #   exiftool = ground-truth metadata reader
+      #   jpegtran/cjpeg (libjpeg-turbo) = JPEG F2 lossless re-encode + producers
+      #   ffmpeg = extra JPEG producer + decode paths
+      - name: Install system tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/harness/requirements.txt
+
+      - name: Show tool versions
+        run: |
+          python --version
+          exiftool -ver
+          jpegtran -version 2>&1 | head -1 || true
+          ffmpeg -version | head -1
+
+      # ---- REGRESSION: everything built so far must stay green ----
+      - name: Run test suite
+        run: |
+          set -o pipefail
+          python -m pytest -q | tee pytest.log
+
+      - name: Test summary
+        if: always()
+        run: |
+          {
+            echo "## ✅ Test suite (regression: all prior + new work)"
+            echo '```'
+            tail -n 5 pytest.log 2>/dev/null || echo "no test output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---- FLOW: show each sample file before vs after scrubbing ----
+      - name: Scrub flow report (before → after)
+        if: always()
+        run: |
+          python scripts/scrub_flow_report.py --out scrub_artifacts >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload scrubbed samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrubbed-samples
+          path: scrub_artifacts/
+          retention-days: 14
