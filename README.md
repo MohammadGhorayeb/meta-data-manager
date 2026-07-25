@@ -25,6 +25,20 @@ Metadata hides in redundant copies across coexisting standards (EXIF, XMP, IPTC,
 ## Build order
 Depth-first **by dependency, not popularity** — leaf formats before the containers that embed them. A shared spine (test harness + reusable EXIF/XMP/ICC/ID3 modules + dispatch) is built first, then JPEG/PNG → MP3 → PDF/OOXML → MP4/HEIC/RAW → executables → long tail. See `docs/implementation_plan.md`.
 
+## Near-future goals
+The next steps, building directly on the completed image work:
+- **Finish images (Phase 1 loose ends):** a formal PNG Pareto matrix + the E5 lossless-A2 write-up; the JPEG E4 residual bound (how much primary-quantization trace survives F3); and hardening the JPEG F2 fingerprint guard (fold the format-mandatory DQT/DHT headers into `mandatory_constants`).
+- **Phase 2 — audio (MP3):** strip ID3v1/ID3v2 and APEv2 tags; document the **Lame encoder tag** residual that only a re-encode can remove (the audio analogue of the JPEG DQT).
+- **Benchmark scaffold:** run MAT2 and ExifTool over the same corpus so every result has a side-by-side comparison — the evidence base for the funding proposal.
+
+## Far-future goals
+The full arc toward the deliverable — one tool that irreversibly scrubs files of arbitrary type:
+- **Phase 3 — documents (PDF, then OOXML/Word):** the **RSID** problem (revision-save IDs survive every surveyed tool, MAT2 included) and PDF incremental-update history.
+- **Phase 4 — media & camera (MP4 → HEIC → RAW):** container atom/box surgery, and **PRNU** sensor-noise as a documented structural impossibility (removable only by destroying the image).
+- **Phase 5 — executables**, then **Phase 6 — the long tail + whole-pipeline integration** (magic-number dispatch across every handler, recursive container scrubbing).
+- **Deliverable:** a professional **funding proposal** — technical content backed by the measured Pareto matrices, plus a cost plan.
+- **End goal:** forensic unrecoverability validated by differential testing at **every** duplicate locus, per format, against the medium-tier (A2) adversary.
+
 ## Repository layout
 ```
 CLAUDE.md                  Always-loaded brief for Claude Code
