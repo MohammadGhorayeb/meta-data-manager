@@ -1,0 +1,121 @@
+{
+  "format": "png",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p1",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-07-25T19:24:06.722111+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_applicable",
+      "reason": "lossless_format_f3_adds_nothing"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "deflate_fingerprint_survives: struct:idat, struct:size",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:size constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:idat",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:idat constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "pass",
+      "reason": "deflate fingerprint normalized losslessly (E5) \u2014 no producer separation; PNG residuals none beyond content"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_applicable",
+      "reason": "lossless_format_f3_adds_nothing"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "89504e470d0a1a0a",
+        "decoded": "\u0089PNG\r\n\u001a\n"
+      },
+      {
+        "bytes_hex": "49484452",
+        "decoded": "IHDR"
+      },
+      {
+        "bytes_hex": "49454e44",
+        "decoded": "IEND"
+      }
+    ],
+    "signatures": []
+  }
+}

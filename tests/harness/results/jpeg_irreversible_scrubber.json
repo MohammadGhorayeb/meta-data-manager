@@ -5,7 +5,7 @@
     "version": "0.1.0-p1",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-07-22T18:26:07.137581+00:00",
+  "generated_at": "2026-07-25T19:24:05.074817+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -33,18 +33,9 @@
       "fidelity": "F3",
       "verdict": "pass",
       "noise_floor": {
-        "deterministic": false,
+        "deterministic": true,
         "repeats": 5,
-        "variable_loci": [
-          {
-            "space": "field",
-            "offset": null,
-            "length": null,
-            "feature_id": "field:File:FileName",
-            "annotated_as": null,
-            "hex_context": null
-          }
-        ]
+        "variable_loci": []
       }
     },
     {
@@ -53,6 +44,19 @@
       "verdict": "fail",
       "reason": "dqt_producer_fingerprint_survives (Kornblum, E3): struct:dqt, struct:markers, struct:sof",
       "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:markers",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (distinct across 3 of 3)",
+          "evidence": "struct:markers constant within producer (max_within=1), differs across (3)"
+        },
         {
           "kind": "source_fingerprint",
           "locus": {
@@ -78,19 +82,6 @@
           },
           "correlates_with": "producer (distinct across 2 of 3)",
           "evidence": "struct:sof constant within producer (max_within=1), differs across (2)"
-        },
-        {
-          "kind": "source_fingerprint",
-          "locus": {
-            "space": "structural",
-            "offset": null,
-            "length": null,
-            "feature_id": "struct:markers",
-            "annotated_as": null,
-            "hex_context": null
-          },
-          "correlates_with": "producer (distinct across 3 of 3)",
-          "evidence": "struct:markers constant within producer (max_within=1), differs across (3)"
         }
       ]
     },
@@ -106,6 +97,19 @@
             "space": "structural",
             "offset": null,
             "length": null,
+            "feature_id": "struct:markers",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (distinct across 2 of 3)",
+          "evidence": "struct:markers constant within producer (max_within=1), differs across (2)"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
             "feature_id": "struct:dqt",
             "annotated_as": null,
             "hex_context": null
@@ -125,19 +129,6 @@
           },
           "correlates_with": "producer (distinct across 2 of 3)",
           "evidence": "struct:sof constant within producer (max_within=1), differs across (2)"
-        },
-        {
-          "kind": "source_fingerprint",
-          "locus": {
-            "space": "structural",
-            "offset": null,
-            "length": null,
-            "feature_id": "struct:markers",
-            "annotated_as": null,
-            "hex_context": null
-          },
-          "correlates_with": "producer (distinct across 2 of 3)",
-          "evidence": "struct:markers constant within producer (max_within=1), differs across (2)"
         }
       ]
     },
@@ -177,6 +168,22 @@
       {
         "bytes_hex": "ffd9",
         "decoded": "\u00ff\u00d9"
+      },
+      {
+        "bytes_hex": "ffe000104a46494600010100000100010000",
+        "decoded": "\u00ff\u00e0\u0000\u0010JFIF\u0000\u0001\u0001\u0000\u0000\u0001\u0000\u0001\u0000\u0000"
+      },
+      {
+        "bytes_hex": "ffdb004300",
+        "decoded": "\u00ff\u00db\u0000C\u0000"
+      },
+      {
+        "bytes_hex": "ffdb004301",
+        "decoded": "\u00ff\u00db\u0000C\u0001"
+      },
+      {
+        "bytes_hex": "ffd8ffe000104a46494600010100000100010000ffdb004300",
+        "decoded": "\u00ff\u00d8\u00ff\u00e0\u0000\u0010JFIF\u0000\u0001\u0001\u0000\u0000\u0001\u0000\u0001\u0000\u0000\u00ff\u00db\u0000C\u0000"
       }
     ],
     "signatures": []

@@ -5,7 +5,7 @@
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
 ## Status
-Phase 0 (harness + spine) and **Phase 1 images complete**: JPEG (F1/F2/F3) and PNG (F1/F2) fully implemented and measured, **127 tests passing**. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`.
+Phase 0 (harness + spine) and **Phase 1 images complete**: JPEG (F1/F2/F3) and PNG (F1/F2) fully implemented and measured, **129 tests passing**. Both Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes at F1 and F2. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`.
 
 ### Results (measured, not assumed)
 | Format | A1 metadata (F1/F2/F3) | A2 fingerprint (F1/F2/F3) |
@@ -13,7 +13,7 @@ Phase 0 (harness + spine) and **Phase 1 images complete**: JPEG (F1/F2/F3) and P
 | **JPEG** | pass / pass / pass | fail / fail / **pass** |
 | **PNG**  | pass / pass / n-a  | fail / **pass** / n-a |
 
-A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-compression — **JPEG F3** (lossy) or **PNG F2** (lossless). The DQT producer-fingerprint result (experiment E3) and the F3 residuals (PRNU, primary quantization) are documented, never silently claimed clean.
+A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-compression — **JPEG F3** (lossy) or **PNG F2** (lossless, the standout result). The DQT producer-fingerprint result (experiment E3) and the F3 residuals (PRNU, primary quantization) are documented, never silently claimed clean.
 
 ## Usage
 ```
@@ -28,10 +28,10 @@ Metadata hides in redundant copies across coexisting standards (EXIF, XMP, IPTC,
 Depth-first **by dependency, not popularity** — leaf formats before the containers that embed them. A shared spine (test harness + reusable EXIF/XMP/ICC/ID3 modules + dispatch) is built first, then JPEG/PNG → MP3 → PDF/OOXML → MP4/HEIC/RAW → executables → long tail. See `docs/implementation_plan.md`.
 
 ## Near-future goals
-The next steps, building directly on the completed image work:
-- **Finish images (Phase 1 loose ends):** a formal PNG Pareto matrix + the E5 lossless-A2 write-up; the JPEG E4 residual bound (how much primary-quantization trace survives F3); and hardening the JPEG F2 fingerprint guard (fold the format-mandatory DQT/DHT headers into `mandatory_constants`).
+Image loose ends are now closed — the PNG Pareto matrix is generated, and the JPEG fingerprint guard passes at F1 **and** F2 (format-mandatory / standard-libjpeg structure folded into `mandatory_constants`). Next:
 - **Phase 2 — audio (MP3):** strip ID3v1/ID3v2 and APEv2 tags; document the **Lame encoder tag** residual that only a re-encode can remove (the audio analogue of the JPEG DQT).
 - **Benchmark scaffold:** run MAT2 and ExifTool over the same corpus so every result has a side-by-side comparison — the evidence base for the funding proposal.
+- **Optional:** the JPEG E4 residual bound (how much primary-quantization trace survives F3).
 
 ## Far-future goals
 The full arc toward the deliverable — one tool that irreversibly scrubs files of arbitrary type:

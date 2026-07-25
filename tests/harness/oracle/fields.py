@@ -63,12 +63,28 @@ def exiftool_fields(path: str) -> dict[str, str]:
 
     fields: dict[str, str] = {}
     for key, value in record.items():
-        # ExifTool injects a "SourceFile" housekeeping key (the input path); drop
-        # it so corpus features do not vary on tmpfile names.
-        if key == "SourceFile":
+        # Drop filesystem/housekeeping tags: these describe the file ON DISK
+        # (path, size, mtime/atime/ctime, inode, permissions), NOT its content.
+        # They vary with the tmp path and wall-clock time, so feeding them to the
+        # variance engine produces spurious variant/source "leaks" (a scrub that
+        # crosses a 1-second boundary would look like a metadata leak). The
+        # original-on-disk is a workflow concern, not a property of the bytes
+        # (CLAUDE.md). Compare on the tag name, independent of ExifTool's group.
+        tag = key.split(":")[-1]
+        if tag in _FS_HOUSEKEEPING:
             continue
         fields[key] = str(value)
     return fields
+
+
+# Filesystem / tool-housekeeping tags ExifTool reports that are NOT file content.
+_FS_HOUSEKEEPING = frozenset({
+    "SourceFile", "ExifToolVersion", "FileName", "Directory", "FileSize",
+    "FileModifyDate", "FileAccessDate", "FileInodeChangeDate", "FileCreateDate",
+    "FilePermissions", "FileDeviceNumber", "FileDeviceID", "FileInodeNumber",
+    "FileHardLinks", "FileUserID", "FileGroupID", "FileBlockSize",
+    "FileBlockCount", "FileType", "FileTypeExtension", "MIMEType",
+})
 
 
 def structural_features(path: str, plugin) -> dict[str, Hashable]:

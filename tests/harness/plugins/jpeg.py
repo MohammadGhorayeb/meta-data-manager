@@ -48,9 +48,27 @@ class JpegPlugin:
             return im.convert("RGB").tobytes()
 
     def mandatory_constants(self) -> list[bytes]:
-        # Format-required byte invariants, excluded from the fingerprint guard so
-        # SOI/EOI aren't mistaken for a tool signature.
-        return [b"\xff\xd8", b"\xff\xd9"]
+        """Format-required / standard-encoder byte invariants, excluded from the
+        fingerprint guard (W8). These are structure every conforming baseline
+        JPEG shares — the "crowd", not a scrubber signature:
+
+          - SOI / EOI markers.
+          - The canonical no-thumbnail JFIF APP0 (the same bytes libjpeg-turbo
+            emits and our F1 writes — normalize-toward-the-crowd, not elegance).
+          - The 8-bit DQT segment headers (FF DB, length 0x43, table id 0/1):
+            format-determined for a standard 64-entry quantization table.
+          - The canonical libjpeg baseline file prefix (SOI + JFIF + first DQT
+            header) so the *join* between those mandatory pieces is excluded too.
+
+        Everything content- or encoder-choice-dependent (DHT counts, SOF sampling)
+        is deliberately NOT listed — those must stay visible to the guard.
+        """
+        from src.scrub.formats.jpeg.f1 import CANONICAL_JFIF
+        soi, eoi = b"\xff\xd8", b"\xff\xd9"
+        dqt0 = b"\xff\xdb\x00\x43\x00"   # DQT: 8-bit, table 0
+        dqt1 = b"\xff\xdb\x00\x43\x01"   # DQT: 8-bit, table 1
+        canonical_prefix = soi + CANONICAL_JFIF + dqt0
+        return [soi, eoi, CANONICAL_JFIF, dqt0, dqt1, canonical_prefix]
 
     def structural_features(self, path: str) -> dict:
         """A2 structural fingerprint channel (p1 plan W2/E3; fields.py hook).

@@ -8,22 +8,33 @@ than offset alignment. Grouping factor = input (everything varies).
 from __future__ import annotations
 
 
-def _substrings_geq(s: bytes, k: int) -> set[bytes]:
-    out = set()
-    for i in range(len(s) - k + 1):
-        for j in range(i + k, len(s) + 1):
-            out.add(s[i:j])
-    return out  # fixture-scale only; for large real outputs swap in a suffix-automaton LCS
-
-
 def common_substrings(blobs: list[bytes], min_len: int) -> set[bytes]:
-    if not blobs: return set()
+    """Maximal byte runs (length >= min_len) present in EVERY blob.
+
+    Seed-and-extend, driven by the shortest blob: for each position whose
+    min_len window occurs in all blobs, extend right while the growing run still
+    occurs in all blobs, and record the maximal run. This replaces the former
+    O(n^2)-substring materialization (which OOM'd on non-fixture inputs) with a
+    per-position scan, so the guard can run on richer, larger outputs while
+    reporting the same maximal signatures the callers expect."""
+    if not blobs:
+        return set()
     base = min(blobs, key=len)
-    cand = _substrings_geq(base, min_len)
-    for b in blobs:
-        cand = {s for s in cand if s in b}
-        if not cand: break
-    return cand
+    n = len(base)
+
+    def in_all(sub: bytes) -> bool:
+        return all(sub in b for b in blobs)
+
+    out: set[bytes] = set()
+    i = 0
+    while i <= n - min_len:
+        if in_all(base[i:i + min_len]):
+            end = i + min_len
+            while end < n and in_all(base[i:end + 1]):
+                end += 1
+            out.add(base[i:end])
+        i += 1
+    return out
 
 
 def maximal(runs: set[bytes]) -> list[bytes]:

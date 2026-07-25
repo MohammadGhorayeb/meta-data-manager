@@ -71,10 +71,20 @@ def test_a1_floor_is_empty_for_our_scrubber(tmp_path):
 
 
 def test_fingerprint_guard_passes_over_diverse_inputs(tmp_path):
-    inputs = corpus.diverse_jpeg_inputs(str(tmp_path), n=4)
+    inputs = corpus.diverse_jpeg_inputs(str(tmp_path), n=6)
     verdict, signatures = fingerprint_guard.evaluate(
         InProcessScrubber(), JpegPlugin(), inputs, "F1")
     assert verdict == "pass", f"scrubber fingerprint detected: {signatures}"
+
+
+@_needs_jpegtran
+def test_fingerprint_guard_passes_at_f2(tmp_path):
+    """W8: F2 output carries only format-mandatory / standard-libjpeg structure
+    (declared in JpegPlugin.mandatory_constants) — no unique scrubber signature."""
+    inputs = corpus.diverse_jpeg_inputs(str(tmp_path), n=6)
+    verdict, signatures = fingerprint_guard.evaluate(
+        InProcessScrubber(), JpegPlugin(), inputs, "F2")
+    assert verdict == "pass", f"F2 scrubber fingerprint detected: {signatures}"
 
 
 def test_a1_detects_a_deliberately_leaky_scrubber(tmp_path):

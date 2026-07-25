@@ -245,15 +245,55 @@ def make_exif_payload_with(sentinel: bytes) -> bytes:
     return piexif.dump(d)
 
 
+def _textured_pixels(w: int, h: int, kind: str, seed: int) -> Image.Image:
+    """Genuinely varied, information-rich textures so a fingerprint-guard corpus
+    doesn't share content-dependent Huffman/scan bytes by accident. Small/flat
+    images produce degenerate (near-identical) Huffman tables that masquerade as
+    a tool signature; rich content makes jpegtran's optimized tables diverge, so
+    only true tool signatures survive as cross-input invariants."""
+    import math
+    img = Image.new("RGB", (w, h))
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            if kind == "grad":
+                px[x, y] = ((x * 7 + seed + y) % 256, (y * 11 + x) % 256,
+                            ((x + y) * 5 + seed) % 256)
+            elif kind == "noise":
+                px[x, y] = ((x * 131 + y * 17 + seed) % 256,
+                            (x * 7 + y * 251 + seed * 3) % 256,
+                            (x * 97 + y * 53 + seed * 7) % 256)
+            elif kind == "rings":
+                v = int(128 + 127 * math.sin(((x * x + y * y) ** 0.5 + seed) / 3))
+                w2 = int(128 + 127 * math.cos((x - y + seed) / 5))
+                px[x, y] = (v % 256, w2 % 256, (v ^ w2) % 256)
+            else:  # weave
+                px[x, y] = ((x * 3 + y * y) % 256, (200 + x * y) % 256,
+                            (y * 4 + seed + x) % 256)
+    return img
+
+
 def diverse_jpeg_inputs(tmpdir: str, n: int = 4) -> list[str]:
-    """Distinct pixels + varied metadata (some with a JFIF, some without, some
-    with EXIF) for the fingerprint guard: the only cross-input invariants left in
-    our output must be the format-mandatory SOI/EOI, not a tool signature."""
+    """Genuinely diverse inputs (varied size, rich texture, quality, chroma
+    subsampling, and metadata) for the fingerprint guard: after scrubbing, the
+    only cross-input invariants left in our output must be format-mandatory /
+    standard-encoder structure (see JpegPlugin.mandatory_constants), not a tool
+    signature. Diversity in subsampling + rich texture is what stops
+    content-dependent DHT/SOF bytes from coinciding and masquerading as one."""
+    specs = [
+        (128, 96, "noise", 80, "4:2:0"),
+        (144, 112, "rings", 88, "4:4:4"),
+        (112, 128, "weave", 74, "4:2:2"),
+        (160, 104, "grad", 90, "4:4:4"),
+        (104, 136, "noise", 83, "4:2:0"),
+        (120, 120, "rings", 78, "4:2:2"),
+    ]
     paths = []
     for i in range(n):
-        img = make_pixels(48 + i * 4, 32 + i * 4, seed=i + 1)
+        w, h, kind, q, sub = specs[i % len(specs)]
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=80 + i)
+        _textured_pixels(w, h, kind, seed=i + 1).save(
+            buf, format="JPEG", quality=q, subsampling=sub)
         data = _content_only(buf.getvalue())
         segs: list[bytes] = []
         if i % 2 == 0:
