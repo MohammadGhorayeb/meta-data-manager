@@ -162,25 +162,27 @@ def a2_section(outdir: str) -> str:
     return "\n".join(rows)
 
 
+def build_body(outdir: str) -> str:
+    """The before/after scrub-flow report as Markdown (reused by qa_report)."""
+    os.makedirs(outdir, exist_ok=True)
+    return "\n".join([
+        "Synthetic samples with planted metadata (no real user data). Each is "
+        "shown **before → after** scrubbing across fidelity tiers.",
+        "",
+        format_section("jpeg", make_jpeg, ("F1", "F2", "F3"), outdir),
+        format_section("png", make_png, ("F1", "F2"), outdir),
+        a2_section(outdir),
+        "_F1 bit-preserving · F2 lossless re-encode · F3 lossy re-encode. "
+        "A ✅ result means zero metadata tags, no embedded thumbnail, and no "
+        "trailer bytes survive._",
+    ])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="scrub_artifacts")
     args = ap.parse_args()
-    os.makedirs(args.out, exist_ok=True)
-
-    out = ["# 🧼 Scrub flow report",
-           "",
-           "Synthetic samples with planted metadata (no real user data). Each is "
-           "shown **before → after** scrubbing across fidelity tiers.",
-           "",
-           format_section("jpeg", make_jpeg, ("F1", "F2", "F3"), args.out),
-           format_section("png", make_png, ("F1", "F2"), args.out),
-           a2_section(args.out),
-           "---",
-           "_F1 bit-preserving · F2 lossless re-encode · F3 lossy re-encode. "
-           "A ✅ result means zero metadata tags, no embedded thumbnail, and no "
-           "trailer bytes survive._"]
-    print("\n".join(out))
+    print("# 🧼 Scrub flow report\n\n" + build_body(args.out))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 # Irreversible Metadata Scrubber
 
-[![CI](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml)
+[![QA](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml)
+[![Quality Dashboard](https://img.shields.io/badge/QA%20dashboard-live-2563eb)](https://mohammadghorayeb.github.io/meta-data-manager/)
 
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
@@ -60,13 +61,22 @@ src/scrub/
   formats/png/             PNG handler: chunk walker (CRC) + f1/f2
 ```
 
-## Continuous integration
-Every push to `main` and every pull request runs `.github/workflows/ci.yml`, visible to the whole team as a check (and the badge above). Each run:
-- installs the tools (exiftool, jpegtran, ffmpeg) and dependencies, then runs the **full test suite** — the regression guard for all prior + new work;
-- generates a **scrub-flow report** on the run's Summary page: synthetic samples (no real user data) shown **before → after** scrubbing across F1/F2/F3, with metadata-tag counts, embedded-thumbnail/trailer checks, and the encoder-DQT fingerprint before vs after;
-- uploads the scrubbed sample files as a downloadable artifact.
+## Continuous integration — QA dashboard
+Every push to `main` and every pull request runs `.github/workflows/ci.yml`. It produces a **plain-language QA dashboard** anyone (including non-technical stakeholders) can read:
+- **Live dashboard** published to GitHub Pages — a styled page with a pass/fail banner, category cards (Metadata Removal, Picture Preserved, Made Untraceable, Cannot Be Recovered, File Stays Valid, Tool Behaviour), a capability table, and the before/after scrub flow.
+- **Job Summary** — the same dashboard rendered on each run's page.
+- **PR comment** — the summary is posted (and updated) on every pull request, so reviewers see results inline.
+- **Artifacts** — the scrubbed sample files, downloadable for inspection.
 
-Run the same report locally with `python scripts/scrub_flow_report.py --out scrub_artifacts`. To make a green build **required before merge**, enable branch protection on `main` (Settings → Branches) and require the `test-and-scrub-flow` check.
+Under the hood each run installs the tools (exiftool, jpegtran, ffmpeg), runs the **full test suite** (regression guard), and groups the results into the plain-English areas above. A failing suite turns the check red.
+
+Generate the dashboard locally:
+```
+python -m pytest -q --junit-xml=pytest-results.xml
+python scripts/qa_report.py --junit pytest-results.xml --html qa-site/index.html
+```
+
+**One-time setup for the live dashboard:** enable Pages (Settings → Pages → Source: **GitHub Actions**). To require a green build before merge, add a branch-protection rule on `main` requiring the `qa` check.
 
 ## Working with Claude Code
 `CLAUDE.md` carries the project definition, framework, build approach, working style, and tooling so each session starts on the same page. Keep it lean; put detail in `docs/`.

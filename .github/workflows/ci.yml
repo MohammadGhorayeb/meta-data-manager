@@ -1,24 +1,28 @@
-name: CI
+name: QA
 
-# Runs on every push to main and every pull request targeting main — so the
-# whole team sees a green/red check before and after merge.
+# Runs on every push to main and every pull request — the whole team sees a
+# green/red check, a rich job summary, a PR comment, and a published dashboard.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
-# Cancel an in-progress run if the same branch/PR is pushed again.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: qa-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
 
 jobs:
-  test-and-scrub-flow:
+  qa:
     runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.tests.outcome }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,10 +33,7 @@ jobs:
           cache: pip
           cache-dependency-path: tests/harness/requirements.txt
 
-      # System binaries the scrubber/harness shell out to (never linked):
-      #   exiftool = ground-truth metadata reader
-      #   jpegtran/cjpeg (libjpeg-turbo) = JPEG F2 lossless re-encode + producers
-      #   ffmpeg = extra JPEG producer + decode paths
+      # System binaries the scrubber/harness shell out to (never linked).
       - name: Install system tools
         run: |
           sudo apt-get update
@@ -44,39 +45,78 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r tests/harness/requirements.txt
 
-      - name: Show tool versions
-        run: |
-          python --version
-          exiftool -ver
-          jpegtran -version 2>&1 | head -1 || true
-          ffmpeg -version | head -1
-
-      # ---- REGRESSION: everything built so far must stay green ----
+      # Run the suite; keep going so the QA report is built even on failure
+      # (people need to SEE what failed).
       - name: Run test suite
-        run: |
-          set -o pipefail
-          python -m pytest -q | tee pytest.log
+        id: tests
+        continue-on-error: true
+        run: python -m pytest -q --junit-xml=pytest-results.xml
 
-      - name: Test summary
+      - name: Build QA dashboard
         if: always()
         run: |
-          {
-            echo "## ✅ Test suite (regression: all prior + new work)"
-            echo '```'
-            tail -n 5 pytest.log 2>/dev/null || echo "no test output"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          python scripts/qa_report.py \
+            --junit pytest-results.xml \
+            --html qa-site/index.html \
+            --summary qa-summary.md \
+            --flow-out qa-site/samples
 
-      # ---- FLOW: show each sample file before vs after scrubbing ----
-      - name: Scrub flow report (before → after)
+      - name: Publish job summary
         if: always()
-        run: |
-          python scripts/scrub_flow_report.py --out scrub_artifacts >> "$GITHUB_STEP_SUMMARY"
+        run: cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment QA summary on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('qa-summary.md', 'utf8');
+            const marker = '<!-- qa-report -->';
+            const {owner, repo} = context.repo;
+            const issue = context.issue.number;
+            const comments = await github.rest.issues.listComments({owner, repo, issue_number: issue});
+            const mine = comments.data.find(c => c.body && c.body.includes(marker));
+            const payload = marker + "\n" + body;
+            if (mine) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: mine.id, body: payload});
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number: issue, body: payload});
+            }
+
+      - name: Upload dashboard as Pages artifact
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: qa-site
 
       - name: Upload scrubbed samples
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: scrubbed-samples
-          path: scrub_artifacts/
+          path: qa-site/samples/
           retention-days: 14
+
+      # Make the check red if the suite failed (after the report is built/published).
+      - name: Enforce test result
+        if: always() && steps.tests.outcome == 'failure'
+        run: |
+          echo "::error::Test suite failed — see the QA summary above."
+          exit 1
+
+  # Publish the dashboard to GitHub Pages (main only). Requires Pages enabled:
+  # Settings -> Pages -> Source: "GitHub Actions". continue-on-error keeps the
+  # run from going red before that one-time setting is turned on.
+  deploy-pages:
+    needs: qa
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
