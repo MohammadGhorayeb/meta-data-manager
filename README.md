@@ -1,7 +1,6 @@
 # Irreversible Metadata Scrubber
 
 [![QA](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml)
-[![Quality Dashboard](https://img.shields.io/badge/QA%20dashboard-live-2563eb)](https://mohammadghorayeb.github.io/meta-data-manager/)
 
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
@@ -61,22 +60,23 @@ src/scrub/
   formats/png/             PNG handler: chunk walker (CRC) + f1/f2
 ```
 
-## Continuous integration — QA dashboard
-Every push to `main` and every pull request runs `.github/workflows/ci.yml`. It produces a **plain-language QA dashboard** anyone (including non-technical stakeholders) can read:
-- **Live dashboard** published to GitHub Pages — a styled page with a pass/fail banner, category cards (Metadata Removal, Picture Preserved, Made Untraceable, Cannot Be Recovered, File Stays Valid, Tool Behaviour), a capability table, and the before/after scrub flow.
-- **Job Summary** — the same dashboard rendered on each run's page.
-- **PR comment** — the summary is posted (and updated) on every pull request, so reviewers see results inline.
-- **Artifacts** — the scrubbed sample files, downloadable for inspection.
+## Continuous integration — QA report on the Actions page
+Every push to `main` and every pull request runs `.github/workflows/ci.yml`, which publishes a **rich, plain-language QA report right on the GitHub Actions run page** (Job Summary) — no external site needed. Anyone, including non-technical stakeholders, can read it:
+- a **verdict** (badges + banner) and a 30-second benefit summary;
+- a **pass/fail pie** and results grouped into plain-English areas (Metadata Removal, Picture Preserved, Made Untraceable, Cannot Be Recovered, File Stays Valid, Tool Behaviour);
+- a per-format **capability table** and a mermaid diagram of how the fingerprint is defeated;
+- a **"What we can't do yet — and how we solve it"** section (honest limits → our solution);
+- the **before → after** scrub flow on real sample files.
 
-Under the hood each run installs the tools (exiftool, jpegtran, ffmpeg), runs the **full test suite** (regression guard), and groups the results into the plain-English areas above. A failing suite turns the check red.
+The same report is posted (and updated) as a **PR comment**, and the scrubbed samples are uploaded as an artifact. A failing suite turns the check red (the report still publishes so failures are visible).
 
-Generate the dashboard locally:
+Generate the report locally:
 ```
 python -m pytest -q --junit-xml=pytest-results.xml
-python scripts/qa_report.py --junit pytest-results.xml --html qa-site/index.html
+python scripts/qa_report.py --junit pytest-results.xml --summary qa-summary.md
 ```
 
-**One-time setup for the live dashboard:** enable Pages (Settings → Pages → Source: **GitHub Actions**). To require a green build before merge, add a branch-protection rule on `main` requiring the `qa` check.
+To require a green build before merge, add a branch-protection rule on `main` requiring the `qa` check.
 
 ## Working with Claude Code
 `CLAUDE.md` carries the project definition, framework, build approach, working style, and tooling so each session starts on the same page. Keep it lean; put detail in `docs/`.

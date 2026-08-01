@@ -1,7 +1,7 @@
 name: QA
 
 # Runs on every push to main and every pull request — the whole team sees a
-# green/red check, a rich job summary, a PR comment, and a published dashboard.
+# green/red check plus a rich, plain-language QA report ON THE RUN PAGE.
 on:
   push:
     branches: [main]
@@ -14,15 +14,11 @@ concurrency:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
   pull-requests: write
 
 jobs:
   qa:
     runs-on: ubuntu-latest
-    outputs:
-      tests: ${{ steps.tests.outcome }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,20 +48,20 @@ jobs:
         continue-on-error: true
         run: python -m pytest -q --junit-xml=pytest-results.xml
 
-      - name: Build QA dashboard
+      - name: Build QA report
         if: always()
         run: |
           python scripts/qa_report.py \
             --junit pytest-results.xml \
-            --html qa-site/index.html \
             --summary qa-summary.md \
-            --flow-out qa-site/samples
+            --flow-out scrub-samples
 
-      - name: Publish job summary
+      # The star: the rich report renders on the Actions run page.
+      - name: Publish report to run summary
         if: always()
         run: cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Comment QA summary on PR
+      - name: Comment report on PR
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
@@ -84,39 +80,17 @@ jobs:
               await github.rest.issues.createComment({owner, repo, issue_number: issue, body: payload});
             }
 
-      - name: Upload dashboard as Pages artifact
-        if: always()
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: qa-site
-
       - name: Upload scrubbed samples
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: scrubbed-samples
-          path: qa-site/samples/
+          path: scrub-samples/
           retention-days: 14
 
-      # Make the check red if the suite failed (after the report is built/published).
+      # Make the check red if the suite failed (after the report is published).
       - name: Enforce test result
         if: always() && steps.tests.outcome == 'failure'
         run: |
-          echo "::error::Test suite failed — see the QA summary above."
+          echo "::error::Test suite failed — see the QA report above."
           exit 1
-
-  # Publish the dashboard to GitHub Pages (main only). Requires Pages enabled:
-  # Settings -> Pages -> Source: "GitHub Actions". continue-on-error keeps the
-  # run from going red before that one-time setting is turned on.
-  deploy-pages:
-    needs: qa
-    if: always() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
