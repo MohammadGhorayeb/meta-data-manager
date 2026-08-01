@@ -36,4 +36,6 @@ def default_dispatcher() -> Dispatcher:
     d.register(JpegHandler())
     from .formats.png.handler import PngHandler
     d.register(PngHandler())
+    from .formats.mp3.handler import Mp3Handler
+    d.register(Mp3Handler())
     return d
