@@ -5,15 +5,16 @@
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
 ## Status
-Phase 0 (harness + spine) and **Phase 1 images complete**: JPEG (F1/F2/F3) and PNG (F1/F2) fully implemented and measured, **129 tests passing**. Both Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes at F1 and F2. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`.
+Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio underway** (MP3 F1 + F3). Fully implemented and measured, **144 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
 
 ### Results (measured, not assumed)
 | Format | A1 metadata (F1/F2/F3) | A2 fingerprint (F1/F2/F3) |
 |---|---|---|
 | **JPEG** | pass / pass / pass | fail / fail / **pass** |
 | **PNG**  | pass / pass / n-a  | fail / **pass** / n-a |
+| **MP3**  | pass / n-a / pass  | fail / n-a / **pass** |
 
-A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-compression — **JPEG F3** (lossy) or **PNG F2** (lossless, the standout result). The DQT producer-fingerprint result (experiment E3) and the F3 residuals (PRNU, primary quantization) are documented, never silently claimed clean.
+A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-encoding — **JPEG F3** (lossy), **PNG F2** (lossless, the standout result), or **MP3 F3** (lossy). Each format's fingerprint (JPEG DQT / PNG deflate / MP3 LAME-Xing contour) and F3 residuals (PRNU, primary quantization, MP3 generation loss + within-LAME-class anonymity) are documented, never silently claimed clean. MP3 A2 is measured for encoder front-ends; the cross-*engine* residual is labelled theory pending a non-libmp3lame sample.
 
 ## Usage
 ```
@@ -28,9 +29,10 @@ Metadata hides in redundant copies across coexisting standards (EXIF, XMP, IPTC,
 Depth-first **by dependency, not popularity** — leaf formats before the containers that embed them. A shared spine (test harness + reusable EXIF/XMP/ICC/ID3 modules + dispatch) is built first, then JPEG/PNG → MP3 → PDF/OOXML → MP4/HEIC/RAW → executables → long tail. See `docs/implementation_plan.md`.
 
 ## Near-future goals
-Image loose ends are closed (PNG Pareto matrix generated; JPEG fingerprint guard passes at F1 **and** F2), and the **benchmark comparison** against ExifTool / MAT2 / jpegtran is done — see [`docs/benchmark.md`](docs/benchmark.md) (regenerate with `python scripts/benchmark.py`). Its verified headline: every mature tool removes metadata, but only ours stays **lossless when you want fidelity** *and* goes **untraceable when you want anonymity** — MAT2, by contrast, silently re-encodes every JPEG lossily (cumulative loss, breaks CMYK/progressive), while ExifTool and jpegtran leave the encoder fingerprint intact. Next:
-- **Phase 2 — audio (MP3):** strip ID3v1/ID3v2 and APEv2 tags; document the **Lame encoder tag** residual that only a re-encode can remove (the audio analogue of the JPEG DQT).
-- **Optional:** the JPEG E4 residual bound (how much primary-quantization trace survives F3).
+Images are done + benchmarked ([`docs/benchmark.md`](docs/benchmark.md)), and **Phase 2 audio (MP3)** now has F1 (bit-preserving tag strip — ID3v1/v2, APEv2, Lyrics3, embedded GPS-tagged album art, appended hitchhikers) and F3 (canonical 192 kbps CBR re-encode that erases the LAME/Xing encoder fingerprint). Next:
+- **Finish MP3 evidence:** add a genuinely different encoder *engine* (e.g. Shine/FhG) to the peer corpus to turn the cross-engine A2 residual from theory into a measured result.
+- **Phase 3 — documents (PDF, then OOXML/Word):** the RSID problem and PDF incremental-update history.
+- **Optional:** the JPEG E4 residual bound (primary-quantization trace after F3).
 
 ## Far-future goals
 The full arc toward the deliverable — one tool that irreversibly scrubs files of arbitrary type:

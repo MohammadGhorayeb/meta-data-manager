@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from ...errors import FidelityError
 from ..base import BaseHandler
-from . import f1
+from . import f1, f3
 
 
 class Mp3Handler(BaseHandler):
@@ -34,9 +34,11 @@ class Mp3Handler(BaseHandler):
             "re-encode changes the encoder fingerprint — use F1 (keep audio) or F3")
 
     def scrub_f3(self, data: bytes) -> bytes:
-        raise FidelityError("mp3 F3 (canonical re-encode) not implemented yet")
+        return f3.scrub(data)
 
     def verify(self, data: bytes, fidelity: str) -> list[str]:
         if fidelity == "F1":
             return f1.residuals(data)
+        if fidelity == "F3":
+            return f3.residuals(data)
         return []

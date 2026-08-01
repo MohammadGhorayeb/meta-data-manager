@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame
 
       - name: Install Python dependencies
         run: |

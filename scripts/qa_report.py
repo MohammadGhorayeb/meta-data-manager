@@ -108,7 +108,8 @@ def load_capabilities():
     """Plain-language capability rows derived from the Pareto matrices."""
     import json
     rows = []
-    fmap = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)"}
+    fmap = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
+            "mp3": "MP3 (audio)"}
     for fmt, label in fmap.items():
         p = os.path.join(REPO, "tests", "harness", "results",
                          f"{fmt}_irreversible_scrubber.json")
@@ -141,7 +142,7 @@ def _category_table(cats) -> str:
 
 
 def _capability_table(caps) -> str:
-    rows = ["| Format | Removes hidden data (A1) | Keeps picture identical | "
+    rows = ["| Format | Removes hidden data (A1) | Keeps content identical | "
             "Makes it untraceable (A2) |", "|---|:--:|:--:|:--:|"]
     for label, removes, keeps, untr in caps:
         rows.append(f"| **{label}** | {removes} | {keeps} | {untr} |")

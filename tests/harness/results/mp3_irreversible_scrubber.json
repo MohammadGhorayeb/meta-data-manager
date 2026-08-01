@@ -1,0 +1,139 @@
+{
+  "format": "mp3",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p2",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-08-01T21:14:47.036115+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_applicable",
+      "reason": "lossless_reencode_not_applicable_to_mp3"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_applicable",
+      "reason": "lossless_reencode_not_applicable_to_mp3"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "encoder_fingerprint_survives (LAME/Xing + bitrate contour): struct:bitrate_hist, struct:channel_mode, struct:lame_version, struct:size",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:channel_mode",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:channel_mode constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:lame_version",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:lame_version constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:size constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:bitrate_hist",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:bitrate_hist constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "pass",
+      "reason": "encoder fingerprint normalized to the canonical LAME class (measured for front-ends; cross-engine residual is theory pending a non-libmp3lame sample). Residual: anonymity within the LAME-192-CBR class + generation loss."
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "ff",
+        "decoded": "\u00ff"
+      }
+    ],
+    "signatures": []
+  }
+}

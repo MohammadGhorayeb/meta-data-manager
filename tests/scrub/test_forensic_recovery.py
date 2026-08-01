@@ -79,3 +79,37 @@ def test_png_no_secret_recoverable(tmp_path, fidelity):
     data = dst.read_bytes()
     assert _carve(data, PNG_SECRETS) == [], "secret string survived scrub"
     assert pck.walk(data).trailer == b"", "trailer bytes survived"
+
+
+# --------------------------------------------------------------------------- #
+# MP3 — secrets across every tag locus + a GPS-tagged cover image + a hitchhiker
+# JPEG appended past the audio. Needs ffmpeg (F1) and lame (F3).
+# --------------------------------------------------------------------------- #
+from tests.scrub import mp3_corpus as _mc  # noqa: E402
+
+MP3_SECRETS = [b"Title-", b"Artist-", b"GPS-", b"COVERGPS", b"ApeGhost",
+               b"OldTitle", b"HITCHHIKER", b"ape-hidden"]
+
+_mp3_fids = ["F1"] + (["F3"] if _mc.HAVE_LAME else [])
+
+
+@pytest.mark.skipif(not _mc.HAVE_FFMPEG, reason="ffmpeg not installed")
+def test_mp3_secrets_present_before_scrub(tmp_path):
+    data = open(_mc.torture_mp3(str(tmp_path / "t.mp3")), "rb").read()
+    assert set(_carve(data, MP3_SECRETS)) == {s.decode() for s in MP3_SECRETS}
+    assert _embedded_jpegs(data) >= 1        # the GPS cover art + hitchhiker
+
+
+@pytest.mark.skipif(not _mc.HAVE_FFMPEG, reason="ffmpeg not installed")
+@pytest.mark.parametrize("fidelity", _mp3_fids)
+def test_mp3_no_secret_recoverable(tmp_path, fidelity):
+    src = tmp_path / "in.mp3"
+    dst = tmp_path / "out.mp3"
+    src.write_bytes(open(_mc.torture_mp3(str(tmp_path / "t.mp3")), "rb").read())
+    cli.scrub_file(str(src), str(dst), fidelity)
+    data = dst.read_bytes()
+    assert _carve(data, MP3_SECRETS) == [], "a secret string survived scrub"
+    assert _embedded_jpegs(data) == 0, "embedded cover / hitchhiker image survived"
+    for magic in (b"APETAGEX", b"LYRICS200"):
+        assert magic not in data, f"{magic!r} trailer survived"
+    assert data[:3] != b"ID3", "front ID3v2 tag survived"
