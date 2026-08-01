@@ -115,6 +115,11 @@ def residuals(data: bytes) -> list[str]:
             continue
         if s.kind == "app0_jfif":
             continue  # libjpeg's canonical JFIF — allowed
+        if s.kind == "app14_adobe":
+            # libjpeg re-emits a canonical Adobe APP14 for CMYK/YCCK to signal the
+            # colour transform — dropping it would misrender the image (same policy
+            # as F1). jpegtran controls this marker, so it is generic, not a leak.
+            continue
         out.append(f"residual {s.kind} segment at {s.offset}")
     if structure.trailer:
         out.append(f"{len(structure.trailer)} trailer byte(s) after EOI")

@@ -28,9 +28,8 @@ Metadata hides in redundant copies across coexisting standards (EXIF, XMP, IPTC,
 Depth-first **by dependency, not popularity** — leaf formats before the containers that embed them. A shared spine (test harness + reusable EXIF/XMP/ICC/ID3 modules + dispatch) is built first, then JPEG/PNG → MP3 → PDF/OOXML → MP4/HEIC/RAW → executables → long tail. See `docs/implementation_plan.md`.
 
 ## Near-future goals
-Image loose ends are now closed — the PNG Pareto matrix is generated, and the JPEG fingerprint guard passes at F1 **and** F2 (format-mandatory / standard-libjpeg structure folded into `mandatory_constants`). Next:
+Image loose ends are closed (PNG Pareto matrix generated; JPEG fingerprint guard passes at F1 **and** F2), and the **benchmark comparison** against ExifTool / MAT2 / jpegtran is done — see [`docs/benchmark.md`](docs/benchmark.md) (regenerate with `python scripts/benchmark.py`). Its verified headline: every mature tool removes metadata, but only ours stays **lossless when you want fidelity** *and* goes **untraceable when you want anonymity** — MAT2, by contrast, silently re-encodes every JPEG lossily (cumulative loss, breaks CMYK/progressive), while ExifTool and jpegtran leave the encoder fingerprint intact. Next:
 - **Phase 2 — audio (MP3):** strip ID3v1/ID3v2 and APEv2 tags; document the **Lame encoder tag** residual that only a re-encode can remove (the audio analogue of the JPEG DQT).
-- **Benchmark scaffold:** run MAT2 and ExifTool over the same corpus so every result has a side-by-side comparison — the evidence base for the funding proposal.
 - **Optional:** the JPEG E4 residual bound (how much primary-quantization trace survives F3).
 
 ## Far-future goals

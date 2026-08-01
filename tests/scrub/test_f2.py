@@ -84,3 +84,18 @@ def test_f2_output_is_clean_jpeg_structure():
 def test_residuals_flags_unscrubbed_input():
     dirty = corpus.build_torture_jpeg()
     assert f2.residuals(dirty), "residuals() failed to flag a dirty file"
+
+
+def test_f2_handles_cmyk_keeping_colour_transform():
+    """Regression (benchmark-found): a CMYK JPEG must scrub, not fail closed.
+    libjpeg re-emits a canonical Adobe APP14 to signal the colour transform;
+    F2 must allow that marker (dropping it would misrender), while still leaving
+    no actual metadata and preserving the CMYK colour space."""
+    buf = io.BytesIO()
+    Image.new("CMYK", (96, 72), (10, 20, 30, 5)).save(buf, "JPEG", quality=90)
+    scrubbed = f2.scrub(buf.getvalue())
+    assert f2.residuals(scrubbed) == [], "F2 wrongly flagged the canonical APP14"
+    kinds = {s.kind for s in seg.walk(scrubbed).segments}
+    assert "app14_adobe" in kinds, "colour-transform marker must survive for CMYK"
+    assert not (_METADATA_KINDS & kinds), "no real metadata may survive"
+    assert Image.open(io.BytesIO(scrubbed)).mode == "CMYK", "CMYK must be preserved"
