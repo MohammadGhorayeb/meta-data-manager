@@ -1,8 +1,10 @@
 """Deterministic MP3 corpus builders for the Phase-2 tests.
 
 Base audio comes from a fixed ffmpeg lavfi tone (deterministic); tags are injected
-with mutagen. F3-related builders also use the `lame` CLI. Callers should skip when
-the required tool is absent (HAVE_FFMPEG / HAVE_LAME).
+with mutagen. F3-related builders also use the `lame` CLI, and the cross-engine A2
+peer group uses `shineenc` (a fixed-point encoder that is *not* libmp3lame).
+Callers should skip when the required tool is absent
+(HAVE_FFMPEG / HAVE_LAME / HAVE_SHINE).
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from mutagen.id3 import ID3, TIT2, TPE1, TALB, COMM, APIC
 
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None
 HAVE_LAME = shutil.which("lame") is not None
+HAVE_SHINE = shutil.which("shineenc") is not None
 
 
 def _run(cmd):
@@ -43,6 +46,17 @@ def base_mp3_lame(path: str, freq: int = 440, dur: float = 2.0, vbr: int = 2):
         _run(["ffmpeg", "-y", "-f", "lavfi", "-i",
               f"sine=frequency={freq}:duration={dur}", "-ac", "2", "-ar", "44100", wav])
         _run(["lame", "--quiet", "-V", str(vbr), wav, path])
+
+
+def base_mp3_shine(path: str, freq: int = 440, dur: float = 2.0, bitrate: int = 128):
+    """A CBR MP3 via shineenc — a genuinely different *engine* (fixed-point, not
+    libmp3lame): no Xing/Info header, no LAME tag, its own psychoacoustic/bit-
+    allocation behaviour. This is the cross-engine A2 peer the matrix needs."""
+    with tempfile.TemporaryDirectory() as td:
+        wav = os.path.join(td, "s.wav")
+        _run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+              f"sine=frequency={freq}:duration={dur}", "-ac", "2", "-ar", "44100", wav])
+        _run(["shineenc", "-q", "-b", str(bitrate), wav, path])
 
 
 def _add_tags(path: str, sentinel: str):
@@ -102,11 +116,16 @@ def a1_variants(tmpdir: str, n_variants: int = 3, n_repeats: int = 5):
     return groups
 
 
-def producers(tmpdir: str, repeats: int = 3):
-    """A2 peer set: the SAME source audio via different encoder front-ends
-    (LAME CLI vs ffmpeg libmp3lame). Content held constant, producer varies."""
+def producers(tmpdir: str, repeats: int = 3, cross_engine: bool = True):
+    """A2 peer set: the SAME source audio via different producers. Two of them are
+    front-ends of one engine (LAME CLI vs ffmpeg libmp3lame); `shine_cbr` is a
+    different engine entirely, which is what turns the cross-engine A2 question from
+    theory into a measurement. Content held constant, producer varies."""
+    builders = [("lame_vbr", base_mp3_lame), ("ffmpeg_vbr", base_mp3_ffmpeg)]
+    if cross_engine and HAVE_SHINE:
+        builders.append(("shine_cbr", base_mp3_shine))
     sources = {}
-    for name, fn in (("lame_vbr", base_mp3_lame), ("ffmpeg_vbr", base_mp3_ffmpeg)):
+    for name, fn in builders:
         paths = []
         for r in range(repeats):
             p = os.path.join(tmpdir, f"{name}__r{r}.mp3")

@@ -36,6 +36,19 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame
 
+      # A SECOND MP3 engine. Every LAME front-end shares one engine, so without a
+      # non-libmp3lame encoder the cross-engine A2 experiments (E-LAME peer set +
+      # E-ENGINE) silently degrade to a same-engine set that cannot answer the
+      # question. shine is small and builds directly; no autotools needed.
+      - name: Build shineenc (second MP3 engine, for cross-engine A2 evidence)
+        run: |
+          git clone --depth 1 https://github.com/toots/shine.git /tmp/shine
+          cc -O2 -I/tmp/shine/src/lib -I/tmp/shine/src/bin \
+             /tmp/shine/src/lib/*.c /tmp/shine/src/bin/*.c \
+             -o /tmp/shine/shineenc -lm
+          sudo install -m 0755 /tmp/shine/shineenc /usr/local/bin/shineenc
+          shineenc -h 2>&1 | head -1
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip

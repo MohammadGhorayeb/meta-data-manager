@@ -13,6 +13,17 @@
 #   - fpcalc (chromaprint)  audio fingerprint; OPTIONAL at runtime -- any
 #                           audio-fingerprint path must degrade/skip when fpcalc
 #                           is absent and must never crash at import.
+#   - lame                  MP3 encoder; the F3 canonical re-encode shells out to it
+#   - shineenc              A SECOND MP3 ENGINE (not libmp3lame). Required to
+#                           reproduce the cross-engine A2 evidence: every LAME
+#                           front-end shares one engine, so without this the peer
+#                           set cannot answer "is the source ENGINE recoverable?".
+#                           No package on macOS/Debian; build it directly (as CI does):
+#                             git clone --depth 1 https://github.com/toots/shine.git
+#                             cc -O2 -Ishine/src/lib -Ishine/src/bin \
+#                                shine/src/lib/*.c shine/src/bin/*.c -o shineenc -lm
+#                           Absent -> E-ENGINE tests skip and the matrix says the
+#                           audio-space residual was NOT measured (never "clean").
 
 # --- direct harness deps ---
 pytest==9.1.0

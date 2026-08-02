@@ -5,7 +5,7 @@
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
 ## Status
-Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio underway** (MP3 F1 + F3). Fully implemented and measured, **144 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
+Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio underway** (MP3 F1 + F3, now with **cross-engine A2 evidence**). Fully implemented and measured, **150 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
 
 ### Results (measured, not assumed)
 | Format | A1 metadata (F1/F2/F3) | A2 fingerprint (F1/F2/F3) |
@@ -14,7 +14,9 @@ Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2
 | **PNG**  | pass / pass / n-a  | fail / **pass** / n-a |
 | **MP3**  | pass / n-a / pass  | fail / n-a / **pass** |
 
-A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-encoding — **JPEG F3** (lossy), **PNG F2** (lossless, the standout result), or **MP3 F3** (lossy). Each format's fingerprint (JPEG DQT / PNG deflate / MP3 LAME-Xing contour) and F3 residuals (PRNU, primary quantization, MP3 generation loss + within-LAME-class anonymity) are documented, never silently claimed clean. MP3 A2 is measured for encoder front-ends; the cross-*engine* residual is labelled theory pending a non-libmp3lame sample.
+A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-encoding — **JPEG F3** (lossy), **PNG F2** (lossless, the standout result), or **MP3 F3** (lossy). Each format's fingerprint (JPEG DQT / PNG deflate / MP3 LAME-Xing contour) and F3 residuals (PRNU, primary quantization, MP3 generation loss + within-LAME-class anonymity) are documented, never silently claimed clean.
+
+MP3 A2 is now measured **across encoder engines**, not just front-ends: the peer set includes [shine](https://github.com/toots/shine), a fixed-point encoder that is not libmp3lame and writes no Xing/LAME header at all. Two experiments back the A2@F3 cell — **E-LAME** in header space (all producers collapse to one canonical signature) and **E-ENGINE** in audio space, which asks the harder question the headers can't: with the header normalized, can a peer-corpus adversary still recover the source *engine* from the waveform? A leave-one-content-out spectral classifier recovers it at **0.94 on unscrubbed and F1 files, and falls to chance (0.50) after F3**. Scope stated honestly: spectral features; MDCT-domain classifiers untested.
 
 ## Usage
 ```
@@ -29,8 +31,8 @@ Metadata hides in redundant copies across coexisting standards (EXIF, XMP, IPTC,
 Depth-first **by dependency, not popularity** — leaf formats before the containers that embed them. A shared spine (test harness + reusable EXIF/XMP/ICC/ID3 modules + dispatch) is built first, then JPEG/PNG → MP3 → PDF/OOXML → MP4/HEIC/RAW → executables → long tail. See `docs/implementation_plan.md`.
 
 ## Near-future goals
-Images are done + benchmarked ([`docs/benchmark.md`](docs/benchmark.md)), and **Phase 2 audio (MP3)** now has F1 (bit-preserving tag strip — ID3v1/v2, APEv2, Lyrics3, embedded GPS-tagged album art, appended hitchhikers) and F3 (canonical 192 kbps CBR re-encode that erases the LAME/Xing encoder fingerprint). Next:
-- **Finish MP3 evidence:** add a genuinely different encoder *engine* (e.g. Shine/FhG) to the peer corpus to turn the cross-engine A2 residual from theory into a measured result.
+Images are done + benchmarked ([`docs/benchmark.md`](docs/benchmark.md)), and **Phase 2 audio (MP3)** has F1 (bit-preserving tag strip — ID3v1/v2, APEv2, Lyrics3, embedded GPS-tagged album art, appended hitchhikers) and F3 (canonical 192 kbps CBR re-encode that erases the LAME/Xing encoder fingerprint). The cross-engine A2 residual is now **measured, not assumed** (see Results above). Next:
+- **Close Phase 2 properly:** the plan's audio scope also includes **M4A** — which MAT2 refuses outright, so it is a gap to beat — and **FLAC/Vorbis comments**, both reusing the same tag logic. Plus a `docs/p2_audio_plan.md` to match `p1_images_plan.md`.
 - **Phase 3 — documents (PDF, then OOXML/Word):** the RSID problem and PDF incremental-update history.
 - **Optional:** the JPEG E4 residual bound (primary-quantization trace after F3).
 
@@ -53,7 +55,9 @@ docs/
 tests/
   harness/                 Phase 0 differential-testing harness + format plugins
   corpus/e3/               PNG/JPEG peer corpus for the A2 experiments (images git-ignored)
-  scrub/                   Unit + harness tests, the E3 DQT experiment, forensic-recovery guard
+  scrub/                   Unit + harness tests, forensic-recovery guard, and the
+                           A2 experiments: E3 (JPEG DQT), E-LAME (MP3 header space),
+                           E-ENGINE (MP3 audio space, cross-engine)
 src/scrub/
   cli.py  dispatch.py      Entry point + magic-number routing
   standards/               Shared modules: TIFF-IFD, XMP, ICC, IPTC-IIM (written once, reused)

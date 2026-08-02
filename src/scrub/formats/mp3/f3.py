@@ -36,6 +36,16 @@ LAME_QUALITY = 2                 # -q 2
 # Perceptual gate: normalized cross-correlation after delay alignment. A faithful
 # 192-CBR re-encode sits at ~0.999+; gross corruption / wrong file is far below.
 PERCEPTUAL_MIN_NCC = 0.99
+# The gate compares only the AUDIBLE band. Our constraint is perceptual identity to
+# a human listener, and LAME lowpasses around 19 kHz by design — so a source from a
+# non-lowpassing encoder (e.g. shine, which codes right up to Nyquist) loses real
+# ultrasonic energy in the re-encode. Comparing full-band waveforms scores that
+# inaudible removal as divergence and makes the tool refuse a file it scrubbed
+# correctly: measured NCC 0.95 on shine-encoded white noise, which is inaudibly
+# identical. Band-limiting both signals first keeps the guard honest about what it
+# claims to guard (what you can hear), while still catching real corruption.
+GATE_BAND_HZ = 16000
+PCM_RATE = 44100
 
 
 def _tool(name: str) -> str:
@@ -115,8 +125,21 @@ def _best_ncc(a, b, maxlag: int = 3000, window: int = 200_000) -> float:
     return best
 
 
+def _bandlimit(x, cutoff: int = GATE_BAND_HZ, fs: int = PCM_RATE):
+    """Zero everything above `cutoff` (numpy-only brick-wall via rfft) so the
+    perceptual gate compares the audible band, not ultrasonics neither codec keeps."""
+    import numpy as np
+    if x.size < 2048:
+        return x
+    spec = np.fft.rfft(x)
+    freqs = np.fft.rfftfreq(x.size, d=1.0 / fs)
+    spec[freqs > cutoff] = 0
+    return np.fft.irfft(spec, n=x.size)
+
+
 def _check_perceptual(original: bytes, scrubbed: bytes) -> None:
-    ncc = _best_ncc(_pcm_mono(original), _pcm_mono(scrubbed))
+    ncc = _best_ncc(_bandlimit(_pcm_mono(original)),
+                    _bandlimit(_pcm_mono(scrubbed)))
     if ncc < PERCEPTUAL_MIN_NCC:
         raise ContentError(
             f"MP3 F3 re-encode diverged perceptually: NCC {ncc:.4f} "

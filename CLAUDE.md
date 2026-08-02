@@ -65,5 +65,6 @@ A tool that **irreversibly strips metadata from files of arbitrary type**, for p
 - JPEG A2-resistance generally requires F3 — in-place DQT quantization tables reveal the encoder (Kornblum).
 - OOXML RSIDs survive every surveyed scrubber including MAT2 (Müller).
 - The Lame tag in MP3 audio frames can't be removed without re-encoding.
+- MP3 A2 is closed at F3 **across engines**, measured twice: E-LAME (header space — all producers collapse to the canonical LAME-192-CBR signature) and E-ENGINE (audio space — a spectral engine classifier recovers the source engine at 0.94 on raw/F1 and drops to chance 0.50 after F3). Peer set includes `shineenc`, a non-libmp3lame engine. Untested scope: MDCT-domain classifiers. Don't re-run these to re-establish the result; extend them.
 - PDF has no published tool achieving A2 at F2.
 - PRNU sensor noise survives F1/F2 and no metadata pipeline can remove it (Lukáš) — a structural impossibility; document it as such rather than treating it as a bug.

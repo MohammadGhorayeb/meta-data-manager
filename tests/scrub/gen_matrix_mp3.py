@@ -4,7 +4,11 @@ Measured:
   - A1@F1, A1@F3   differential leak oracle over same-audio / different-tag MP3s.
   - A2@F1, A2@F3   encoder-fingerprint peer set (experiment E-LAME): F1 keeps each
                    producer's LAME/Xing signature (fail); F3 collapses all to the
-                   canonical LAME-192-CBR class (pass, measured for front-ends).
+                   canonical LAME-192-CBR class (pass). The peer set spans two LAME
+                   front-ends AND a different engine (shineenc), and the A2@F3 cell
+                   additionally carries E-ENGINE — the audio-space check that the
+                   source engine is not still recoverable from the waveform once the
+                   header is normalized.
   - F2 = not_applicable: MP3 frames are the content; no lossless re-encode changes
                    the encoder fingerprint.
 F3/A2 cells need the `lame` CLI; without it they are honestly not_tested.
@@ -21,7 +25,7 @@ from tests.harness.contract import Cell, V
 from tests.harness.oracle import fingerprint_guard, leak
 from tests.harness.plugins.mp3 import MP3Plugin
 from tests.harness.runner import matrix
-from tests.scrub import e_lame
+from tests.scrub import e_engine, e_lame
 from tests.scrub import mp3_corpus as mc
 
 TOOL = {
@@ -47,6 +51,35 @@ def _diverse(tmpdir, n=4):
             mc.base_mp3_ffmpeg(p, freq=freq, dur=dur)
         paths.append(p)
     return paths
+
+
+def _audio_note(tmpdir: str) -> str:
+    """Header normalization says nothing about the waveform, so the A2@F3 claim also
+    carries E-ENGINE: can a peer-corpus adversary still classify the source ENGINE
+    from the decoded audio after F3? Needs a second engine (shineenc); without one
+    the cell says so rather than implying the question was answered."""
+    if not mc.HAVE_SHINE:
+        return ("Audio-space cross-engine residual NOT measured here "
+                "(no second engine available: install shineenc) — see E-ENGINE.")
+    try:
+        r = e_engine.run(fidelities=("raw", "F1", "F3"),
+                         tmpdir=os.path.join(tmpdir, "e_engine"))
+    except Exception as exc:                      # never let an experiment break the matrix
+        return f"Audio-space cross-engine residual not measured (E-ENGINE failed: {exc})."
+    f3, raw = r["F3"], r["raw"]
+    if not e_engine.controls_valid(r):
+        return ("Audio-space cross-engine result INCONCLUSIVE: E-ENGINE controls "
+                f"failed (raw accuracy {raw['accuracy']:.2f}, needs to be well above "
+                f"chance {raw['chance']:.2f}) — the classifier is too weak to trust.")
+    if f3["recoverable"]:
+        return ("Audio-space RESIDUAL MEASURED: source engine still recoverable "
+                f"after F3 at {f3['accuracy']:.2f} vs chance {f3['chance']:.2f} "
+                "(E-ENGINE, spectral classifier).")
+    return ("Cross-engine audio residual measured and NOT found: after F3 a spectral "
+            f"engine classifier drops to {f3['accuracy']:.2f} vs chance "
+            f"{f3['chance']:.2f}, from {raw['accuracy']:.2f} on the unscrubbed source "
+            "(E-ENGINE, leave-one-content-out over broadband audio). Scope: spectral "
+            "features; MDCT-domain classifiers untested.")
 
 
 def build_doc(tmpdir: str) -> dict:
@@ -75,7 +108,7 @@ def build_doc(tmpdir: str) -> dict:
     if have_lame:
         sources = e_lame.build_sources(tmpdir, repeats=3)
         cells.append(e_lame.evaluate_cell("F1", sources, tmpdir))
-        cells.append(e_lame.evaluate_cell("F3", sources, tmpdir))
+        cells.append(e_lame.evaluate_cell("F3", sources, tmpdir, audio_note=_audio_note(tmpdir)))
     else:
         cells.append(Cell("A2", "F1", V.NOT_TESTED, reason="lame_unavailable"))
         cells.append(Cell("A2", "F3", V.NOT_TESTED, reason="lame_unavailable"))

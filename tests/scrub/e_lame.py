@@ -5,11 +5,16 @@ per-frame bitrate contour) classifies the *producer* and survives F1 (metadata
 strip keeps the audio frames), so A2@F1 = fail; F3 re-encodes through one canonical
 LAME setting so all producers collapse to one signature, so A2@F3 = pass.
 
-MEASUREMENT SCOPE (honest, per the design decision): the peer set here is
-front-ends of the SAME engine (LAME CLI vs ffmpeg's libmp3lame) — they differ in
-version string + VBR contour, so A2 separation is real and F3 collapse is real, but
-the *cross-engine* residual (a genuinely different engine like FhG/Shine) is
-asserted-by-theory until such a sample is added. The matrix labels this.
+MEASUREMENT SCOPE (honest, per the design decision): this experiment lives in
+HEADER space — the categorical structural channel (Xing/LAME string, bitrate
+contour, channel mode). Its peer set now includes a genuinely different *engine*
+(`shine_cbr`, fixed-point, emits no Xing/LAME header at all) alongside the two LAME
+front-ends, so the collapse at F3 is measured across engines, not just front-ends.
+
+The complementary question — whether the source engine is still recoverable from the
+decoded *audio* after F3, since header normalization says nothing about the
+waveform — is experiment E-ENGINE (`tests/scrub/e_engine.py`). Read both before
+quoting the A2@F3 cell.
 """
 from __future__ import annotations
 
@@ -49,7 +54,7 @@ def run_condition(fidelity: str, sources: dict, tmpdir: str) -> dict:
             "a2_fail": any(k in fps for k in _ENCODER_KEYS)}
 
 
-def evaluate_cell(fidelity: str, sources: dict, tmpdir: str):
+def evaluate_cell(fidelity: str, sources: dict, tmpdir: str, audio_note: str = ""):
     from tests.harness.contract import Cell, Leak, Locus, V
     r = run_condition(fidelity, sources, tmpdir)
     if r["a2_fail"]:
@@ -60,11 +65,14 @@ def evaluate_cell(fidelity: str, sources: dict, tmpdir: str):
         return Cell("A2", fidelity, V.FAIL, leaks=leaks,
                     reason="encoder_fingerprint_survives (LAME/Xing + bitrate "
                            "contour): " + ", ".join(sorted(r["struct_fingerprints"])))
+    engines = "cross-engine" if any("shine" in p for p in r["producers"]) else \
+              "front-ends of one engine (no second engine available)"
     return Cell("A2", fidelity, V.PASS,
-                reason="encoder fingerprint normalized to the canonical LAME class "
-                       "(measured for front-ends; cross-engine residual is theory "
-                       "pending a non-libmp3lame sample). Residual: anonymity within "
-                       "the LAME-192-CBR class + generation loss.")
+                reason="encoder fingerprint normalized to the canonical LAME class; "
+                       f"peer set = {', '.join(r['producers'])} ({engines})."
+                       + (" " + audio_note if audio_note else "")
+                       + " Residual: anonymity within the LAME-192-CBR class "
+                         "+ one generation of loss.")
 
 
 def main() -> None:

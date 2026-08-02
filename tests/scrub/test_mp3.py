@@ -100,17 +100,53 @@ def test_f3_normalizes_encoder_fingerprint(tmp_path):
     """The A2 defense: F1 keeps each producer's fingerprint, F3 collapses all to
     one canonical 192 CBR signature."""
     src = mc.producers(str(tmp_path), repeats=1)
-    def sig(path):
-        L = w.walk(open(path, "rb").read())
-        return (L.xing.lame_version, tuple(sorted({fr.bitrate for fr in L.frames})))
-    raw_sigs = {sig(p[0]) for p in src.values()}
+
+    def sig(data: bytes):
+        L = w.walk(data)
+        # A missing Xing header is itself a producer signature — shineenc writes
+        # none at all — so absence is a value here, never a crash.
+        version = L.xing.lame_version if L.xing else b"<no-xing>"
+        return (version, tuple(sorted({fr.bitrate for fr in L.frames})))
+
+    raw_sigs = {sig(open(p[0], "rb").read()) for p in src.values()}
     assert len(raw_sigs) > 1, "producers should differ before scrub"
-    f3_sigs = set()
-    for paths in src.values():
-        out = f3.scrub(open(paths[0], "rb").read())
-        L = w.walk(out)
-        f3_sigs.add((L.xing.lame_version, tuple(sorted({fr.bitrate for fr in L.frames}))))
+    f3_sigs = {sig(f3.scrub(open(paths[0], "rb").read())) for paths in src.values()}
     assert len(f3_sigs) == 1, f"F3 must collapse producers to one signature: {f3_sigs}"
+    assert b"<no-xing>" not in {v for v, _ in f3_sigs}, "F3 output must carry the canonical header"
+
+
+@_needs_lame
+@pytest.mark.skipif(not mc.HAVE_SHINE, reason="shineenc not installed")
+def test_f3_accepts_audio_from_a_non_lowpassing_encoder(tmp_path):
+    """Regression: the perceptual gate used to compare full-band waveforms, so a
+    source from an encoder that codes past LAME's ~19 kHz lowpass (shineenc, on
+    broadband audio) failed the gate at NCC 0.95 and the tool refused a file it had
+    scrubbed correctly — the removed energy was inaudible. The gate now compares the
+    audible band; this must scrub, and must still be perceptually faithful."""
+    wav = str(tmp_path / "n.wav")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "anoisesrc=duration=2:color=white:seed=3:amplitude=0.3",
+                    "-ac", "2", "-ar", "44100", wav], check=True)
+    src = str(tmp_path / "n.mp3")
+    subprocess.run(["shineenc", "-q", "-b", "128", wav, src], check=True)
+    data = open(src, "rb").read()
+
+    scrubbed = f3.scrub(data)                     # raised ContentError before the fix
+    ncc = f3._best_ncc(f3._bandlimit(f3._pcm_mono(data)),
+                       f3._bandlimit(f3._pcm_mono(scrubbed)))
+    assert ncc >= f3.PERCEPTUAL_MIN_NCC
+
+
+@_needs_lame
+def test_perceptual_gate_still_rejects_different_audio(tmp_path):
+    """The band-limited gate must not become a rubber stamp: unrelated audio in
+    place of the scrub output has to be caught."""
+    from src.scrub.errors import ContentError
+    a = open(mc.torture_mp3(str(tmp_path / "a.mp3")), "rb").read()
+    other = str(tmp_path / "b.mp3")
+    mc.base_mp3_ffmpeg(other, freq=1900, dur=2.0)
+    with pytest.raises(ContentError):
+        f3._check_perceptual(a, open(other, "rb").read())
 
 
 @_needs_lame
@@ -123,5 +159,8 @@ def test_f3_is_deterministic(tmp_path):
 def test_f3_content_preserved_perceptually(tmp_path):
     data = open(mc.torture_mp3(str(tmp_path / "t.mp3")), "rb").read()
     scrubbed = f3.scrub(data)                                # raises if past the gate
-    ncc = f3._best_ncc(f3._pcm_mono(data), f3._pcm_mono(scrubbed))
+    # Compare the way the gate does: in the audible band. Full-band comparison
+    # would penalise the inaudible >16 kHz content LAME lowpasses away.
+    ncc = f3._best_ncc(f3._bandlimit(f3._pcm_mono(data)),
+                       f3._bandlimit(f3._pcm_mono(scrubbed)))
     assert ncc >= f3.PERCEPTUAL_MIN_NCC
