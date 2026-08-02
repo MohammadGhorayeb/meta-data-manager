@@ -106,15 +106,17 @@ GLOSSARY = {
 # remember to update.
 ROADMAP = [
     ("jpeg", "JPEG photos"), ("png", "PNG graphics and screenshots"),
-    ("mp3", "MP3 audio"), ("pdf", "PDF documents"),
-    ("ooxml", "Word documents"), ("mp4", "MP4 video"),
-    ("heic", "HEIC iPhone photos"), ("raw", "camera RAW files"),
+    ("mp3", "MP3 audio"), ("flac", "FLAC lossless audio"),
+    ("pdf", "PDF documents"), ("ooxml", "Word documents"),
+    ("mp4", "MP4 video"), ("heic", "HEIC iPhone photos"),
+    ("raw", "camera RAW files"),
 ]
 
 FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
-                "mp3": "MP3 (audio)", "pdf": "PDF (documents)",
-                "ooxml": "Word (.docx)", "mp4": "MP4 (video)",
-                "heic": "HEIC (iPhone photos)", "raw": "Camera RAW"}
+                "mp3": "MP3 (audio)", "flac": "FLAC (lossless audio)",
+                "pdf": "PDF (documents)", "ooxml": "Word (.docx)",
+                "mp4": "MP4 (video)", "heic": "HEIC (iPhone photos)",
+                "raw": "Camera RAW"}
 
 # Every stage of the pipeline, with what it checks said without jargon.
 STAGES = [
@@ -322,16 +324,24 @@ def load_capabilities() -> list[dict]:
         a2 = {f: cells.get(("A2", f)) for f in ("F1", "F2", "F3")}
 
         removes = "✅ Yes" if any(v == "pass" for v in a1.values()) else "❌ Not yet"
+
+        # Which modes strip the metadata *without touching the content at all*.
+        # Never a blanket "yes": F3 re-encodes, so claiming both an identical
+        # file and untraceability in the same row would promise something this
+        # tool cannot do in one pass.
+        lossless = [f for f in ("F1", "F2") if a1[f] == "pass"]
+        keeps = f"✅ Yes — in {' and '.join(lossless)}" if lossless else "❌ Not yet"
+
         untraceable = "❌ Not yet"
         for f in ("F1", "F2", "F3"):
             if a2[f] == "pass":
-                cost = {"F1": "no quality loss", "F2": "no quality loss",
-                        "F3": "a tiny, invisible quality cost"}[f]
-                untraceable = f"✅ Yes — {cost}"
+                cost = ("no quality loss" if f in ("F1", "F2")
+                        else "a tiny, invisible quality cost")
+                untraceable = f"✅ Yes — in {f}, {cost}"
                 break
         rows.append({"fmt": fmt, "label": FORMAT_LABEL.get(fmt, fmt.upper()),
-                     "removes": removes, "untraceable": untraceable,
-                     "a1": a1, "a2": a2})
+                     "removes": removes, "keeps": keeps,
+                     "untraceable": untraceable, "a1": a1, "a2": a2})
     return rows
 
 
@@ -557,6 +567,12 @@ def section_stage_table(run: Run) -> str:
             secs = max(leg_secs) if leg_secs else run.duration
             if run.failed:
                 result = f"❌ {run.failed} failed"
+            elif run.missing_legs:
+                # No failures only because nothing ran. "0 failed" here would be
+                # the most dangerous sentence in the whole report.
+                result = f"❌ no results from Python {', '.join(run.missing_legs)}"
+            elif run.stages.get("test") in ("failure", "cancelled", "timed_out"):
+                result = f"❌ {run.stages['test']}"
             else:
                 result = f"✅ {run.passed} passed"
                 if run.skipped:
@@ -727,8 +743,8 @@ def section_capabilities(run: Run) -> str:
         return ""
     rows = ["| Format | Removes hidden data | Keeps the file identical | "
             "Makes it untraceable |", "|---|:--:|:--:|:--:|"]
-    rows += [f"| **{c['label']}** | {c['removes']} | ✅ Yes | {c['untraceable']} |"
-             for c in caps]
+    rows += [f"| **{c['label']}** | {c['removes']} | {c['keeps']} | "
+             f"{c['untraceable']} |" for c in caps]
 
     grid = ["| Format | Snoop | Bit-preserving (F1) | Lossless (F2) | Lossy (F3) |",
             "|---|---|:--:|:--:|:--:|"]
@@ -746,6 +762,11 @@ def section_capabilities(run: Run) -> str:
         "claim here is not backed by a real measurement, it does not appear.*",
         "",
         "\n".join(rows),
+        "",
+        "> **The last two columns can need different modes.** Where making a "
+        "file untraceable costs quality, that is a *different* setting from the "
+        "one that leaves the file identical — you pick per file, and the table "
+        "names which setting delivers which promise.",
         "",
         details("<b>The full measured grid, and what the words mean</b>", "\n".join([
             "\n".join(grid),
@@ -839,7 +860,13 @@ def section_evidence(run: Run) -> str:
 
 
 def section_slowest(run: Run) -> str:
-    ranked = sorted(run.cases, key=lambda c: -c.time)[:10]
+    # One row per check, not one per Python version — the same test appearing
+    # four times is noise, and it crowds out the actually-slow ones.
+    slowest: dict[str, Case] = {}
+    for c in run.cases:
+        if c.nodeid not in slowest or c.time > slowest[c.nodeid].time:
+            slowest[c.nodeid] = c
+    ranked = sorted(slowest.values(), key=lambda c: -c.time)[:10]
     if not ranked or ranked[0].time <= 0:
         return ""
     rows = ["| Check | Took |", "|---|--:|"]

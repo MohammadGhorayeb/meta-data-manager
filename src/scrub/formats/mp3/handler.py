@@ -25,6 +25,19 @@ class Mp3Handler(BaseHandler):
         # MPEG audio frame sync: 0xFF followed by 111x xxxx (11 sync bits).
         return len(header) >= 2 and header[0] == 0xFF and (header[1] & 0xE0) == 0xE0
 
+    def claims(self, data: bytes) -> bool:
+        """An ID3v2 tag can prefix a FLAC file too (out of spec, but taggers do it),
+        so having a tag is not proof of MP3. Look past it: a FLAC stream there means
+        this is not ours, and claiming it would hand a FLAC file to a walker that
+        fails closed on it."""
+        if data[:3] != b"ID3":
+            return True
+        try:
+            from ..flac import walker as fw
+            return data[fw._id3v2_len(data):][:4] != fw.MAGIC
+        except Exception:
+            return True
+
     def scrub_f1(self, data: bytes) -> bytes:
         return f1.scrub(data)
 

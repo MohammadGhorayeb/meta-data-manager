@@ -110,8 +110,8 @@ def test_features_work_below_the_default_sample_rate():
     fractions of Nyquist, not fixed frequencies. Absolute 16/19/20 kHz cut-offs sit
     above Nyquist at 22.05 kHz, so every feature would read as an identical zero and
     the classifier would silently be measuring nothing at all."""
-    import tempfile
     import subprocess
+    import tempfile
     td = tempfile.mkdtemp()
     wav, mp3 = f"{td}/a.wav", f"{td}/a.mp3"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",

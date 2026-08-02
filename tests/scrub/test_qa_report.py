@@ -102,6 +102,16 @@ def test_a_version_that_reported_nothing_is_a_failure(tmp_path):
     assert "3.11" in md
 
 
+def test_stage_table_never_reads_green_when_nothing_ran():
+    """"0 failed" is only good news if something actually ran. A leg whose job
+    died before pytest started has no failures — and must not look passing."""
+    table = qr.section_stage_table(_run(legs=["3.11"]))
+    assert "✅ 0 passed" not in table
+    assert "no results from Python 3.11" in table
+    # Same for a test job that failed outside pytest entirely.
+    assert "❌ failure" in qr.section_stage_table(_run(stages={"test": "failure"}))
+
+
 def test_a_failing_stage_makes_the_verdict_red_even_with_no_test_failures():
     run = _run(stages={"evidence": "failure"})
     assert run.ok() is False
@@ -224,6 +234,51 @@ def test_capabilities_come_from_the_measured_matrices_not_a_hardcoded_list():
     assert "pdf" not in fmts
     md = qr.section_capabilities(_run())
     assert "MP3" in md
+
+
+def test_capability_table_never_promises_identical_and_untraceable_at_once():
+    """A blanket "keeps the file identical: yes" next to "untraceable: yes"
+    would read as *both, in one pass* — which is false wherever untraceability
+    needs the lossy mode. Each promise must name the mode that delivers it."""
+    for c in qr.load_capabilities():
+        assert "in F" in c["keeps"] or c["keeps"].startswith("❌"), c
+        if c["untraceable"].startswith("✅"):
+            assert "in F" in c["untraceable"], c
+            # If untraceability costs quality, it cannot be one of the modes
+            # that leave the file byte-identical.
+            if "tiny" in c["untraceable"]:
+                assert "F3" in c["untraceable"] and "F3" not in c["keeps"], c
+    md = qr.section_capabilities(_run())
+    assert "can need different modes" in md
+
+
+def test_a_drifted_published_claim_is_shown_not_buried():
+    """The one failure this project cares most about: the tool's behaviour
+    changed but the published results table still says the old thing."""
+    run = _run(stages={"evidence": "failure"}, evidence={
+        "ok": False,
+        "differences": [{"format": "mp3", "adversary": "A2", "fidelity": "F3",
+                         "published": "pass", "measured": "fail"}]})
+    md = qr.render_full(run)
+    assert "no longer true" in md
+    assert "| MP3 | A2 at F3 | pass | **fail** |" in md
+    # And the limits section must point at it, not read as business as usual.
+    assert "Heads up" in md
+
+
+def test_a_confirmed_evidence_run_says_the_claims_were_re_proven():
+    md = qr.render_full(_run(evidence={"ok": True, "confirmed": 27}))
+    assert "re-confirmed" in md
+    assert "not cached" in md
+
+
+def test_slowest_checks_lists_each_check_once_not_once_per_version(tmp_path):
+    for leg in ("3.11", "3.12", "3.13", "3.14"):
+        _write(tmp_path, leg)
+    cases, legs = qr.parse_junit([str(tmp_path)])
+    md = qr.section_slowest(_run(cases=cases, legs=legs))
+    # 3 distinct tests ran on 4 versions; the table must show 3 rows, not 12.
+    assert md.count("|\n") - 2 == 3 or md.count("s |") == 3
 
 
 def test_empty_run_still_renders_a_report():

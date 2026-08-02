@@ -308,10 +308,13 @@ jobs:
           retention-days: 14
 
       # A separate step so the reports upload even when the floor is breached.
+      # The floor itself lives in pyproject.toml ([tool.coverage.report]
+      # fail_under). Repeating the number here would let the two drift apart,
+      # so `coverage report` is left to read it and exit non-zero on its own.
       - name: Enforce the coverage floor
         run: |
-          if ! python -m coverage report --fail-under=84 > /dev/null; then
-            echo "::error::Coverage ${{ steps.cov.outputs.percent }}% is below the 84% floor."
+          if ! python -m coverage report > /dev/null; then
+            echo "::error::Coverage ${{ steps.cov.outputs.percent }}% is below the floor set in pyproject.toml."
             exit 1
           fi
           echo "Coverage ${{ steps.cov.outputs.percent }}% is at or above the floor."

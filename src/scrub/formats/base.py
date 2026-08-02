@@ -19,6 +19,7 @@ class ImageHandler(Protocol):
     fidelities: tuple[str, ...]        # e.g. ("F1", "F2", "F3")
 
     def matches(self, header: bytes) -> bool: ...
+    def claims(self, data: bytes) -> bool: ...
     def scrub(self, data: bytes, fidelity: str) -> bytes: ...
 
 
@@ -30,6 +31,13 @@ class BaseHandler:
 
     def matches(self, header: bytes) -> bool:
         return any(header.startswith(m) for m in self.magic)
+
+    def claims(self, data: bytes) -> bool:
+        """Second-stage confirmation over the WHOLE buffer, for formats a header
+        prefix cannot separate. Both MP3 and FLAC may carry a leading ID3v2 tag, and
+        that tag can be kilobytes long, so the bytes that actually identify the
+        format sit far past any fixed-size header. Default: the prefix was enough."""
+        return True
 
     def scrub(self, data: bytes, fidelity: str) -> bytes:
         if fidelity not in self.fidelities:

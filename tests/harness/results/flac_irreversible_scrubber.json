@@ -1,0 +1,143 @@
+{
+  "format": "flac",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p2",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-08-02T18:34:23.506976+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_applicable",
+      "reason": "lossy_tier_not_applicable_to_lossless_format"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "encoder structure survives (block size / vendor / block layout): struct:audio_digest, struct:blocksize, struct:framesize, struct:size",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:blocksize",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:blocksize constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:framesize",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:framesize constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:size constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:audio_digest",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:audio_digest constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "pass",
+      "reason": "encoder structure normalized by the canonical lossless re-encode; peer set = flac_l0, flac_l5, flac_l8 (compression levels, which drive block size and residual partitioning). Audio is BIT-IDENTICAL, so unlike JPEG F3 or MP3 F3 this A2 defense costs nothing. Residual: anonymity within the canonical-encoder class."
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_applicable",
+      "reason": "lossy_tier_not_applicable_to_lossless_format"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "664c6143",
+        "decoded": "fLaC"
+      },
+      {
+        "bytes_hex": "664c614380000022",
+        "decoded": "fLaC\u0080\u0000\u0000\""
+      }
+    ],
+    "signatures": []
+  }
+}

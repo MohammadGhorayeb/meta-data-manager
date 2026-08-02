@@ -1,11 +1,16 @@
 # Irreversible Metadata Scrubber
 
-[![QA](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml)
+[![CI](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11_|_3.12_|_3.13_|_3.14-3776ab?logo=python&logoColor=white)](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-86%25-green)](https://github.com/MohammadGhorayeb/meta-data-manager/actions/workflows/ci.yml)
+[![Formats](https://img.shields.io/badge/formats-JPEG_·_PNG_·_MP3-1971c2)](tests/harness/results/)
+[![Threat model](https://img.shields.io/badge/threat_model-medium--tier_(A2)-5f3dc4)](docs/framework.md)
+[![Honest limits](https://img.shields.io/badge/honest_limits-documented-orange)](docs/limits.md)
 
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
 ## Status
-Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio underway** (MP3 F1 + F3, now with **cross-engine A2 evidence**). Fully implemented and measured, **150 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
+Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio** with MP3 (F1 + F3, cross-engine A2 evidence) and **FLAC (F1 + F2) complete** — M4A is the one piece left. Fully implemented and measured, **206 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
 
 ### Results (measured, not assumed)
 | Format | A1 metadata (F1/F2/F3) | A2 fingerprint (F1/F2/F3) |
@@ -13,8 +18,9 @@ Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2
 | **JPEG** | pass / pass / pass | fail / fail / **pass** |
 | **PNG**  | pass / pass / n-a  | fail / **pass** / n-a |
 | **MP3**  | pass / n-a / pass  | fail / n-a / **pass** |
+| **FLAC** | pass / pass / n-a  | fail / **pass** / n-a |
 
-A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-encoding — **JPEG F3** (lossy), **PNG F2** (lossless, the standout result), or **MP3 F3** (lossy). Each format's fingerprint (JPEG DQT / PNG deflate / MP3 LAME-Xing contour) and F3 residuals (PRNU, primary quantization, MP3 generation loss + within-LAME-class anonymity) are documented, never silently claimed clean.
+A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-encoding — and **twice now at no quality cost at all**: **PNG F2** and **FLAC F2** are lossless, returning bit-identical pixels and bit-identical audio, while **JPEG F3** and **MP3 F3** must spend a lossy generation to get there. The dividing line is whether the fingerprint lives in a separable layer (PNG's deflate, FLAC's metadata blocks and framing) or is baked into the compressed content itself (JPEG's DQT, MP3's LAME/Xing contour). Each format's fingerprint and residuals (PRNU, primary quantization, MP3 generation loss, within-class anonymity) are documented, never silently claimed clean.
 
 MP3 A2 is now measured **across encoder engines**, not just front-ends: the peer set includes [shine](https://github.com/toots/shine), a fixed-point encoder that is not libmp3lame and writes no Xing/LAME header at all. Two experiments back the A2@F3 cell — **E-LAME** in header space (all producers collapse to one canonical signature) and **E-ENGINE** in audio space, which asks the harder question the headers can't: with the header normalized, can a peer-corpus adversary still recover the source *engine* from the waveform?
 
@@ -33,8 +39,8 @@ Metadata hides in redundant copies across coexisting standards (EXIF, XMP, IPTC,
 Depth-first **by dependency, not popularity** — leaf formats before the containers that embed them. A shared spine (test harness + reusable EXIF/XMP/ICC/ID3 modules + dispatch) is built first, then JPEG/PNG → MP3 → PDF/OOXML → MP4/HEIC/RAW → executables → long tail. See `docs/implementation_plan.md`.
 
 ## Near-future goals
-Images are done + benchmarked ([`docs/benchmark.md`](docs/benchmark.md)), and **Phase 2 audio (MP3)** has F1 (bit-preserving tag strip — ID3v1/v2, APEv2, Lyrics3, embedded GPS-tagged album art, appended hitchhikers) and F3 (canonical 192 kbps CBR re-encode that erases the LAME/Xing encoder fingerprint). The cross-engine A2 residual is now **measured, not assumed** (see Results above). Next:
-- **Close Phase 2 properly:** the plan's audio scope also includes **M4A** — which MAT2 refuses outright, so it is a gap to beat — and **FLAC/Vorbis comments**, both reusing the same tag logic. Plus a `docs/p2_audio_plan.md` to match `p1_images_plan.md`.
+Images are done + benchmarked ([`docs/benchmark.md`](docs/benchmark.md)). **Phase 2 audio** now has **MP3** (F1 tag strip — ID3v1/v2, APEv2, Lyrics3, GPS-tagged album art, appended hitchhikers; F3 canonical re-encode with cross-engine A2 evidence) and **FLAC** (F1 bit-preserving block strip incl. the vendor string and out-of-spec ID3 prefixes; F2 lossless re-encode that erases the encoder's framing fingerprint with bit-identical audio). The phase plan is [`docs/p2_audio_plan.md`](docs/p2_audio_plan.md). Next:
+- **Finish Phase 2 — M4A**, which MAT2 refuses outright, so it is a gap to beat rather than match. Its ISOBMFF atom walker is built as a shared module, making it the spine Phase 4 reuses for MP4 and HEIC.
 - **Phase 3 — documents (PDF, then OOXML/Word):** the RSID problem and PDF incremental-update history.
 - **Optional:** the JPEG E4 residual bound (primary-quantization trace after F3).
 
@@ -66,25 +72,52 @@ src/scrub/
   standards/               Shared modules: TIFF-IFD, XMP, ICC, IPTC-IIM (written once, reused)
   formats/jpeg/            JPEG handler: segments walker + f1/f2/f3
   formats/png/             PNG handler: chunk walker (CRC) + f1/f2
+  formats/mp3/             MP3 handler: frame/tag walker + f1/f3
+scripts/
+  qa_report.py             Builds the plain-language CI report (run page + PR comment)
+  check_evidence.py        Re-measures the Pareto matrices; fails if a published claim drifted
+  scrub_flow_report.py     Before → after evidence on real sample files
+  benchmark.py             Comparison vs ExifTool / MAT2 / jpegtran → docs/benchmark.md
+pyproject.toml             Tool config only (pytest, ruff, coverage) — not a package
+requirements-dev.txt       Everything CI installs: runtime deps + ruff + coverage
 ```
 
 ## Continuous integration — QA report on the Actions page
-Every push to `main` and every pull request runs `.github/workflows/ci.yml`, which publishes a **rich, plain-language QA report right on the GitHub Actions run page** (Job Summary) — no external site needed. Anyone, including non-technical stakeholders, can read it:
-- a **verdict** (badges + banner) and a 30-second benefit summary;
-- a **pass/fail pie** and results grouped into plain-English areas (Metadata Removal, Picture Preserved, Made Untraceable, Cannot Be Recovered, File Stays Valid, Tool Behaviour);
-- a per-format **capability table** and a mermaid diagram of how the fingerprint is defeated;
-- a **"What we can't do yet — and how we solve it"** section, rendered straight from [`docs/limits.md`](docs/limits.md) — the single source of truth for every known limit, so the published report cannot drift from reality (a test enforces the wiring);
+Every push to `main` and every pull request runs `.github/workflows/ci.yml`. It has six clearly-named jobs:
+
+| Job | What it does |
+|---|---|
+| **Code quality** | `ruff` over the codebase (findings appear as inline annotations on the diff) plus `actionlint` over the workflow itself. Formatting drift is reported but never gates. |
+| **Tests (Python 3.11–3.14)** | The full suite on every supported interpreter, `fail-fast: false`. 3.11 is a hard floor — numpy/scipy/PyWavelets all require it. |
+| **Coverage** | Combines the coverage data from all four versions (each leg writes its own file, so a branch reachable on only one interpreter still counts) and enforces an 84% floor. |
+| **Published results still true** | Re-measures every Pareto matrix from scratch and fails if a published verdict no longer matches — see [`scripts/check_evidence.py`](scripts/check_evidence.py). Enforces *no claims without empirical validation* mechanically. |
+| **QA report** | Builds and publishes the report. Runs even when everything else failed. |
+| **CI** | The single required status check. Everything above is allowed to finish so the report always publishes; this job is the only one that turns the run red. |
+
+The report itself renders **on the run page** (Job Summary) — no external site — and is written for a non-technical reader:
+- a **verdict** (badges + one-sentence banner) and a five-second stage table with ✅/❌ and timings;
+- a **Mermaid pipeline diagram** with every box coloured by what actually happened, so a red box shows exactly where it broke;
+- a **coverage bar**, overall and file by file;
+- results grouped into plain-English areas (*Hidden data removed*, *Picture and sound preserved*, *Made untraceable*, *Cannot be recovered*, *File stays valid*, *The tool behaves*), with a ✅-grid across Python versions;
+- **what failed**, in readable words, with the file and line — also annotated inline on the pull-request diff;
+- a per-format **capability table** read from the measured Pareto matrices, so a format the tool cannot yet do can never be claimed;
+- the **"What we can't do yet"** section rendered straight from [`docs/limits.md`](docs/limits.md) — the single source of truth for every known limit, so the published report cannot drift from reality (tests enforce the wiring, and a missing document is reported loudly rather than rendering as a clean bill of health);
 - the **before → after** scrub flow on real sample files.
 
-The same report is posted (and updated) as a **PR comment**, and the scrubbed samples are uploaded as an artifact. A failing suite turns the check red (the report still publishes so failures are visible).
+A condensed version is posted and updated in place as a **PR comment**. Test results, coverage (including browsable HTML), the report and the scrubbed samples are all uploaded as artifacts.
 
-Generate the report locally:
+Run the same checks locally:
 ```
-python -m pytest -q --junit-xml=pytest-results.xml
-python scripts/qa_report.py --junit pytest-results.xml --summary qa-summary.md
+python -m pip install -r requirements-dev.txt
+ruff check .
+python -m pytest -q --cov --junit-xml=pytest-results.xml
+python -m coverage json -o coverage.json
+python scripts/check_evidence.py --out evidence.json
+python scripts/qa_report.py --junit pytest-results.xml --coverage-json coverage.json \
+    --evidence-json evidence.json --summary qa-summary.md
 ```
 
-To require a green build before merge, add a branch-protection rule on `main` requiring the `qa` check.
+To require a green build before merge, add a branch-protection rule on `main` requiring the **`CI`** check — that one job covers all the others.
 
 ## Working with Claude Code
 `CLAUDE.md` carries the project definition, framework, build approach, working style, and tooling so each session starts on the same page. Keep it lean; put detail in `docs/`.

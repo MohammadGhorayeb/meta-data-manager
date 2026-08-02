@@ -7,6 +7,13 @@ than offset alignment. Grouping factor = input (everything varies).
 """
 from __future__ import annotations
 
+# Longest run the extension loop will chase. Extension costs a substring search per
+# byte per blob, so an unbounded run of one repeated byte -- zero padding, or a
+# silent passage in a real audio file -- turns the guard into a hang. Well past any
+# plausible tool signature (a producer string, a padding block header), so bounding
+# it costs no detection in practice; when it does bite, the count is reported.
+MAX_RUN = 4096
+
 
 def common_substrings(blobs: list[bytes], min_len: int) -> set[bytes]:
     """Maximal byte runs (length >= min_len) present in EVERY blob.
@@ -27,13 +34,32 @@ def common_substrings(blobs: list[bytes], min_len: int) -> set[bytes]:
 
     out: set[bytes] = set()
     i = 0
+    truncated = 0
     while i <= n - min_len:
         if in_all(base[i:i + min_len]):
             end = i + min_len
-            while end < n and in_all(base[i:end + 1]):
+            # MAX_RUN bounds the byte-at-a-time extension. Without it, a long run of
+            # one repeated byte -- zero padding, or simply a silent passage in real
+            # audio -- costs a full substring search per byte per blob and the guard
+            # hangs rather than finishing. A run this long is already reported (it is
+            # recorded below and is far past min_len, so callers still see the
+            # signature); only its exact maximal length is cut short, and that is
+            # counted and surfaced instead of being hidden.
+            while end < n and end - i < MAX_RUN and in_all(base[i:end + 1]):
                 end += 1
+            if end - i >= MAX_RUN:
+                truncated += 1
             out.add(base[i:end])
+            # Skip past a run of one repeated byte: every start inside it yields a
+            # window of the same byte, so re-scanning them re-derives runs already
+            # recorded here. Only applied to constant runs, where it is exact.
+            if len(set(base[i:end])) == 1:
+                i = end - min_len + 1
+                continue
         i += 1
+    # Recorded on the function so a caller can report that a run was cut short
+    # rather than discovering a silently shortened signature.
+    common_substrings.truncated_runs = truncated       # type: ignore[attr-defined]
     return out
 
 

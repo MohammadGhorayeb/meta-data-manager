@@ -33,6 +33,7 @@ Exits non-zero if a published verdict no longer matches the measured one.
 from __future__ import annotations
 
 import argparse
+import glob
 import importlib
 import json
 import os
@@ -43,14 +44,40 @@ import traceback
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-# format id -> the module whose build_doc() re-measures it from scratch.
-GENERATORS = {
-    "jpeg": "tests.scrub.gen_matrix",
-    "png": "tests.scrub.gen_matrix_png",
-    "mp3": "tests.scrub.gen_matrix_mp3",
-}
-
 RESULTS_DIR = os.path.join(REPO, "tests", "harness", "results")
+GENERATOR_DIR = os.path.join(REPO, "tests", "scrub")
+
+# The historical generator, from before the per-format naming convention.
+_LEGACY = {"gen_matrix": "jpeg"}
+
+
+def discover_generators() -> dict[str, str]:
+    """Find every `tests/scrub/gen_matrix*.py` and map it to its format.
+
+    Deliberately discovered rather than listed. A hardcoded list is one more
+    place to forget: land a new format's generator, forget the list, and its
+    published claims quietly stop being re-checked while CI still reports green.
+    Adding `gen_matrix_flac.py` is enough to put FLAC under this gate.
+    """
+    found: dict[str, str] = {}
+    for path in sorted(glob.glob(os.path.join(GENERATOR_DIR, "gen_matrix*.py"))):
+        stem = os.path.splitext(os.path.basename(path))[0]
+        fmt = _LEGACY.get(stem) or stem.removeprefix("gen_matrix_")
+        if fmt and fmt != stem:
+            found[fmt] = f"tests.scrub.{stem}"
+        elif stem in _LEGACY:
+            found[_LEGACY[stem]] = f"tests.scrub.{stem}"
+    return found
+
+
+def orphaned_matrices(known: set[str]) -> list[str]:
+    """Published matrices with no generator — claims nothing re-measures."""
+    out = []
+    for path in sorted(glob.glob(os.path.join(RESULTS_DIR, "*.json"))):
+        fmt = os.path.basename(path).split("_", 1)[0]
+        if fmt not in known and fmt != "toyf":
+            out.append(os.path.relpath(path, REPO))
+    return out
 
 # A verdict the run could not establish. Never counted as a mismatch.
 UNMEASURED = "not_tested"
@@ -69,7 +96,7 @@ def published_path(fmt: str, tool_name: str) -> str:
 def check_format(fmt: str, module_name: str) -> dict:
     """Re-measure one format and diff its verdict grid against the committed one."""
     result: dict = {"format": fmt, "differences": [], "unmeasured": [],
-                    "error": None, "checked": 0}
+                    "error": None, "checked": 0, "unpublished": False}
     try:
         module = importlib.import_module(module_name)
     except Exception:
@@ -79,7 +106,11 @@ def check_format(fmt: str, module_name: str) -> dict:
     tool_name = getattr(module, "TOOL", {}).get("name", "irreversible_scrubber")
     path = published_path(fmt, tool_name)
     if not os.path.exists(path):
-        result["error"] = f"no published matrix at {os.path.relpath(path, REPO)}"
+        # A generator can legitimately land before its format publishes results
+        # — that is what a format under construction looks like. Nothing has
+        # been claimed yet, so there is nothing that can have drifted. Failing
+        # here would turn the build red for doing the work in the right order.
+        result["unpublished"] = True
         return result
 
     with open(path, encoding="utf-8") as f:
@@ -121,11 +152,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="evidence.json",
                     help="where to write the machine-readable result")
     ap.add_argument("--format", action="append", dest="formats", default=None,
-                    choices=sorted(GENERATORS), help="limit to one format")
+                    help="limit to one format (default: every one discovered)")
     args = ap.parse_args(argv)
 
-    wanted = args.formats or sorted(GENERATORS)
-    results = [check_format(f, GENERATORS[f]) for f in wanted]
+    generators = discover_generators()
+    unknown = set(args.formats or []) - set(generators)
+    if unknown:
+        ap.error(f"no generator for {', '.join(sorted(unknown))}; "
+                 f"found: {', '.join(sorted(generators)) or 'none'}")
+
+    wanted = args.formats or sorted(generators)
+    results = [check_format(f, generators[f]) for f in wanted]
+    orphans = orphaned_matrices(set(generators))
+    unpublished = [r["format"] for r in results if r["unpublished"]]
+    checked_formats = [r["format"] for r in results if not r["unpublished"]]
 
     differences = [d for r in results for d in r["differences"]]
     unmeasured = [u for r in results for u in r["unmeasured"]]
@@ -135,11 +175,13 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = {
         "ok": not differences and not errors,
-        "formats": wanted,
+        "formats": checked_formats,
+        "unpublished": unpublished,
         "confirmed": checked,
         "differences": differences,
         "unmeasured": unmeasured,
         "errors": errors,
+        "orphaned_matrices": orphans,
     }
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
@@ -155,9 +197,17 @@ def main(argv: list[str] | None = None) -> int:
               f"could not be re-measured here ({u['note']}); "
               f"published verdict '{u['published']}' left unchallenged.")
 
-    print(f"Evidence: {checked} published verdict(s) re-confirmed, "
-          f"{len(differences)} mismatch(es), {len(unmeasured)} unmeasured "
-          f"-> {args.out}")
+    for o in orphans:
+        print(f"::warning::{o} publishes results but has no generator under "
+              "tests/scrub/gen_matrix*.py, so nothing re-measures it.")
+    for u in unpublished:
+        print(f"::notice::{u} has a generator but publishes no matrix yet — "
+              "nothing claimed, so nothing to re-confirm.")
+
+    print(f"Evidence: {checked} published verdict(s) re-confirmed across "
+          f"{', '.join(checked_formats) or 'no formats'}, "
+          f"{len(differences)} mismatch(es), {len(unmeasured)} unmeasured, "
+          f"{len(unpublished)} not yet published -> {args.out}")
     return 1 if payload["ok"] is False else 0
 
 
