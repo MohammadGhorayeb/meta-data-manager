@@ -19,8 +19,8 @@ import tempfile
 from tests.harness import config
 from tests.harness.contract import Cell, V
 from tests.harness.oracle import fingerprint_guard, leak
-from tests.harness.runner import matrix
 from tests.harness.plugins.jpeg import JpegPlugin
+from tests.harness.runner import matrix
 from tests.scrub import corpus
 
 TOOL = {

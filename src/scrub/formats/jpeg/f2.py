@@ -58,8 +58,9 @@ def _jpegtran() -> str:
 def _decode_pixels(data: bytes) -> tuple[tuple[int, int], bytes]:
     """Decoded RGB pixels + size, the F2 content-identity primitive. Imported
     lazily so a Pillow-less environment can still import this module."""
-    from PIL import Image
     import warnings
+
+    from PIL import Image
     with warnings.catch_warnings():
         # The torture/base corpus carries a fake MPF marker that Pillow flags as
         # a malformed MPO; irrelevant to pixel identity.
@@ -78,7 +79,7 @@ def scrub(data: bytes) -> bytes:
 
     proc = subprocess.run(
         [_jpegtran(), *_JPEGTRAN_ARGS],
-        input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        input=data, capture_output=True,
     )
     if proc.returncode != 0 or not proc.stdout:
         raise ScrubError(

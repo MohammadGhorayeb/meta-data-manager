@@ -31,8 +31,8 @@ import shutil
 import subprocess
 import tempfile
 
-from . import content_identity
 from .. import config
+from . import content_identity
 
 # Per-variant sentinel byte (variant 0 -> b"A", 1 -> b"B", ...), matching the
 # synthetic A1 convention in `synthetic._sentinel`.
@@ -332,7 +332,7 @@ def _inject_zipfile(seed: str, out: str, fields: list[str] | None,
             'xmlns:dc="http://purl.org/dc/elements/1.1/">'
             f"<dc:{field}>{sentinel}</dc:{field}>"
             "</cp:coreProperties>"
-        ).encode("utf-8")
+        ).encode()
 
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
         for n, data in items.items():

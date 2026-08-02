@@ -21,8 +21,7 @@ targets.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 # APP1 payload signatures (include the trailing NUL that terminates the id).
 XMP_SIG = b"http://ns.adobe.com/xap/1.0/\x00"
@@ -51,8 +50,8 @@ class ExtendedChunk:
 class XmpFinding:
     kind: str                          # "standard" | "extended"
     payload: bytes                     # the bytes after the signature
-    guid: Optional[str] = None         # extended only
-    chunk: Optional[ExtendedChunk] = None  # extended only
+    guid: str | None = None         # extended only
+    chunk: ExtendedChunk | None = None  # extended only
 
 
 def is_standard(app1_payload: bytes) -> bool:
@@ -95,7 +94,7 @@ def reassemble_extended(chunks: list[ExtendedChunk]) -> dict[bytes, bytes]:
     return out
 
 
-def find_packet_span(buf: bytes) -> Optional[tuple[int, int]]:
+def find_packet_span(buf: bytes) -> tuple[int, int] | None:
     """Locate an XMP packet within an arbitrary buffer (used when a container
     embeds the packet without our signature wrapper). Returns (start, end) of
     the widest recognizable span, or None."""

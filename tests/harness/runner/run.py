@@ -9,8 +9,8 @@ from .. import config
 from ..contract import Cell
 from ..corpus import content_identity, synthetic
 from ..oracle import fingerprint_guard, leak, peerset
-from .cases import Case
 from . import matrix
+from .cases import Case
 
 
 def _evidence_dir(base, format_id, adversary, fidelity) -> str:

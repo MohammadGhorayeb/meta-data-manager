@@ -6,7 +6,7 @@ with the research matrices, without testing A3.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import jsonschema
 
@@ -91,7 +91,7 @@ def fingerprint_block(verdict: str, signatures: list[dict] | None = None,
 def assemble(format_id: str, tool: dict, cells: list[Cell], fingerprint: dict,
              generated_at: str | None = None) -> dict:
     if generated_at is None:
-        generated_at = datetime.now(timezone.utc).isoformat()
+        generated_at = datetime.now(UTC).isoformat()
     cell_dicts = [cell_to_dict(c) for c in cells]
     # A3 cells: emitted but never tested.
     for f in FIDELITIES:
@@ -110,7 +110,7 @@ def assemble(format_id: str, tool: dict, cells: list[Cell], fingerprint: dict,
 
 
 def _schema() -> dict:
-    with open(config.SCHEMA_PATH, "r") as f:
+    with open(config.SCHEMA_PATH) as f:
         return json.load(f)
 
 

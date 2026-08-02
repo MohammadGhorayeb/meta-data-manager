@@ -26,7 +26,7 @@ warnings.filterwarnings("ignore")
 # Allow `python scripts/scrub_flow_report.py` from the repo root.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PIL import Image, PngImagePlugin
+from PIL import PngImagePlugin
 
 from src.scrub import cli
 from src.scrub.formats.jpeg import segments as jseg

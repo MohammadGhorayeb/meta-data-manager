@@ -56,8 +56,9 @@ def test_scrubbed_jpeg_has_no_identifying_metadata(tmp_path):
 
 @pytest.mark.filterwarnings("ignore:.*malformed MPO.*")
 def test_scrubbed_jpeg_still_decodes_identically(tmp_path):
-    from PIL import Image
     import io
+
+    from PIL import Image
 
     src = tmp_path / "in.jpg"
     dst = tmp_path / "out.jpg"

@@ -92,7 +92,7 @@ def _raw_vector_agreement(a: list[int], b: list[int]) -> float:
     if n == 0:
         return 0.0
     matching_bits = 0
-    for x, y in zip(a[:n], b[:n]):
+    for x, y in zip(a[:n], b[:n], strict=True):  # both sliced to n by construction
         # XOR then count differing bits; agreement = 32 - popcount per word.
         diff = (x ^ y) & 0xFFFFFFFF
         matching_bits += 32 - bin(diff).count("1")

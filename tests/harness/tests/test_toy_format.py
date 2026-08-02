@@ -10,7 +10,6 @@ import pytest
 from tests.harness.corpus import toy_format
 from tests.harness.corpus.toy_format import MAGIC
 
-
 # (content, records) specimens spanning the interesting shapes.
 RECORD_SETS = [
     (b"", []),                                          # empty content, no metadata

@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 
 from mutagen.apev2 import APEv2
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, COMM, APIC
+from mutagen.id3 import APIC, COMM, ID3, TALB, TIT2, TPE1
 
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None
 HAVE_LAME = shutil.which("lame") is not None

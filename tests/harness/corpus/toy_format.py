@@ -4,6 +4,7 @@ metadata := zero+ TLV records to EOF:  type:uint8 | length:uint16-BE | value[len
 Content-identity of two TOYF files == identical content bytes (metadata may differ).
 """
 from __future__ import annotations
+
 import struct
 
 MAGIC = b"TOYF"

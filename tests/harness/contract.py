@@ -14,13 +14,17 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 Fidelity = str   # "F1" | "F2" | "F3"
 Adversary = str  # "A1" | "A2"  (A3 never a target)
 
 
-class V(str, Enum):
+class V(str, Enum):  # noqa: UP042 — see below
+    # Deliberately (str, Enum) and NOT StrEnum: these values are serialised into
+    # the schema-validated Pareto matrices, and the two differ in what str()
+    # yields ("V.PASS" vs "pass"). Switching would be a silent output change
+    # dressed up as a modernisation.
     PASS = "pass"
     FAIL = "fail"
     NOT_APPLICABLE = "not_applicable"
@@ -51,7 +55,7 @@ class FormatPlugin(Protocol):
     format_id: str
     def matches(self, header: bytes, path: str) -> bool: ...
     # forward-looking hooks; Phase 0 generic impls return None / [] / raise NotImplemented
-    def annotate(self, in_path: str, offset: int) -> Optional[str]: ...
+    def annotate(self, in_path: str, offset: int) -> str | None: ...
     def canonical_content(self, path: str) -> bytes: ...          # for content-identity in feature space
     def mandatory_constants(self) -> list[bytes]: ...             # excluded from the fingerprint guard
 
@@ -60,11 +64,11 @@ class FormatPlugin(Protocol):
 @dataclass
 class Locus:
     space: str                 # "byte" | "field" | "structural"
-    offset: Optional[int] = None
-    length: Optional[int] = None
-    feature_id: Optional[str] = None
-    annotated_as: Optional[str] = None
-    hex_context: Optional[str] = None
+    offset: int | None = None
+    length: int | None = None
+    feature_id: str | None = None
+    annotated_as: str | None = None
+    hex_context: str | None = None
 
 
 @dataclass
@@ -72,7 +76,7 @@ class Leak:
     kind: str                  # "variant_correlated" (A1) | "source_fingerprint" (A2)
     locus: Locus
     correlates_with: str       # e.g. "metadata_variant:record_type_7" or "source:cam_B"
-    evidence: Optional[str] = None
+    evidence: str | None = None
 
 
 @dataclass
@@ -85,10 +89,10 @@ class FloorReport:
 @dataclass
 class PerceptualReport:
     checked: bool = False
-    metric: Optional[str] = None
-    distance: Optional[float] = None
-    threshold: Optional[float] = None
-    preserved: Optional[bool] = None
+    metric: str | None = None
+    distance: float | None = None
+    threshold: float | None = None
+    preserved: bool | None = None
 
 
 @dataclass
@@ -96,11 +100,11 @@ class Cell:
     adversary: Adversary
     fidelity: Fidelity
     verdict: V
-    floor: Optional[FloorReport] = None
+    floor: FloorReport | None = None
     leaks: list[Leak] = field(default_factory=list)
-    perceptual: Optional[PerceptualReport] = None
-    reason: Optional[str] = None
-    evidence_dir: Optional[str] = None
+    perceptual: PerceptualReport | None = None
+    reason: str | None = None
+    evidence_dir: str | None = None
 
 
 class SubprocessScrubber:

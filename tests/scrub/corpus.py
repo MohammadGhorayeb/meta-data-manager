@@ -24,6 +24,7 @@ from src.scrub.formats.jpeg import segments as _seg
 from src.scrub.standards import icc as icc_mod
 from src.scrub.standards import xmp as xmp_mod
 
+
 # --------------------------------------------------------------------------- #
 # Real, decodable base image
 # --------------------------------------------------------------------------- #

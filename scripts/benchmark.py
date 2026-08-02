@@ -11,7 +11,6 @@ installed are skipped (noted in the output). Run:
 """
 from __future__ import annotations
 
-import io
 import os
 import shutil
 import subprocess
@@ -22,8 +21,8 @@ import warnings
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PIL import Image
 import numpy as np
+from PIL import Image
 
 from src.scrub import cli
 from src.scrub.formats.jpeg import segments as seg

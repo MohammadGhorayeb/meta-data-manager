@@ -12,9 +12,6 @@ independent-parse cross-check (exiftool) is a separate M1 verification step.
 """
 from __future__ import annotations
 
-import io
-from typing import Optional
-
 from PIL import Image
 
 from src.scrub.formats.jpeg import segments as seg
@@ -26,7 +23,7 @@ class JpegPlugin:
     def matches(self, header: bytes, path: str) -> bool:
         return header[:3] == b"\xff\xd8\xff"
 
-    def annotate(self, in_path: str, offset: int) -> Optional[str]:
+    def annotate(self, in_path: str, offset: int) -> str | None:
         with open(in_path, "rb") as f:
             data = f.read()
         try:

@@ -1,0 +1,30 @@
+# Development / CI dependencies.
+#
+# The runtime + harness dependency set lives in tests/harness/requirements.txt
+# and is pulled in here, so a single `pip install -r requirements-dev.txt`
+# reproduces exactly what CI runs.
+#
+#     python -m pip install -r requirements-dev.txt
+#
+# Versions are exact pins, matching the project's existing convention: CI must
+# be reproducible, and a silent tool upgrade must never be able to change a
+# reported result.
+
+-r tests/harness/requirements.txt
+
+# --- lint / format ---
+ruff==0.16.1
+
+# --- coverage ---
+# pytest-cov 7.x requires pytest>=7 and coverage[toml]>=7.10.6; both satisfied.
+# `parallel = true` (see pyproject.toml) makes each matrix leg write its own
+# .coverage.<py> data file, which the coverage job combines.
+coverage[toml]==7.15.2
+pytest-cov==7.1.0
+
+# --- CI ergonomics ---
+# Emits ::error file=,line=,title= workflow commands for failing tests, which
+# GitHub renders as inline annotations on the offending line of the PR diff.
+# Inert outside GitHub Actions (keys off GITHUB_ACTIONS), so it costs nothing
+# locally.
+pytest-github-actions-annotate-failures==0.4.2

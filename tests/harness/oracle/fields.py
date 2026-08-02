@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from typing import Hashable
+from collections.abc import Hashable
 
 from .variance import FeatureMap
 

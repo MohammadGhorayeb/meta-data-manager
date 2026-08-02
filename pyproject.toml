@@ -1,0 +1,101 @@
+# Tool configuration only.
+#
+# There is deliberately NO [project] or [build-system] table: this repo is not a
+# packaged distribution, it is run as `python -m src.scrub` from the repo root.
+# Adding those tables would change how the tool is installed and invoked, which
+# is out of scope. Everything below is configuration for pytest, ruff and
+# coverage, which read their [tool.*] sections without needing a build backend.
+
+# --------------------------------------------------------------------------- #
+# pytest
+# --------------------------------------------------------------------------- #
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+
+# -ra              summary of everything non-passing, incl. WHY a test skipped.
+#                  Skips are load-bearing here (jpegtran / ffmpeg / lame /
+#                  shineenc gate whole modules), so a silent skip must never
+#                  read as a pass.
+# --strict-markers unknown @pytest.mark.* becomes an error, not a silent no-op.
+# --strict-config  a typo in this file becomes an error, not a silent default.
+# --durations      feeds the "slowest checks" table in the QA report.
+addopts = "-ra --strict-markers --strict-config --durations=10"
+xfail_strict = true
+
+filterwarnings = [
+    # Pillow emits this on the multi-picture JPEGs the torture corpus builds.
+    # Individual tests already carry this filter; centralising it means new
+    # tests do not have to rediscover it.
+    "ignore:.*malformed MPO.*:UserWarning",
+]
+
+# --------------------------------------------------------------------------- #
+# ruff (lint + import sorting + formatting)
+# --------------------------------------------------------------------------- #
+[tool.ruff]
+# The matrix floor. numpy/scipy/PyWavelets all require >=3.11, so 3.11 is the
+# oldest interpreter this project can physically run on.
+target-version = "py311"
+line-length = 100
+extend-exclude = [".venv", "scratch_*", "docs/_md2html.py"]
+
+[tool.ruff.lint]
+# E4/E7/E9 import+statement+syntax errors, F pyflakes, B bugbear (real bug
+# shapes), UP pyupgrade (keeps syntax current with target-version), I isort.
+select = ["E4", "E7", "E9", "F", "B", "UP", "I"]
+
+ignore = [
+    # Guard clauses are written on one line throughout this codebase
+    # (`if not data: return None`). That is a deliberate, consistent style, not
+    # an accident, and reflowing ~27 of them would be churn with no reader win.
+    "E701",  # multiple-statements-on-one-line (colon)
+    "E702",  # multiple-statements-on-one-line (semicolon)
+
+    # E741 flags `l`, `I` and `O` as ambiguous. In this codebase `L` is the
+    # walked layout object (`L = walker.walk(data)`) and `I` appears in
+    # IFD/ICC parsing. These are domain names, and renaming them would make the
+    # format code read less like the specs it implements.
+    "E741",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Every script re-roots sys.path so it can be run directly from the repo root
+# (`sys.path.insert(0, REPO)`), which necessarily precedes the project imports.
+"scripts/*.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "tests", "scripts"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# --------------------------------------------------------------------------- #
+# coverage
+# --------------------------------------------------------------------------- #
+[tool.coverage.run]
+source = ["src"]
+branch = true
+# Each CI matrix leg writes its own .coverage.<py> file; the coverage job
+# combines them, so a branch only reachable on one interpreter still counts.
+parallel = true
+# Store paths relative to the repo root so data files combine cleanly no matter
+# which runner or checkout directory produced them.
+relative_files = true
+
+[tool.coverage.paths]
+source = ["src/", "*/meta-data-manager/src/"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+]
+# Measured, not invented: the suite covers 86% of src/ (branch coverage) as of
+# the commit that introduced this file. The gate sits 2 points below that, so
+# normal churn does not trip it but a real regression does.
+fail_under = 84

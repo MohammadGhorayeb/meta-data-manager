@@ -9,7 +9,6 @@ structural_features exposes those.
 from __future__ import annotations
 
 import hashlib
-from typing import Optional
 
 from PIL import Image
 
@@ -22,7 +21,7 @@ class PngPlugin:
     def matches(self, header: bytes, path: str = "") -> bool:
         return header[:8] == ck.PNG_SIGNATURE
 
-    def annotate(self, in_path: str, offset: int) -> Optional[str]:
+    def annotate(self, in_path: str, offset: int) -> str | None:
         with open(in_path, "rb") as f:
             data = f.read()
         try:

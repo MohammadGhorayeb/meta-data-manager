@@ -49,6 +49,7 @@ The full arc toward the deliverable — one tool that irreversibly scrubs files 
 CLAUDE.md                  Always-loaded brief for Claude Code
 docs/
   framework.md             Definitions, tiers, failure modes, conclusions, tools, citations
+  limits.md                Every known limit in plain words — source of truth for the CI report
   implementation_plan.md   Phased build plan
   p1_images_plan.md        Phase 1 (images) work items, experiments, milestones
   p1_report.pdf            Plain-language progress & testing report
@@ -70,7 +71,7 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml`, whi
 - a **verdict** (badges + banner) and a 30-second benefit summary;
 - a **pass/fail pie** and results grouped into plain-English areas (Metadata Removal, Picture Preserved, Made Untraceable, Cannot Be Recovered, File Stays Valid, Tool Behaviour);
 - a per-format **capability table** and a mermaid diagram of how the fingerprint is defeated;
-- a **"What we can't do yet — and how we solve it"** section (honest limits → our solution);
+- a **"What we can't do yet — and how we solve it"** section, rendered straight from [`docs/limits.md`](docs/limits.md) — the single source of truth for every known limit, so the published report cannot drift from reality (a test enforces the wiring);
 - the **before → after** scrub flow on real sample files.
 
 The same report is posted (and updated) as a **PR comment**, and the scrubbed samples are uploaded as an artifact. A failing suite turns the check red (the report still publishes so failures are visible).

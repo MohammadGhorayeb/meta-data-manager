@@ -48,7 +48,8 @@ def maximal(runs: set[bytes]) -> list[bytes]:
 
 def evaluate(scrubber, plugin, inputs: list[str], fidelity,
              min_len: int = 4) -> tuple[str, list[dict]]:
-    import tempfile, os
+    import os
+    import tempfile
     outs, in_bytes = [], []
     for ip in inputs:
         with open(ip, "rb") as f: in_bytes.append(f.read())

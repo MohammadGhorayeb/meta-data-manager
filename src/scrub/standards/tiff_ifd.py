@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..errors import ParseError
 
@@ -76,7 +75,7 @@ class IfdEntry:
     count: int
     raw_value: int              # the 4 value/offset bytes as an int
     inline: bool                # value stored in the entry itself
-    data_offset: Optional[int]  # abs offset (from TIFF start) if out-of-line
+    data_offset: int | None  # abs offset (from TIFF start) if out-of-line
     data_length: int            # type_size * count
 
 
@@ -170,7 +169,7 @@ def _parse_ifd(tiff: bytes, order: str, offset: int, name: str) -> Ifd:
     return Ifd(name=name, offset=offset, entries=entries, next_offset=next_off)
 
 
-def _thumbnail_from(ifd: Ifd, order: str, tiff_len: int) -> Optional[Thumbnail]:
+def _thumbnail_from(ifd: Ifd, order: str, tiff_len: int) -> Thumbnail | None:
     tags = {e.tag: e for e in ifd.entries}
     off_e = tags.get(TAG_JPEG_THUMB_OFFSET)
     len_e = tags.get(TAG_JPEG_THUMB_LENGTH)

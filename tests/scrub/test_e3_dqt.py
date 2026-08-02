@@ -8,8 +8,6 @@ from __future__ import annotations
 import io
 import os
 
-from PIL import Image
-
 from tests.harness.plugins.jpeg import JpegPlugin
 from tests.scrub import corpus, e3_dqt
 

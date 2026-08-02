@@ -19,7 +19,7 @@ import io
 import os
 import tempfile
 
-from PIL import Image, PngImagePlugin
+from PIL import PngImagePlugin
 
 from tests.harness import config
 from tests.harness.contract import Cell, Leak, Locus, V

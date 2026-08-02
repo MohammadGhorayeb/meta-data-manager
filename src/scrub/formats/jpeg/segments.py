@@ -19,7 +19,6 @@ Marker model (ITU-T T.81):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from ...errors import ParseError
 from ...standards import icc, iptc_iim, xmp

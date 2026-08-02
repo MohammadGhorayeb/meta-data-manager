@@ -13,7 +13,7 @@ import io
 import re
 
 import pytest
-from PIL import Image, PngImagePlugin
+from PIL import PngImagePlugin
 
 from src.scrub import cli
 from src.scrub.formats.jpeg import segments as jseg

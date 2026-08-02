@@ -40,6 +40,7 @@ A tool that **irreversibly strips metadata from files of arbitrary type**, for p
 - **Confirm ambiguous numbers before locking them in**, then move on.
 - **No claims without empirical validation.** Feasibility percentages require confirming every duplicate locus is cleared, not just named — before they go anywhere, especially the proposal.
 - **Keep `README.md` current as milestones land** — the Status line, the results matrix, and the Near/Far-future goals sections. The user wants the README to always reflect reality.
+- **Every measured limit goes in `docs/limits.md`, in plain words, when it is found.** It is the source of truth the CI QA report renders, so an undocumented limit is invisible to everyone reading the report. Narrow an overclaim there rather than leaving it standing.
 
 ## Environment
 - macOS, zsh, Homebrew.

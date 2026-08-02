@@ -12,8 +12,9 @@ Grid model: cells[(group, repeat)] = FeatureMap = {feature_id: value}, value a
 hashable token (bytes in byte/field space). Categorical (Phase 0).
 """
 from __future__ import annotations
+
+from collections.abc import Hashable
 from dataclasses import dataclass
-from typing import Hashable
 
 FeatureMap = dict[str, Hashable]
 

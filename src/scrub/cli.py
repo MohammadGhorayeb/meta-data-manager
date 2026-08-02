@@ -20,8 +20,7 @@ import tempfile
 
 from . import fidelity as fid
 from .dispatch import default_dispatcher
-from .errors import (ContentError, FidelityError, ParseError, ScrubError,
-                     UnsupportedFormatError)
+from .errors import ContentError, FidelityError, ParseError, ScrubError, UnsupportedFormatError
 
 _EXIT = {
     UnsupportedFormatError: 3,

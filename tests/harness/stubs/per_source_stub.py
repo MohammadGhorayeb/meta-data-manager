@@ -1,5 +1,5 @@
-from ..corpus.toy_format import read, pack
 from ..contract import ScrubResult
+from ..corpus.toy_format import pack, read
 
 
 class PerSourceStub:

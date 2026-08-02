@@ -26,7 +26,6 @@ sanitize-vs-strip exception, not yet wired here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from . import segments as seg
 
@@ -53,7 +52,7 @@ class SegmentAction:
     segment: seg.Segment
     action: str                 # "keep" | "rewrite" | "drop"
     reason: str
-    replacement: Optional[bytes] = None   # full segment bytes for "rewrite"
+    replacement: bytes | None = None   # full segment bytes for "rewrite"
 
 
 def _canonical_adobe(payload: bytes) -> bytes:

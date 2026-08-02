@@ -12,8 +12,8 @@ from tests.harness.contract import V
 from tests.harness.corpus import synthetic
 from tests.harness.oracle import fingerprint_guard, floor, leak
 from tests.harness.runner import matrix
-from tests.harness.runner.cases import Case
 from tests.harness.runner import run as runner
+from tests.harness.runner.cases import Case
 from tests.harness.stubs.version_stub import VERSION_TAG
 
 SENT = synthetic.A1_SENTINEL_FIELD

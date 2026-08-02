@@ -13,7 +13,8 @@ import tempfile
 
 from .. import config
 from ..contract import Cell, Leak, V
-from . import variance, diff, floor as floor_mod
+from . import diff, variance
+from . import floor as floor_mod
 
 
 def _scrub(scrubber, in_path, out_path, fidelity):

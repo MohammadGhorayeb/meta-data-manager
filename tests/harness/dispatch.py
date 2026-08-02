@@ -7,8 +7,6 @@ independently -- two contracts, two lifecycles (Part A §2).
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from .corpus import toy_format
 
 
@@ -19,7 +17,7 @@ class GenericPlugin:
     def matches(self, header: bytes, path: str) -> bool:
         return True
 
-    def annotate(self, in_path: str, offset: int) -> Optional[str]:
+    def annotate(self, in_path: str, offset: int) -> str | None:
         return None
 
     def canonical_content(self, path: str) -> bytes:
@@ -39,7 +37,7 @@ class ToyFormatPlugin:
     def matches(self, header: bytes, path: str) -> bool:
         return header[:4] == toy_format.MAGIC
 
-    def annotate(self, in_path: str, offset: int) -> Optional[str]:
+    def annotate(self, in_path: str, offset: int) -> str | None:
         # Map known TOYF offsets to structure names (toy-only).
         if offset < 4:
             return "magic"

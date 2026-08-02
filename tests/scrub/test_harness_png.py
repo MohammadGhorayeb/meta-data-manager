@@ -7,7 +7,7 @@ from __future__ import annotations
 import io
 import os
 
-from PIL import Image, PngImagePlugin
+from PIL import PngImagePlugin
 
 from src.scrub import cli
 from tests.harness.contract import V

@@ -1,15 +1,13 @@
 """Dispatch + CLI: routing, fail-closed behavior, exit codes, atomic output."""
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from src.scrub import cli
 from src.scrub.dispatch import Dispatcher, default_dispatcher
-from src.scrub.errors import UnsupportedFormatError
-from src.scrub.formats.jpeg.handler import JpegHandler
+from src.scrub.errors import ScrubError, UnsupportedFormatError
 from src.scrub.formats.jpeg import segments as seg
+from src.scrub.formats.jpeg.handler import JpegHandler
 from tests.scrub import corpus
 
 
@@ -89,6 +87,8 @@ def test_verify_blocks_leaky_handler(tmp_path):
     src = tmp_path / "in.jpg"
     dst = tmp_path / "out.jpg"
     src.write_bytes(corpus.build_torture_jpeg())
-    with pytest.raises(Exception):
+    # ScrubError, not bare Exception: scrub_file documents fail-closed as its
+    # contract, so the test should assert that contract rather than "it threw".
+    with pytest.raises(ScrubError):
         cli.scrub_file(str(src), str(dst), "F1", dispatcher=d)
     assert not dst.exists()

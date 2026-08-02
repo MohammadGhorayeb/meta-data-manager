@@ -15,8 +15,7 @@ could carry metadata.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from ...errors import ParseError
 
@@ -59,7 +58,7 @@ class FrameHeader:
         return 9 if self.is_mono else 17
 
 
-def parse_frame_header(data: bytes, pos: int) -> Optional[FrameHeader]:
+def parse_frame_header(data: bytes, pos: int) -> FrameHeader | None:
     """Decode a Layer-III MPEG audio frame header at pos, or None if not a valid
     frame sync there."""
     if pos + 4 > len(data):
@@ -96,8 +95,8 @@ class XingInfo:
     frame_offset: int          # start of the Xing/Info header frame
     magic_offset: int          # offset of b"Xing"/b"Info"
     magic: bytes               # b"Xing" (VBR) or b"Info" (CBR)
-    lame_offset: Optional[int] # offset of the 9-byte LAME version string, if present
-    lame_version: Optional[bytes]
+    lame_offset: int | None # offset of the 9-byte LAME version string, if present
+    lame_version: bytes | None
 
 
 @dataclass
@@ -110,11 +109,11 @@ class Trailer:
 @dataclass
 class Mp3Layout:
     data: bytes
-    id3v2: Optional[tuple]         # (offset, length) of the front ID3v2 tag
+    id3v2: tuple | None         # (offset, length) of the front ID3v2 tag
     audio_start: int
     audio_end: int                 # end of the last valid MPEG frame
     frames: list                   # list[FrameHeader]
-    xing: Optional[XingInfo]
+    xing: XingInfo | None
     appended: tuple                # (offset, length) of hitchhiker bytes (0 len = none)
     trailers: list                 # list[Trailer], file order
 
@@ -126,7 +125,7 @@ def _synchsafe(b: bytes) -> int:
     return (b[0] << 21) | (b[1] << 14) | (b[2] << 7) | b[3]
 
 
-def _parse_id3v2_front(data: bytes) -> Optional[tuple]:
+def _parse_id3v2_front(data: bytes) -> tuple | None:
     """Return (offset=0, total_length) of a leading ID3v2 tag, or None."""
     if len(data) < 10 or data[:3] != b"ID3":
         return None
@@ -172,7 +171,7 @@ def _scan_tail(data: bytes, audio_end: int) -> list:
     return trailers
 
 
-def _locate_xing(data: bytes, first: FrameHeader) -> Optional[XingInfo]:
+def _locate_xing(data: bytes, first: FrameHeader) -> XingInfo | None:
     base = first.offset + 4 + first.side_info_size
     magic = data[base:base + 4]
     if magic not in (b"Xing", b"Info"):

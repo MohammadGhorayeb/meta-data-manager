@@ -22,7 +22,7 @@ actually see the IPTC record and the 8BIM thumbnail rather than trusting that
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 PHOTOSHOP_SIGS = (b"Photoshop 3.0\x00", b"Adobe_Photoshop2.5\x00")
 _8BIM = b"8BIM"

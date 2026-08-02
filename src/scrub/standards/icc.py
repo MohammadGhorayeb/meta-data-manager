@@ -25,7 +25,6 @@ from __future__ import annotations
 import hashlib
 import struct
 from dataclasses import dataclass
-from typing import Optional
 
 # JPEG APP2 ICC marker.
 JPEG_ICC_SIG = b"ICC_PROFILE\x00"
@@ -102,7 +101,7 @@ def reassemble_jpeg_app2(segments: list[bytes]) -> bytes:
     (1-based) and strip the prefixes. Missing/duplicate sequence numbers raise —
     a malformed ICC set is a parse failure, and we fail closed."""
     indexed: dict[int, bytes] = {}
-    total: Optional[int] = None
+    total: int | None = None
     for payload in segments:
         if not payload.startswith(JPEG_ICC_SIG):
             raise ValueError("APP2 payload lacks ICC_PROFILE signature")

@@ -1,5 +1,5 @@
-from ..corpus.toy_format import read, pack
 from ..contract import ScrubResult
+from ..corpus.toy_format import pack, read
 
 VERSION_TAG = b"\x00TOYSCRUB/1.2.3"
 

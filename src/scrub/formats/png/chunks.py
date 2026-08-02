@@ -78,7 +78,9 @@ def walk(data: bytes) -> PngStructure:
         try:
             ctype = ctype_bytes.decode("ascii")
         except UnicodeDecodeError:
-            raise ParseError(f"non-ASCII chunk type at offset {pos}")
+            # `from None`: the decode error is an implementation detail of the
+            # walker; callers fail closed on ParseError alone.
+            raise ParseError(f"non-ASCII chunk type at offset {pos}") from None
         if not ctype.isalpha():
             raise ParseError(f"invalid chunk type {ctype!r} at offset {pos}")
         data_start = pos + 8

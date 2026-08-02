@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
-from typing import Optional
 
 from src.scrub.formats.mp3 import walker as w
 
@@ -23,7 +22,7 @@ class MP3Plugin:
             return True
         return len(header) >= 2 and header[0] == 0xFF and (header[1] & 0xE0) == 0xE0
 
-    def annotate(self, in_path: str, offset: int) -> Optional[str]:
+    def annotate(self, in_path: str, offset: int) -> str | None:
         try:
             data = open(in_path, "rb").read()
             L = w.walk(data)

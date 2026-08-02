@@ -132,6 +132,31 @@ def load_capabilities():
     return rows
 
 
+def _extract_block(text: str, name: str) -> str:
+    """Pull the text between <!-- NAME:BEGIN --> and <!-- NAME:END -->."""
+    start = text.find(f"<!-- {name}:BEGIN -->")
+    end = text.find(f"<!-- {name}:END -->")
+    if start == -1 or end == -1 or end < start:
+        return ""
+    return text[start + len(f"<!-- {name}:BEGIN -->"):end].strip()
+
+
+def load_limits():
+    """The honest-limits table + residual list, read from docs/limits.md.
+
+    Kept OUT of this script deliberately. When the limits lived here as prose, they
+    went stale the moment a phase shipped (the table still said "JPEG and PNG only"
+    after MP3 landed) — and a stale limits section is worse than none, because it
+    quietly understates what the tool cannot do. One file, read by both humans and
+    this report, cannot drift from itself.
+    """
+    path = os.path.join(REPO, "docs", "limits.md")
+    if not os.path.exists(path):
+        return "", ""
+    text = open(path, encoding="utf-8").read()
+    return _extract_block(text, "LIMITS"), _extract_block(text, "RESIDUALS")
+
+
 def _category_table(cats) -> str:
     rows = ["| Area | Result | Checks | What it means |", "|---|:--:|:--:|---|"]
     for c in cats:
@@ -241,14 +266,9 @@ flowchart LR
 
 *The honest part. Each row is: the limit, in everyday words → what we do about it. Nothing hidden.*
 
-| # | The honest limit (plain words) | What we do about it | Status |
-|:-:|---|---|:--:|
-| **1** | Even after every tag is deleted, the *way* a file was compressed leaves a hidden signature that can hint which app or phone made it (at F1/F2). | For **JPEG** we re-save through **one standard encoder** (F3) so every file shares the same signature and none are traceable. For **PNG** we erase it **with no quality loss at all** (F2). | ✅ **Solved** |
-| **2** | Every camera sensor leaves a faint, unique **noise pattern baked into the pixels themselves** (PRNU). With the *original camera in hand*, an expert could statistically link a photo to it. | This lives **in the picture, not the metadata** — removing it would destroy the image. It is a known limit of **every tool that exists** and sits outside our medium-tier threat model. We **document it openly** rather than hide it. | ⚪ **Out of scope** |
-| **3** | After a JPEG re-save (F3), a faint **"this was re-saved" trace** can remain — enough to suggest the file was recompressed, but it **never reveals what the metadata said**. | A small, **bounded, documented residual** — no location, no device, no timestamp is exposed. We state it plainly instead of overclaiming. | 🟡 **Bounded** |
-| **4** | Right now we only handle **JPEG and PNG** images. | **On the roadmap**, built on the same tested foundation: 🎵 audio (MP3) → 📄 documents (PDF / Word) → 🎬 video (MP4) → 📷 camera RAW. | 🔜 **Planned** |
+{{LIMITS}}
 
-> **The principle:** we never claim a file is untraceable unless we have actually proven it. Where a limit is a law of physics (like sensor noise), we say so honestly rather than pretend it is solved.
+> **The principle:** we never claim a file is untraceable unless we have actually proven it. Where a limit is a law of physics (like sensor noise), we say so honestly rather than pretend it is solved. Where our own claim turned out broader than our evidence, we narrow the claim and say that too.
 
 ---
 
@@ -266,10 +286,7 @@ flowchart LR
 <details>
 <summary>🧪 <b>Technical residuals, for the curious</b></summary>
 
-- **DQT (JPEG quantization tables):** the F1/F2 fingerprint source — neutralised at F3 via a single standard encoder.
-- **PRNU (sensor noise):** structural impossibility to remove without destroying pixels; documented, out of scope.
-- **Primary-quantization estimate:** the bounded "was re-saved" hint after F3 — reveals nothing about original metadata.
-- **Scrubber-fingerprint guard:** confirms our *own* tool leaves no producer/creator string, no odd padding, deterministic ordering, and no modification-time stamping.
+{{RESIDUALS}}
 
 </details>
 
@@ -279,7 +296,14 @@ flowchart LR
 """
 
 
-def render_markdown(cats, flow_md, caps, meta):
+# If docs/limits.md goes missing, say so loudly. Silently rendering no limits would
+# read as "this tool has none" — the exact overclaim the section exists to prevent.
+_MISSING_LIMITS = ("> ⚠️ **`docs/limits.md` is missing**, so the honest-limits table "
+                   "could not be rendered. This is a reporting failure, not an "
+                   "absence of limits — do not read it as a clean bill of health.")
+
+
+def render_markdown(cats, flow_md, caps, meta, limits_md="", residuals_md=""):
     total_pass = sum(c["passed"] for c in cats)
     total_fail = sum(c["failed"] for c in cats)
     total_skip = sum(c["skipped"] for c in cats)
@@ -300,6 +324,8 @@ def render_markdown(cats, flow_md, caps, meta):
         "{{TOTAL_CHECKS}}": str(total_pass + total_fail + total_skip),
         "{{CATEGORY_TABLE}}": _category_table(cats),
         "{{CAPABILITY_TABLE}}": _capability_table(caps),
+        "{{LIMITS}}": limits_md or _MISSING_LIMITS,
+        "{{RESIDUALS}}": residuals_md or "- (see `docs/limits.md`)",
         "{{FLOW}}": flow_md,
         "{{COMMIT}}": (meta.get("commit") or "local")[:7],
         "{{BRANCH}}": meta.get("branch") or "local",
@@ -320,12 +346,13 @@ def main():
 
     cats = categorize(parse_junit(args.junit))
     caps = load_capabilities()
+    limits_md, residuals_md = load_limits()
     flow_md = flow.build_body(args.flow_out)
     meta = {"commit": os.environ.get("GITHUB_SHA", ""),
             "branch": os.environ.get("GITHUB_REF_NAME", ""),
             "run": os.environ.get("GITHUB_RUN_NUMBER", "")}
 
-    md = render_markdown(cats, flow_md, caps, meta)
+    md = render_markdown(cats, flow_md, caps, meta, limits_md, residuals_md)
     with open(args.summary, "w", encoding="utf-8") as f:
         f.write(md)
     print(f"QA report: {sum(c['passed'] for c in cats)} passed, "
