@@ -150,6 +150,45 @@ def test_perceptual_gate_still_rejects_different_audio(tmp_path):
 
 
 @_needs_lame
+def test_f3_low_sample_rate_lands_in_its_own_group_without_resampling(tmp_path):
+    """The documented anonymity grouping, pinned. 192 kbps CBR is illegal for MPEG-2
+    sample rates, so a 22.05 kHz source emits at 160 — a separate group. The sample
+    rate itself must be PRESERVED: it is a property of the recording, and resampling
+    would change the audio, which content preservation forbids."""
+    src = str(tmp_path / "low.mp3")
+    mc.base_mp3_lame(src, rate=22050)
+    out = f3.scrub(open(src, "rb").read())
+    layout = w.walk(out)
+    assert layout.frames[0].samplerate == 22050, "F3 must not resample the audio"
+    assert {fr.bitrate for fr in layout.frames} == {160}, (
+        "22.05 kHz sources form the 160 kbps group; a change here changes the "
+        "documented anonymity grouping in docs/limits.md")
+
+    hi = str(tmp_path / "hi.mp3")
+    mc.base_mp3_lame(hi, rate=44100)
+    hi_out = w.walk(f3.scrub(open(hi, "rb").read()))
+    assert {fr.bitrate for fr in hi_out.frames} == {192}
+
+
+@_needs_lame
+def test_perceptual_gate_band_follows_the_source_rate(tmp_path):
+    """Regression: the gate compared a fixed 16 kHz band, but everything is decoded
+    to 44.1 kHz first — so for a 22.05 kHz source the band above ITS Nyquist held
+    only resampler artefacts. That scored 0.9824 and refused the file, while the real
+    audio agreed at 0.9988 with an identical lowpass before and after."""
+    assert f3._gate_band(44100) == f3.GATE_BAND_HZ
+    assert f3._gate_band(22050) < 11025, "band must sit under the source's Nyquist"
+
+    src = str(tmp_path / "n.mp3")
+    wav = str(tmp_path / "n.wav")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "anoisesrc=duration=2:color=white:seed=3:amplitude=0.3",
+                    "-ac", "2", "-ar", "22050", wav], check=True)
+    subprocess.run(["lame", "--quiet", "-V", "2", wav, src], check=True)
+    f3.scrub(open(src, "rb").read())          # raised ContentError before the fix
+
+
+@_needs_lame
 def test_f3_is_deterministic(tmp_path):
     data = open(mc.torture_mp3(str(tmp_path / "t.mp3")), "rb").read()
     assert f3.scrub(data) == f3.scrub(data)

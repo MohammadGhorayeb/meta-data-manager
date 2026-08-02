@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "formats": [
+    "jpeg",
+    "mp3",
+    "png"
+  ],
+  "confirmed": 27,
+  "differences": [],
+  "unmeasured": [],
+  "errors": []
+}

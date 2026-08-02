@@ -30,3 +30,31 @@ def test_mp3_matrix_builds_and_validates(tmp_path):
         assert _cell(doc, "A1", "F3")["verdict"] == "pass"
         assert _cell(doc, "A2", "F1")["verdict"] == "fail"
         assert _cell(doc, "A2", "F3")["verdict"] == "pass"
+
+
+@pytest.mark.skipif(not mc.HAVE_LAME, reason="lame not installed")
+def test_a2_at_f3_records_its_per_rate_evidence(tmp_path):
+    """The A2@F3 pass is a per-sample-rate-group claim, so the cell must SAY which
+    groups were verified. A bare 'pass' would read as one universal anonymity class,
+    which is exactly the overclaim that went uncaught while the corpus was
+    single-rate."""
+    from tests.scrub import e_lame
+    cell = e_lame.evaluate_cell("F3", e_lame.build_sources(str(tmp_path), repeats=2),
+                                str(tmp_path))
+    assert cell.verdict.value == "pass"
+    for rate in mc.RATES:
+        assert f"{rate} Hz" in cell.reason, f"cell does not report the {rate} Hz group"
+    assert "WITHIN a sample-rate group" in cell.reason
+
+
+@pytest.mark.skipif(not mc.HAVE_LAME, reason="lame not installed")
+def test_producers_separate_inside_every_rate_group_at_f1(tmp_path):
+    """Control for the test above: the per-rate machinery must be able to SEE a
+    fingerprint. F1 keeps each producer's encoder signature, so every group must
+    fail there — if it did not, the F3 pass would just mean the test is blind."""
+    from tests.scrub import e_lame
+    per_rate = e_lame.per_rate_report("F1", str(tmp_path), repeats=2)
+    for rate, r in per_rate.items():
+        assert r["a2_fail"], (
+            f"{rate} Hz: F1 should keep the encoder fingerprint; a pass here means "
+            "the per-rate check cannot detect what it is looking for")

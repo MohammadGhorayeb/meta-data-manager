@@ -61,25 +61,32 @@ def _audio_note(tmpdir: str) -> str:
     if not mc.HAVE_SHINE:
         return ("Audio-space cross-engine residual NOT measured here "
                 "(no second engine available: install shineenc) — see E-ENGINE.")
-    try:
-        r = e_engine.run(fidelities=("raw", "F1", "F3"),
-                         tmpdir=os.path.join(tmpdir, "e_engine"))
-    except Exception as exc:                      # never let an experiment break the matrix
-        return f"Audio-space cross-engine residual not measured (E-ENGINE failed: {exc})."
-    f3, raw = r["F3"], r["raw"]
-    if not e_engine.controls_valid(r):
-        return ("Audio-space cross-engine result INCONCLUSIVE: E-ENGINE controls "
-                f"failed (raw accuracy {raw['accuracy']:.2f}, needs to be well above "
-                f"chance {raw['chance']:.2f}) — the classifier is too weak to trust.")
-    if f3["recoverable"]:
-        return ("Audio-space RESIDUAL MEASURED: source engine still recoverable "
-                f"after F3 at {f3['accuracy']:.2f} vs chance {f3['chance']:.2f} "
-                "(E-ENGINE, spectral classifier).")
-    return ("Cross-engine audio residual measured and NOT found: after F3 a spectral "
-            f"engine classifier drops to {f3['accuracy']:.2f} vs chance "
-            f"{f3['chance']:.2f}, from {raw['accuracy']:.2f} on the unscrubbed source "
-            "(E-ENGINE, leave-one-content-out over broadband audio). Scope: spectral "
-            "features; MDCT-domain classifiers untested.")
+    parts, bad = [], []
+    for rate in mc.RATES:
+        try:
+            r = e_engine.run(fidelities=("raw", "F1", "F3"),
+                             tmpdir=os.path.join(tmpdir, f"e_engine_{rate}"),
+                             rate=rate)
+        except Exception as exc:                  # never let an experiment break the matrix
+            bad.append(f"{rate} Hz failed: {exc}")
+            continue
+        f3, raw = r["F3"], r["raw"]
+        if not e_engine.controls_valid(r):
+            bad.append(f"{rate} Hz INCONCLUSIVE (control accuracy "
+                       f"{raw['accuracy']:.2f} vs chance {raw['chance']:.2f})")
+        elif f3["recoverable"]:
+            bad.append(f"{rate} Hz RESIDUAL: engine still recoverable after F3 at "
+                       f"{f3['accuracy']:.2f} vs chance {f3['chance']:.2f}")
+        else:
+            parts.append(f"{rate} Hz: {raw['accuracy']:.2f} -> {f3['accuracy']:.2f} "
+                         f"(chance {f3['chance']:.2f})")
+    if bad:
+        return "Audio-space cross-engine result NOT clean: " + "; ".join(bad + parts)
+    return ("Cross-engine audio residual measured and NOT found, per sample-rate "
+            "group — engine classification accuracy unscrubbed -> after F3, "
+            + "; ".join(parts) +
+            " (E-ENGINE, leave-one-content-out over broadband audio). Scope: "
+            "spectral features; MDCT-domain classifiers untested.")
 
 
 def build_doc(tmpdir: str) -> dict:

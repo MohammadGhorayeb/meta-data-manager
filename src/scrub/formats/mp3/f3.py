@@ -87,7 +87,7 @@ def scrub(data: bytes) -> bytes:
     # Defense in depth: strip any tag LAME may have added; the canonical Xing/LAME
     # header lives in the audio region and is kept.
     encoded = f1.scrub(encoded)
-    _check_perceptual(data, encoded)
+    _check_perceptual(data, encoded, source_rate=layout.frames[0].samplerate)
     return encoded
 
 
@@ -137,9 +137,25 @@ def _bandlimit(x, cutoff: int = GATE_BAND_HZ, fs: int = PCM_RATE):
     return np.fft.irfft(spec, n=x.size)
 
 
-def _check_perceptual(original: bytes, scrubbed: bytes) -> None:
-    ncc = _best_ncc(_bandlimit(_pcm_mono(original)),
-                    _bandlimit(_pcm_mono(scrubbed)))
+def _gate_band(source_rate: int) -> int:
+    """The band the gate compares, for a source at `source_rate`.
+
+    Everything is decoded to 44.1 kHz for comparison, so a lower-rate source is
+    upsampled and the region above ITS Nyquist holds no audio at all — only
+    resampler artefacts. Comparing there measures the resampler, not the scrub: a
+    22.05 kHz file scored 0.9824 (a refusal) on that empty region while its real
+    audio agreed at 0.9988 and its lowpass was bit-identical before and after. So the
+    band follows the source: the fixed ceiling at 44.1 kHz, and just under Nyquist
+    below it.
+    """
+    return min(GATE_BAND_HZ, int(0.92 * source_rate / 2))
+
+
+def _check_perceptual(original: bytes, scrubbed: bytes,
+                      source_rate: int = PCM_RATE) -> None:
+    band = _gate_band(source_rate)
+    ncc = _best_ncc(_bandlimit(_pcm_mono(original), cutoff=band),
+                    _bandlimit(_pcm_mono(scrubbed), cutoff=band))
     if ncc < PERCEPTUAL_MIN_NCC:
         raise ContentError(
             f"MP3 F3 re-encode diverged perceptually: NCC {ncc:.4f} "

@@ -64,5 +64,11 @@ class MP3Plugin:
             "xing_magic": (L.xing.magic.decode("latin-1") if L.xing else "none"),
             "bitrate_hist": tuple(sorted({fr.bitrate for fr in L.frames})),
             "channel_mode": L.frames[0].channel_mode if L.frames else -1,
+            # Sample rate is visible to any adversary and it CONSTRAINS the
+            # canonical re-encode: 192 kbps CBR is illegal below 32 kHz, so
+            # MPEG-2-rate files come out at 160 instead. Without this feature the
+            # peer set could not see that F3 output falls into per-rate groups —
+            # it went unmeasured until a mixed-rate corpus was built.
+            "samplerate": L.frames[0].samplerate if L.frames else -1,
         }
         return feats

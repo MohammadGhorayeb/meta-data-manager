@@ -1,46 +1,168 @@
-name: QA
+name: CI
 
-# Runs on every push to main and every pull request — the whole team sees a
-# green/red check plus a rich, plain-language QA report ON THE RUN PAGE.
+# Every push to main and every pull request gets: a code-quality check, the full
+# test suite on all four supported Python versions, a coverage gate, a re-run of
+# the project's published measurements, and — the point of the whole thing — a
+# plain-language quality report on the run page that a non-technical reader can
+# actually understand.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: qa-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Superseding a pull-request run is free. Cancelling a main-branch run would
+  # lose the published record of what that commit actually measured.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Least privilege by default; only the report job is granted anything more.
 permissions:
   contents: read
-  pull-requests: write
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHON_DEFAULT: "3.14"
 
 jobs:
-  qa:
+  # ------------------------------------------------------------------ #
+  # 1. Code quality — the code itself, and this workflow file.
+  # ------------------------------------------------------------------ #
+  lint:
+    name: Code quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Start the clock
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: tests/harness/requirements.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            tests/harness/requirements.txt
 
-      # System binaries the scrubber/harness shell out to (never linked).
-      - name: Install system tools
+      - name: Install ruff
+        run: python -m pip install "$(grep -E '^ruff==' requirements-dev.txt)"
+
+      # --output-format=github turns each finding into an inline annotation on
+      # the offending line of the pull-request diff.
+      - name: Lint the Python code
+        id: ruff
+        continue-on-error: true
+        run: ruff check --output-format=github .
+
+      - name: Lint again, machine-readable for the report
+        if: always()
+        run: ruff check --output-format=json --output-file ruff.json . || true
+
+      # Report-only, deliberately. 85 of 114 files predate any formatter, so
+      # gating this would demand a reformat commit touching nearly the whole
+      # repository — that is a separate, human decision, not CI's to force.
+      - name: Formatting drift (informational)
+        if: always()
+        continue-on-error: true
+        run: |
+          ruff format --check . \
+            || echo "::notice::Some files differ from ruff format. Not a failure."
+
+      # Lints this very file — bad expressions, undefined `needs`, unknown keys,
+      # and shellcheck over every run block. Pinned image, so the check cannot
+      # change underneath us.
+      - name: Lint the workflow files
+        if: always()
+        run: |
+          set -o pipefail
+          docker run --rm -v "$PWD":/repo -w /repo \
+            rhysd/actionlint:1.7.12 -oneline -no-color \
+            | tee actionlint.txt \
+            | awk -F: 'NF>3 {
+                  f=$1; l=$2; c=$3;
+                  msg=$0;
+                  for (i = 0; i < 3; i++) msg = substr(msg, index(msg, ":") + 1);
+                  sub(/^ +/, "", msg);
+                  printf "::error file=%s,line=%s,col=%s::%s\n", f, l, c, msg
+                }'
+          echo "Workflow files are valid."
+
+      - name: Stop the clock
+        if: always()
+        run: |
+          mkdir -p timing
+          printf '{"job":"lint","seconds":%s}\n' "$(($(date +%s) - JOB_START))" \
+            > timing/lint.json
+
+      - name: Upload lint results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-results
+          path: |
+            ruff.json
+            actionlint.txt
+            timing/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Gate
+        if: always() && steps.ruff.outcome == 'failure'
+        run: |
+          echo "::error::Code-quality check failed. See the annotations above."
+          exit 1
+
+  # ------------------------------------------------------------------ #
+  # 2. Test suite — every supported Python version.
+  # ------------------------------------------------------------------ #
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      # One version failing must not hide the others: knowing whether a break is
+      # version-specific is most of the diagnosis.
+      fail-fast: false
+      matrix:
+        # 3.11 is the floor, not a preference: numpy, scipy and PyWavelets all
+        # declare requires-python >=3.11, so 3.10 cannot install from wheels.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            tests/harness/requirements.txt
+
+      # External binaries the scrubber and harness shell out to. They are never
+      # linked in, so their licences do not bind the shipped tool.
+      #   exiftool          ground-truth metadata extractor
+      #   jpegtran          lossless JPEG repack (F2)
+      #   ffmpeg + lame     MP3 decode and canonical re-encode (F3)
+      # Tests needing a missing tool skip cleanly, so a silent failure here
+      # would weaken the suite rather than break it. Hence: no `|| true`.
+      - name: Install external tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame
 
-      # A SECOND MP3 engine. Every LAME front-end shares one engine, so without a
-      # non-libmp3lame encoder the cross-engine A2 experiments (E-LAME peer set +
-      # E-ENGINE) silently degrade to a same-engine set that cannot answer the
-      # question. shine is small and builds directly; no autotools needed.
-      - name: Build shineenc (second MP3 engine, for cross-engine A2 evidence)
+      # A SECOND MP3 engine, built rather than installed because no distribution
+      # packages one. Every LAME front-end shares a single engine, so without shine
+      # the cross-engine A2 experiments (E-LAME, E-ENGINE) skip -- the project's
+      # headline audio claim would go unverified while the suite still reported
+      # green. Small C project; no autotools needed.
+      - name: Build shineenc (second MP3 engine, for the cross-engine A2 evidence)
         run: |
           git clone --depth 1 https://github.com/toots/shine.git /tmp/shine
           cc -O2 -I/tmp/shine/src/lib -I/tmp/shine/src/bin \
@@ -52,58 +174,393 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r tests/harness/requirements.txt
+          python -m pip install -r requirements-dev.txt
 
-      # Run the suite; keep going so the QA report is built even on failure
-      # (people need to SEE what failed).
-      - name: Run test suite
-        id: tests
+      - name: Record the exact tool versions used
+        run: |
+          {
+            echo "<details><summary>Environment — Python ${{ matrix.python-version }}</summary>"
+            echo
+            echo '| Tool | Version |'
+            echo '|---|---|'
+            echo "| Python | $(python -V 2>&1 | cut -d' ' -f2) |"
+            echo "| ExifTool | $(exiftool -ver) |"
+            echo "| ffmpeg | $(ffmpeg -version | head -1 | cut -d' ' -f3) |"
+            echo "| LAME | $(lame --version | head -1 | sed 's/.*version //; s/ .*//') |"
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # continue-on-error so the report is still built and published when tests
+      # fail — people need to SEE what broke. The `ci` job turns the run red.
+      - name: Run the test suite
+        id: pytest
         continue-on-error: true
-        run: python -m pytest -q --junit-xml=pytest-results.xml
+        env:
+          # Each version writes its own data file; the coverage job combines them.
+          COVERAGE_FILE: .coverage.${{ matrix.python-version }}
+        run: |
+          start=$(date +%s)
+          status=0
+          python -m pytest \
+            --junit-xml="pytest-results-${{ matrix.python-version }}.xml" \
+            --cov --cov-report= || status=$?
+          mkdir -p timing
+          printf '{"job":"test-%s","seconds":%s}\n' \
+            "${{ matrix.python-version }}" "$(($(date +%s) - start))" \
+            > "timing/test-${{ matrix.python-version }}.json"
+          exit "$status"
 
-      - name: Build QA report
+      - name: Upload test results
         if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-${{ matrix.python-version }}
+          path: |
+            pytest-results-${{ matrix.python-version }}.xml
+            timing/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload coverage data
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ matrix.python-version }}
+          path: .coverage.${{ matrix.python-version }}
+          # Coverage data files begin with a dot, and upload-artifact skips
+          # hidden files by default. Without this the coverage job finds nothing.
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Gate
+        if: always() && steps.pytest.outcome == 'failure'
+        run: |
+          echo "::error::Tests failed on Python ${{ matrix.python-version }}."
+          exit 1
+
+  # ------------------------------------------------------------------ #
+  # 3. Coverage — combine every version's data, then gate.
+  # ------------------------------------------------------------------ #
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test]
+    if: always()
+    steps:
+      - name: Start the clock
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install coverage
+        run: python -m pip install "$(grep -E '^coverage' requirements-dev.txt)"
+
+      - name: Download coverage data from every Python version
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+          path: covdata
+
+      - name: Combine and report
+        id: cov
+        run: |
+          shopt -s nullglob dotglob
+          files=(covdata/.coverage.*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No coverage data was produced — every test leg failed before pytest could run."
+            exit 1
+          fi
+          cp "${files[@]}" .
+          python -m coverage combine
+          python -m coverage json -o coverage.json
+          python -m coverage xml -o coverage.xml
+          python -m coverage html -d htmlcov
+          python -m coverage report --format=markdown > coverage-table.md
+          pct=$(python -c "import json; print(f\"{json.load(open('coverage.json'))['totals']['percent_covered']:.1f}\")")
+          echo "percent=$pct" >> "$GITHUB_OUTPUT"
+          mkdir -p timing
+          printf '{"job":"coverage","seconds":%s}\n' \
+            "$(($(date +%s) - JOB_START))" > timing/coverage.json
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.json
+            coverage.xml
+            coverage-table.md
+            htmlcov/
+            timing/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # A separate step so the reports upload even when the floor is breached.
+      - name: Enforce the coverage floor
+        run: |
+          if ! python -m coverage report --fail-under=84 > /dev/null; then
+            echo "::error::Coverage ${{ steps.cov.outputs.percent }}% is below the 84% floor."
+            exit 1
+          fi
+          echo "Coverage ${{ steps.cov.outputs.percent }}% is at or above the floor."
+
+  # ------------------------------------------------------------------ #
+  # 4. Evidence — are this project's published claims still true?
+  # ------------------------------------------------------------------ #
+  evidence:
+    name: Published results still true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Start the clock
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            tests/harness/requirements.txt
+
+      - name: Install external tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame
+
+      # A SECOND MP3 engine, built rather than installed because no distribution
+      # packages one. Every LAME front-end shares a single engine, so without shine
+      # the cross-engine A2 experiments (E-LAME, E-ENGINE) skip -- the project's
+      # headline audio claim would go unverified while the suite still reported
+      # green. Small C project; no autotools needed.
+      - name: Build shineenc (second MP3 engine, for the cross-engine A2 evidence)
+        run: |
+          git clone --depth 1 https://github.com/toots/shine.git /tmp/shine
+          cc -O2 -I/tmp/shine/src/lib -I/tmp/shine/src/bin \
+             /tmp/shine/src/lib/*.c /tmp/shine/src/bin/*.c \
+             -o /tmp/shine/shineenc -lm
+          sudo install -m 0755 /tmp/shine/shineenc /usr/local/bin/shineenc
+          shineenc -h 2>&1 | head -1
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Re-measure, and compare against the published matrices
+        id: evidence
+        continue-on-error: true
+        run: |
+          status=0
+          python scripts/check_evidence.py --out evidence.json || status=$?
+          mkdir -p timing
+          printf '{"job":"evidence","seconds":%s}\n' \
+            "$(($(date +%s) - JOB_START))" > timing/evidence.json
+          exit "$status"
+
+      - name: Upload the evidence result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-result
+          path: |
+            evidence.json
+            timing/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Gate
+        if: always() && steps.evidence.outcome == 'failure'
+        run: |
+          echo "::error::A published result no longer matches what this run measured. Regenerate the matrices, or fix the regression."
+          exit 1
+
+  # ------------------------------------------------------------------ #
+  # 5. Report — the deliverable. Always runs, especially on failure.
+  # ------------------------------------------------------------------ #
+  report:
+    name: QA report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint, test, coverage, evidence]
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            tests/harness/requirements.txt
+
+      - name: Install external tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame
+
+      # A SECOND MP3 engine, built rather than installed because no distribution
+      # packages one. Every LAME front-end shares a single engine, so without shine
+      # the cross-engine A2 experiments (E-LAME, E-ENGINE) skip -- the project's
+      # headline audio claim would go unverified while the suite still reported
+      # green. Small C project; no autotools needed.
+      - name: Build shineenc (second MP3 engine, for the cross-engine A2 evidence)
+        run: |
+          git clone --depth 1 https://github.com/toots/shine.git /tmp/shine
+          cc -O2 -I/tmp/shine/src/lib -I/tmp/shine/src/bin \
+             /tmp/shine/src/lib/*.c /tmp/shine/src/bin/*.c \
+             -o /tmp/shine/shineenc -lm
+          sudo install -m 0755 /tmp/shine/shineenc /usr/local/bin/shineenc
+          shineenc -h 2>&1 | head -1
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Collect every job's artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Lay the artifacts out for the report builder
+        run: |
+          mkdir -p junit timing
+          # Keep the version in the path: the builder recovers which Python
+          # version produced each result from it.
+          for d in artifacts/junit-*; do
+            [ -d "$d" ] || continue
+            ver="${d##*junit-}"
+            mkdir -p "junit/$ver"
+            find "$d" -name '*.xml' -exec cp {} "junit/$ver/" \;
+          done
+          find artifacts -path '*/timing/*.json' -exec cp {} timing/ \;
+          for f in coverage.json ruff.json evidence.json; do
+            found=$(find artifacts -name "$f" -print -quit)
+            if [ -n "$found" ]; then cp "$found" "$f"; fi
+          done
+          echo "--- collected ---"
+          ls -R junit timing || true
+
+      - name: Build the report
         run: |
           python scripts/qa_report.py \
-            --junit pytest-results.xml \
+            --junit junit \
+            --coverage-json coverage.json \
+            --lint-json ruff.json \
+            --evidence-json evidence.json \
+            --timing-dir timing \
+            --expect-legs "3.11,3.12,3.13,3.14" \
+            --stage "lint=${{ needs.lint.result }}" \
+            --stage "test=${{ needs.test.result }}" \
+            --stage "coverage=${{ needs.coverage.result }}" \
+            --stage "evidence=${{ needs.evidence.result }}" \
+            --flow-out scrub-samples \
             --summary qa-summary.md \
-            --flow-out scrub-samples
+            --pr-comment qa-pr-comment.md
 
-      # The star: the rich report renders on the Actions run page.
-      - name: Publish report to run summary
-        if: always()
+      # The whole point: the report renders on the Actions run page.
+      - name: Publish to the run summary
         run: cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Comment report on PR
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+      # Skipped for pull requests from forks, whose token is read-only.
+      - name: Comment on the pull request
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
-            const body = fs.readFileSync('qa-summary.md', 'utf8');
+            const body = fs.readFileSync('qa-pr-comment.md', 'utf8');
             const marker = '<!-- qa-report -->';
-            const {owner, repo} = context.repo;
-            const issue = context.issue.number;
-            const comments = await github.rest.issues.listComments({owner, repo, issue_number: issue});
-            const mine = comments.data.find(c => c.body && c.body.includes(marker));
-            const payload = marker + "\n" + body;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments(
+              { owner, repo, issue_number, per_page: 100 });
+            const mine = comments.find(
+              c => c.user && c.user.type === 'Bot' &&
+                   c.body && c.body.includes(marker));
             if (mine) {
-              await github.rest.issues.updateComment({owner, repo, comment_id: mine.id, body: payload});
+              await github.rest.issues.updateComment(
+                { owner, repo, comment_id: mine.id, body });
             } else {
-              await github.rest.issues.createComment({owner, repo, issue_number: issue, body: payload});
+              await github.rest.issues.createComment(
+                { owner, repo, issue_number, body });
             }
 
-      - name: Upload scrubbed samples
+      - name: Upload the report and the scrubbed samples
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: scrubbed-samples
-          path: scrub-samples/
-          retention-days: 14
+          name: qa-report
+          path: |
+            qa-summary.md
+            qa-pr-comment.md
+            scrub-samples/
+          if-no-files-found: warn
+          retention-days: 30
 
-      # Make the check red if the suite failed (after the report is published).
-      - name: Enforce test result
-        if: always() && steps.tests.outcome == 'failure'
+  # ------------------------------------------------------------------ #
+  # 6. The single required status check.
+  #
+  # Everything above is allowed to finish so the report always publishes.
+  # This job is the one that turns the run red — make it the required check in
+  # the branch-protection rule and there is exactly one box to watch.
+  # ------------------------------------------------------------------ #
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, test, coverage, evidence, report]
+    if: always()
+    steps:
+      - name: Verdict
+        env:
+          LINT: ${{ needs.lint.result }}
+          TESTS: ${{ needs.test.result }}
+          COVERAGE: ${{ needs.coverage.result }}
+          EVIDENCE: ${{ needs.evidence.result }}
+          REPORT: ${{ needs.report.result }}
         run: |
-          echo "::error::Test suite failed — see the QA report above."
-          exit 1
+          fail=0
+          check() {
+            case "$2" in
+              success) echo "✅ $1" ;;
+              skipped) echo "⏭️  $1 (skipped)" ;;
+              *)       echo "❌ $1 ($2)"; fail=1 ;;
+            esac
+          }
+          check "Code quality" "$LINT"
+          check "Tests"        "$TESTS"
+          check "Coverage"     "$COVERAGE"
+          check "Evidence"     "$EVIDENCE"
+          check "QA report"    "$REPORT"
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::CI failed. The QA report on this run's summary page explains what broke, in plain language."
+            exit 1
+          fi
+          echo "All stages green."

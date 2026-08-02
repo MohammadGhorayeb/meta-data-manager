@@ -93,15 +93,20 @@ def engines(producers: list[str]) -> list[str]:
     return seen
 
 
-def build_corpus(tmpdir: str, producers: list[str]) -> dict:
-    """{(producer, content): path} — same content, different source encoder."""
+def build_corpus(tmpdir: str, producers: list[str], rate: int = 44100) -> dict:
+    """{(producer, content): path} — same content, different source encoder.
+
+    `rate` exists because F3's anonymity is claimed *per sample-rate group* (192 kbps
+    CBR is illegal below 32 kHz, so those files emit at 160). A claim made per group
+    has to be tested per group, in audio space as well as in header space.
+    """
     paths = {}
     for cname, lavfi in CONTENTS:
-        wav = os.path.join(tmpdir, f"{cname}.wav")
+        wav = os.path.join(tmpdir, f"{cname}_{rate}.wav")
         _run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", lavfi,
-              "-ac", "2", "-ar", "44100", wav])
+              "-ac", "2", "-ar", str(rate), wav])
         for prod in producers:
-            out = os.path.join(tmpdir, f"{prod}__{cname}.mp3")
+            out = os.path.join(tmpdir, f"{prod}__{cname}__{rate}.mp3")
             builder = PRODUCERS[prod][1]
             if builder is None:
                 _run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav,
@@ -112,31 +117,39 @@ def build_corpus(tmpdir: str, producers: list[str]) -> dict:
     return paths
 
 
-def features(path: str) -> np.ndarray:
+def features(path: str, rate: int = 44100) -> np.ndarray:
     """Content-independent spectral signature of the decoded audio.
 
     An encoder's identity shows up in where it stops coding (its lowpass) and how it
     treats the top of the band — not in which notes were played, so every feature
     here is a RATIO or a band edge, never absolute level.
+
+    The bands are fractions of Nyquist rather than fixed frequencies: at 22.05 kHz
+    there is nothing above 11 kHz at all, so absolute 16/19/20 kHz cut-offs would
+    read as zeros for every engine and the classifier would be measuring nothing.
+    "The top eighth of whatever band this file has" is the property that generalises.
     """
     p = subprocess.run(["ffmpeg", "-i", path, "-f", "s16le", "-ac", "1",
-                        "-ar", "44100", "-loglevel", "error", "pipe:1"],
+                        "-ar", str(rate), "-loglevel", "error", "pipe:1"],
                        capture_output=True)
     x = np.frombuffer(p.stdout, dtype="<i2").astype(np.float64) / 32768.0
     if x.size < 8192:
         return np.zeros(4)
     from scipy.signal import welch
-    f, pxx = welch(x, fs=44100, nperseg=4096)
+    f, pxx = welch(x, fs=rate, nperseg=4096)
+    nyq = rate / 2.0
     total = pxx.sum() + 1e-30
-    hf16 = pxx[f > 16000].sum() / total
-    hf19 = pxx[f > 19000].sum() / total
-    hf20 = pxx[f > 20000].sum() / total
+    # 0.726 / 0.862 / 0.907 of Nyquist == 16 / 19 / 20 kHz at 44.1 kHz.
+    hf_lo = pxx[f > 0.726 * nyq].sum() / total
+    hf_mid = pxx[f > 0.862 * nyq].sum() / total
+    hf_hi = pxx[f > 0.907 * nyq].sum() / total
     cutoff = f[int(np.max(np.where(pxx > pxx.max() * 1e-7)))]
-    return np.array([np.log10(hf16 + 1e-20), np.log10(hf19 + 1e-20),
-                     np.log10(hf20 + 1e-20), cutoff / 22050.0])
+    return np.array([np.log10(hf_lo + 1e-20), np.log10(hf_mid + 1e-20),
+                     np.log10(hf_hi + 1e-20), cutoff / nyq])
 
 
-def condition_features(paths: dict, fidelity: str, tmpdir: str) -> dict:
+def condition_features(paths: dict, fidelity: str, tmpdir: str,
+                       rate: int = 44100) -> dict:
     """Scrub every corpus file at `fidelity` (or take it raw) -> feature vector."""
     from src.scrub import cli
     feats = {}
@@ -144,9 +157,9 @@ def condition_features(paths: dict, fidelity: str, tmpdir: str) -> dict:
         if fidelity == "raw":
             target = src
         else:
-            target = os.path.join(tmpdir, f"{prod}__{content}__{fidelity}.mp3")
+            target = os.path.join(tmpdir, f"{prod}__{content}__{rate}__{fidelity}.mp3")
             cli.scrub_file(src, target, fidelity)
-        feats[(prod, content)] = features(target)
+        feats[(prod, content)] = features(target, rate=rate)
     return feats
 
 
@@ -179,17 +192,18 @@ def loco_accuracy(feats: dict, producers: list[str], contents: list[str]) -> dic
             "confusion": {f"{a}->{b}": n for (a, b), n in sorted(confusion.items())}}
 
 
-def run(fidelities=("raw", "F1", "F3"), tmpdir: str | None = None) -> dict:
+def run(fidelities=("raw", "F1", "F3"), tmpdir: str | None = None,
+        rate: int = 44100) -> dict:
     producers = available_producers()
     contents = [c for c, _ in CONTENTS]
     tmpdir = tmpdir or tempfile.mkdtemp(prefix="e_engine_")
     os.makedirs(tmpdir, exist_ok=True)
-    paths = build_corpus(tmpdir, producers)
-    results = {fid: loco_accuracy(condition_features(paths, fid, tmpdir),
+    paths = build_corpus(tmpdir, producers, rate=rate)
+    results = {fid: loco_accuracy(condition_features(paths, fid, tmpdir, rate=rate),
                                   producers, contents)
                for fid in fidelities}
     results["_meta"] = {"producers": producers, "engines": engines(producers),
-                        "contents": contents}
+                        "contents": contents, "rate": rate}
     return results
 
 
@@ -199,19 +213,21 @@ def controls_valid(results: dict) -> bool:
 
 
 def main() -> None:
-    r = run()
-    meta = r.pop("_meta")
-    print(f"E-ENGINE peer set: {meta['producers']} "
-          f"-> engine classes {meta['engines']} x {len(meta['contents'])} contents "
-          f"(leave-one-content-out nearest centroid)\n")
-    for fid, m in r.items():
-        tag = "control" if fid in ("raw", "F1") else "TEST   "
-        verdict = "RECOVERABLE" if m["recoverable"] else "at chance"
-        print(f"[{fid:3}] {tag} engine classification "
-              f"{m['accuracy']:.2f} ({m['correct']}/{m['total']}), "
-              f"chance {m['chance']:.2f} -> {verdict}   {m['confusion']}")
-    print("\ncontrols valid:", controls_valid(r),
-          "(raw/F1 must be RECOVERABLE, else the feature is too weak to trust F3)")
+    from tests.scrub.mp3_corpus import RATES
+    for rate in RATES:
+        r = run(rate=rate)
+        meta = r.pop("_meta")
+        print(f"E-ENGINE @ {rate} Hz: {meta['producers']} -> engine classes "
+              f"{meta['engines']} x {len(meta['contents'])} contents "
+              f"(leave-one-content-out nearest centroid)")
+        for fid, m in r.items():
+            tag = "control" if fid in ("raw", "F1") else "TEST   "
+            verdict = "RECOVERABLE" if m["recoverable"] else "at chance"
+            print(f"  [{fid:3}] {tag} engine classification "
+                  f"{m['accuracy']:.2f} ({m['correct']}/{m['total']}), "
+                  f"chance {m['chance']:.2f} -> {verdict}")
+        print(f"  controls valid: {controls_valid(r)} "
+              f"(raw/F1 must be RECOVERABLE, else F3 here proves nothing)\n")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,13 @@ def results():
     return e_engine.run(fidelities=("raw", "F1", "F3"))
 
 
+@pytest.fixture(scope="module")
+def results_low_rate():
+    """F3's anonymity is claimed per sample-rate group, so the audio-space check runs
+    in the other group too — 22.05 kHz files come out at 160 kbps, not 192."""
+    return e_engine.run(fidelities=("raw", "F1", "F3"), rate=22050)
+
+
 def test_peer_set_spans_two_engines():
     prods = e_engine.available_producers()
     assert set(e_engine.engines(prods)) == {"lame", "shine"}, (
@@ -84,3 +91,32 @@ def test_f3_destroys_the_cross_engine_trace(results):
         f"cross-engine trace survives F3: engine classified at {m['accuracy']:.2f} "
         f"vs chance {m['chance']:.2f} — the A2@F3 cell must be downgraded and the "
         f"residual documented. Confusion: {m['confusion']}")
+
+
+def test_f3_destroys_the_trace_in_the_low_rate_group_too(results_low_rate):
+    """The claim is per sample-rate group, so it has to hold in the other group.
+    22.05 kHz sources re-encode at 160 kbps rather than 192 — a different group, and
+    an untested one until now."""
+    assert e_engine.controls_valid(results_low_rate), (
+        "controls invalid at 22.05 kHz; the F3 result there proves nothing")
+    m = results_low_rate["F3"]
+    assert not m["recoverable"], (
+        f"cross-engine trace survives F3 at 22.05 kHz: {m['accuracy']:.2f} vs chance "
+        f"{m['chance']:.2f} — anonymity does not hold in this group. {m['confusion']}")
+
+
+def test_features_work_below_the_default_sample_rate():
+    """Guards the reason the low-rate test is meaningful: the spectral bands are
+    fractions of Nyquist, not fixed frequencies. Absolute 16/19/20 kHz cut-offs sit
+    above Nyquist at 22.05 kHz, so every feature would read as an identical zero and
+    the classifier would silently be measuring nothing at all."""
+    import tempfile
+    import subprocess
+    td = tempfile.mkdtemp()
+    wav, mp3 = f"{td}/a.wav", f"{td}/a.mp3"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "anoisesrc=duration=2:color=white:seed=9:amplitude=0.4",
+                    "-ac", "2", "-ar", "22050", wav], check=True)
+    subprocess.run(["lame", "--quiet", "-V", "2", wav, mp3], check=True)
+    f = e_engine.features(mp3, rate=22050)
+    assert not np.allclose(f, 0), "features are degenerate at 22.05 kHz"
