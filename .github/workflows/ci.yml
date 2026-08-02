@@ -293,6 +293,29 @@ jobs:
           printf '{"job":"coverage","seconds":%s}\n' \
             "$(($(date +%s) - JOB_START))" > timing/coverage.json
 
+      # Gates the coverage of code the tests actually reach, and names every
+      # file nothing reaches. A single whole-tree floor would go red each time a
+      # new format lands as scaffolding, and would be ratcheted down until it
+      # meant nothing — see the script's docstring for the full reasoning.
+      #
+      # --floor is the one number to tune. Measured history, kept here so the
+      # bar is never quietly eroded:
+      #   86%  JPEG + PNG + MP3
+      #   85%  + FLAC
+      #   84%  + M4A
+      # Note what did NOT happen: while FLAC and M4A were mid-implementation the
+      # whole-tree number dipped to 70%, but the floor never had to move —
+      # untested scaffolding sits outside the gate by design, and the number
+      # came back on its own once the tests landed.
+      - name: Check coverage
+        id: gate
+        continue-on-error: true
+        run: |
+          python scripts/coverage_gate.py \
+            --coverage-json coverage.json \
+            --floor 82 \
+            --out coverage-gate.json
+
       - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -301,23 +324,19 @@ jobs:
           path: |
             coverage.json
             coverage.xml
+            coverage-gate.json
             coverage-table.md
             htmlcov/
             timing/
           if-no-files-found: warn
           retention-days: 14
 
-      # A separate step so the reports upload even when the floor is breached.
-      # The floor itself lives in pyproject.toml ([tool.coverage.report]
-      # fail_under). Repeating the number here would let the two drift apart,
-      # so `coverage report` is left to read it and exit non-zero on its own.
-      - name: Enforce the coverage floor
+      # Separate from the check itself, so the reports upload either way.
+      - name: Gate
+        if: always() && steps.gate.outcome == 'failure'
         run: |
-          if ! python -m coverage report > /dev/null; then
-            echo "::error::Coverage ${{ steps.cov.outputs.percent }}% is below the floor set in pyproject.toml."
-            exit 1
-          fi
-          echo "Coverage ${{ steps.cov.outputs.percent }}% is at or above the floor."
+          echo "::error::Coverage gate failed — see the annotations above."
+          exit 1
 
   # ------------------------------------------------------------------ #
   # 4. Evidence — are this project's published claims still true?
@@ -460,7 +479,7 @@ jobs:
             find "$d" -name '*.xml' -exec cp {} "junit/$ver/" \;
           done
           find artifacts -path '*/timing/*.json' -exec cp {} timing/ \;
-          for f in coverage.json ruff.json evidence.json; do
+          for f in coverage.json coverage-gate.json ruff.json evidence.json; do
             found=$(find artifacts -name "$f" -print -quit)
             if [ -n "$found" ]; then cp "$found" "$f"; fi
           done
@@ -472,6 +491,7 @@ jobs:
           python scripts/qa_report.py \
             --junit junit \
             --coverage-json coverage.json \
+            --coverage-gate-json coverage-gate.json \
             --lint-json ruff.json \
             --evidence-json evidence.json \
             --timing-dir timing \

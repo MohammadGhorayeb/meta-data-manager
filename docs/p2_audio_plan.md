@@ -61,7 +61,7 @@ it had scrubbed correctly.
 bitrate histogram, channel mode, **sample rate** (added late — without it the peer
 set could not see the anonymity grouping at all).
 
-### W5 — FLAC walker + F1 🔜
+### W5 — FLAC walker + F1 ✅
 `src/scrub/formats/flac/`. FLAC is the friendliest structure in the phase: a
 `fLaC` magic, then a chain of METADATA_BLOCKs (`STREAMINFO`, `PADDING`, `APPLICATION`,
 `SEEKTABLE`, `VORBIS_COMMENT`, `CUESHEET`, `PICTURE`), each with a 4-byte header
@@ -71,32 +71,35 @@ audio, so **F1 is bit-preserving by construction**.
   property, not metadata).
 - Drop: `VORBIS_COMMENT` entirely — including the **vendor string**, which names the
   encoder and is a producer fingerprint sitting in a metadata block, not the audio.
-  A zero-length comment block with an empty vendor string is the canonical form.
+  (Planned as "emit a canonical empty comment block"; changed after the fingerprint
+  guard flagged that block's fixed 12 bytes as OUR signature. Omitting beats
+  normalising whenever a constant can simply not be written.)
 - Drop: `PICTURE` (cover art — the nested-image locus; art carries its own EXIF/GPS,
   so it is recursion into P1, not a byte blob to delete blindly), `APPLICATION`,
   `CUESHEET`.
-- Normalise: `PADDING` — its *size* is a producer tell (encoders pad differently).
+- Drop: `PADDING` — its *size* is a producer tell (encoders pad differently), and a
+  fixed replacement is just our own tell, so none is emitted at all.
 - Also handle: ID3v2 **prepended to a FLAC file**, which is out of spec but common in
   the wild, and bytes appended after the last audio frame.
 
-### W6 — FLAC F2 (lossless re-encode) 🔜
+### W6 — FLAC F2 (lossless re-encode) ✅
 The A2 defense that costs nothing. Re-encode via `flac` at one locked setting so
 block sizes, frame headers and padding all come from one producer. Content identity
 is exact: decoded PCM must be **bit-identical**, not perceptually close — anything
 less is a bug, not a trade-off. This is the audio analogue of the PNG F2 result.
 
-### W7 — `FlacPlugin` 🔜
+### W7 — `FlacPlugin` ✅
 `structural_features`: vendor string, block-type inventory and order, padding size,
 min/max block size and frame size from `STREAMINFO`, seektable presence. These are
 the A2 channel — the FLAC equivalent of the DQT.
 
-### W8 — ISOBMFF atom walker (shared) 🔜
+### W8 — ISOBMFF atom walker (shared) ✅
 `src/scrub/standards/isobmff.py`, **not** under `formats/m4a/`. A box tree walker:
 4-byte size + 4-byte type, `size==1` → 64-bit largesize, `size==0` → to EOF, `uuid`
 boxes, and full-box version/flags. Phase 4's MP4 and HEIC handlers reuse this
 unchanged — the whole reason M4A is worth doing before documents.
 
-### W9 — M4A F1 🔜
+### W9 — M4A F1 ✅
 Metadata loci, all of which must go: `moov/udta` (including `©nam`-style iTunes
 atoms under `meta/ilst`), `moov/meta`, free/skip atoms (which can hide arbitrary
 data), `mvhd`/`tkhd`/`mdhd` **creation and modification timestamps**, cover art in
@@ -104,7 +107,7 @@ data), `mvhd`/`tkhd`/`mdhd` **creation and modification timestamps**, cover art 
 easy-to-miss one: they are structural fields, not tags, so a tag-oriented scrubber
 leaves them.
 
-### W10 — M4A F2/F3 🔜
+### W10 — M4A F2/F3 ✅
 F2 = repack the container (rebuild the box tree in canonical order, normalise
 `free` space) leaving the audio samples untouched — valid for both AAC and ALAC since
 neither is re-encoded. F3 = re-encode AAC through one locked setting, mirroring MP3.
@@ -118,7 +121,7 @@ neither is re-encoded. F3 = re-encode AAC through one locked setting, mirroring 
 | **E-LAME** | Does the MP3 header identify the producer, and does F3 erase it? | ✅ Yes / yes, per sample-rate group, cross-engine |
 | **E-ENGINE** | With the header normalised, does the *sound* still identify the source engine? | ✅ No — 0.94→0.50 at 44.1 kHz, 1.00→0.61 at 22.05 kHz |
 | **E-FLAC** | Do FLAC block layout, padding size and vendor string identify the encoder, and does F2 erase them **losslessly**? | ✅ Yes / yes — fingerprint at F1, gone at F2, audio bit-identical |
-| **E-M4A** | Do atom ordering and `free`-space layout identify the muxer (ffmpeg vs iTunes vs a phone)? | 🔜 |
+| **E-M4A** | Do atom ordering and `free`-space layout identify the muxer, and does the coded audio identify the encoder? | ✅ Yes to both at F1. F2 normalises the layout losslessly; F3 collapses same-source producers to byte-identical output, leaving the primary-encoding trace as an open residual |
 
 E-ENGINE's design rules apply to all of these and were learned the hard way: compare
 **engines, not front-ends** (two front-ends of one engine produce identical output,
@@ -137,8 +140,8 @@ its failure on a scrubbed one proves nothing.
 | **M2** | MP3 F3, E-LAME, matrix | ✅ |
 | **M3** | Cross-engine evidence (shineenc), E-ENGINE, per-group verification | ✅ |
 | **M4** | FLAC F1 + F2 + plugin + E-FLAC + matrix — **A2 at F2, losslessly** | ✅ |
-| **M5** | ISOBMFF shared walker + M4A F1 + plugin + matrix | 🔜 |
-| **M6** | M4A F2/F3 + E-M4A; benchmark row vs MAT2's refusal | 🔜 |
+| **M5** | ISOBMFF shared walker + M4A F1 + plugin + matrix | ✅ |
+| **M6** | M4A F2/F3 + E-M4A; benchmark row vs MAT2's refusal | ✅ (benchmark row still to write up) |
 
 Phase 2 is **done** when all three formats have validated matrices, every residual is
 recorded in `docs/limits.md`, and the benchmark table shows the M4A gap closed.

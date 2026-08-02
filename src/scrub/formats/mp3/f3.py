@@ -27,25 +27,19 @@ import shutil
 import subprocess
 import tempfile
 
-from ...errors import ContentError, ScrubError
+from ...errors import ScrubError
+from ...standards import perceptual
 from . import f1
 from . import walker as w
 
 CANONICAL_BITRATE = 192          # kbps, CBR
 LAME_QUALITY = 2                 # -q 2
-# Perceptual gate: normalized cross-correlation after delay alignment. A faithful
-# 192-CBR re-encode sits at ~0.999+; gross corruption / wrong file is far below.
-PERCEPTUAL_MIN_NCC = 0.99
-# The gate compares only the AUDIBLE band. Our constraint is perceptual identity to
-# a human listener, and LAME lowpasses around 19 kHz by design — so a source from a
-# non-lowpassing encoder (e.g. shine, which codes right up to Nyquist) loses real
-# ultrasonic energy in the re-encode. Comparing full-band waveforms scores that
-# inaudible removal as divergence and makes the tool refuse a file it scrubbed
-# correctly: measured NCC 0.95 on shine-encoded white noise, which is inaudibly
-# identical. Band-limiting both signals first keeps the guard honest about what it
-# claims to guard (what you can hear), while still catching real corruption.
-GATE_BAND_HZ = 16000
-PCM_RATE = 44100
+# Gate thresholds live in standards/perceptual.py, which documents WHY the band is
+# what it is (two separate bugs taught it). Re-exported here so this tier still reads
+# as a self-contained description of its own guarantees.
+PERCEPTUAL_MIN_NCC = perceptual.DEFAULT_MIN_NCC
+GATE_BAND_HZ = perceptual.GATE_BAND_HZ
+PCM_RATE = perceptual.PCM_RATE
 
 
 def _tool(name: str) -> str:
@@ -91,75 +85,21 @@ def scrub(data: bytes) -> bytes:
     return encoded
 
 
-def _pcm_mono(data: bytes):
-    """Decode to a mono float PCM vector at 44.1 kHz (for the perceptual gate)."""
-    import numpy as np
-    r = subprocess.run([_tool("ffmpeg"), "-i", "pipe:0", "-f", "s16le",
-                        "-ac", "1", "-ar", "44100", "pipe:1"],
-                       input=data, capture_output=True)
-    return np.frombuffer(r.stdout, dtype="<i2").astype(np.float64)
-
-
-def _best_ncc(a, b, maxlag: int = 3000, window: int = 200_000) -> float:
-    """Best normalized cross-correlation over a small delay-alignment window —
-    MP3 re-encode shifts samples by the encoder delay, so we recover the lag."""
-    import numpy as np
-    n = min(len(a), len(b), window)
-    if n < 2000:
-        return 0.0
-    best = -1.0
-    for lag in range(-maxlag, maxlag + 1, 25):
-        if lag >= 0:
-            x, y = a[lag:lag + n], b[:n]
-        else:
-            x, y = a[:n], b[-lag:-lag + n]
-        m = min(len(x), len(y))
-        if m < 1000:
-            continue
-        x2, y2 = x[:m], y[:m]
-        sx, sy = x2.std(), y2.std()
-        if sx < 1e-6 or sy < 1e-6:
-            continue
-        c = float(np.mean((x2 - x2.mean()) * (y2 - y2.mean())) / (sx * sy))
-        best = max(best, c)
-    return best
-
-
-def _bandlimit(x, cutoff: int = GATE_BAND_HZ, fs: int = PCM_RATE):
-    """Zero everything above `cutoff` (numpy-only brick-wall via rfft) so the
-    perceptual gate compares the audible band, not ultrasonics neither codec keeps."""
-    import numpy as np
-    if x.size < 2048:
-        return x
-    spec = np.fft.rfft(x)
-    freqs = np.fft.rfftfreq(x.size, d=1.0 / fs)
-    spec[freqs > cutoff] = 0
-    return np.fft.irfft(spec, n=x.size)
-
-
-def _gate_band(source_rate: int) -> int:
-    """The band the gate compares, for a source at `source_rate`.
-
-    Everything is decoded to 44.1 kHz for comparison, so a lower-rate source is
-    upsampled and the region above ITS Nyquist holds no audio at all — only
-    resampler artefacts. Comparing there measures the resampler, not the scrub: a
-    22.05 kHz file scored 0.9824 (a refusal) on that empty region while its real
-    audio agreed at 0.9988 and its lowpass was bit-identical before and after. So the
-    band follows the source: the fixed ceiling at 44.1 kHz, and just under Nyquist
-    below it.
-    """
-    return min(GATE_BAND_HZ, int(0.92 * source_rate / 2))
+# The perceptual gate lives in standards/perceptual.py, shared with M4A: the two
+# subtleties it encodes (delay alignment, and comparing only the audible band that
+# the source actually occupies) were each found by a bug here, and a second copy
+# would have to re-learn them. These thin aliases keep the tier's local vocabulary.
+_pcm_mono = perceptual.pcm_mono
+_bandlimit = perceptual.bandlimit
+_best_ncc = perceptual.best_ncc
+_gate_band = perceptual.gate_band
 
 
 def _check_perceptual(original: bytes, scrubbed: bytes,
                       source_rate: int = PCM_RATE) -> None:
-    band = _gate_band(source_rate)
-    ncc = _best_ncc(_bandlimit(_pcm_mono(original), cutoff=band),
-                    _bandlimit(_pcm_mono(scrubbed), cutoff=band))
-    if ncc < PERCEPTUAL_MIN_NCC:
-        raise ContentError(
-            f"MP3 F3 re-encode diverged perceptually: NCC {ncc:.4f} "
-            f"< {PERCEPTUAL_MIN_NCC}")
+    perceptual.check(original, scrubbed, source_rate=source_rate,
+                     min_ncc=PERCEPTUAL_MIN_NCC, ffmpeg=_tool("ffmpeg"),
+                     label="MP3 F3 re-encode")
 
 
 def residuals(data: bytes) -> list[str]:

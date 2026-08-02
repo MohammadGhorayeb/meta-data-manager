@@ -1,0 +1,235 @@
+{
+  "format": "m4a",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p2",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-08-02T19:08:27.719027+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 3,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 3,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 3,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "source fingerprint survives in muxer layout (box order / brand / free slack); the coded audio \u2014 the AAC encoder's own fingerprint, which a stream copy preserves by definition; reaching it requires the canonical re-encode at F3. Features: struct:audio_digest, struct:moov_before_mdat, struct:size, struct:top_level_order",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:moov_before_mdat",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:moov_before_mdat constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:top_level_order",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:top_level_order constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:audio_digest",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:audio_digest constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:size constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "fail",
+      "reason": "source fingerprint survives in the coded audio \u2014 the AAC encoder's own fingerprint, which a stream copy preserves by definition; reaching it requires the canonical re-encode at F3. Features: struct:audio_digest, struct:size",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:audio_digest",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:audio_digest constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:size constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "fail",
+      "reason": "source fingerprint survives in the coded audio \u2014 but ONLY where the source's own first-generation encode differed (a 192 kbps original vs a 128 kbps one). Producers that encoded identical audio and differed only in muxing collapse to BYTE-IDENTICAL output here. What remains is the primary-encoding trace: re-encoding cannot undo what the first encoder already discarded, the audio analogue of Sorell's primary-quantization residual in JPEG. Measuring whether that trace actually identifies a producer needs an audio-space classifier (the MP3 E-ENGINE treatment), which M4A does not have yet \u2014 so it is recorded as an open residual, not a pass. Features: struct:audio_digest, struct:size",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:audio_digest",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:audio_digest constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:size constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "66747970",
+        "decoded": "ftyp"
+      },
+      {
+        "bytes_hex": "6d6f6f76",
+        "decoded": "moov"
+      },
+      {
+        "bytes_hex": "6d646174",
+        "decoded": "mdat"
+      },
+      {
+        "bytes_hex": "6d766864",
+        "decoded": "mvhd"
+      },
+      {
+        "bytes_hex": "7472616b",
+        "decoded": "trak"
+      },
+      {
+        "bytes_hex": "6d646961",
+        "decoded": "mdia"
+      },
+      {
+        "bytes_hex": "6d696e66",
+        "decoded": "minf"
+      },
+      {
+        "bytes_hex": "7374626c",
+        "decoded": "stbl"
+      },
+      {
+        "bytes_hex": "73747364",
+        "decoded": "stsd"
+      },
+      {
+        "bytes_hex": "6d703461",
+        "decoded": "mp4a"
+      }
+    ],
+    "signatures": []
+  }
+}

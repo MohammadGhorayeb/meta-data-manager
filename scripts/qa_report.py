@@ -107,6 +107,7 @@ GLOSSARY = {
 ROADMAP = [
     ("jpeg", "JPEG photos"), ("png", "PNG graphics and screenshots"),
     ("mp3", "MP3 audio"), ("flac", "FLAC lossless audio"),
+    ("m4a", "M4A / AAC audio"),
     ("pdf", "PDF documents"), ("ooxml", "Word documents"),
     ("mp4", "MP4 video"), ("heic", "HEIC iPhone photos"),
     ("raw", "camera RAW files"),
@@ -114,6 +115,7 @@ ROADMAP = [
 
 FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
                 "mp3": "MP3 (audio)", "flac": "FLAC (lossless audio)",
+                "m4a": "M4A (Apple / AAC audio)",
                 "pdf": "PDF (documents)", "ooxml": "Word (.docx)",
                 "mp4": "MP4 (video)", "heic": "HEIC (iPhone photos)",
                 "raw": "Camera RAW"}
@@ -157,6 +159,7 @@ class Run:
     cases: list[Case] = field(default_factory=list)
     legs: list[str] = field(default_factory=list)
     coverage: dict | None = None
+    coverage_gate: dict | None = None
     lint: list | None = None
     evidence: dict | None = None
     stages: dict = field(default_factory=dict)
@@ -612,6 +615,29 @@ def section_coverage(run: Run) -> str:
         + (f", across Python {', '.join(run.legs)}." if len(run.legs) > 1 else "."),
     ]
 
+    gate = run.coverage_gate
+    if gate:
+        head += [
+            "",
+            f"Of the code the tests actually reach, **{gate['gated_percent']:.1f}%** "
+            f"is covered — that is the number the build is held to "
+            f"(floor {gate['floor']:.0f}%).",
+        ]
+        untouched = gate.get("untouched_files") or []
+        if untouched:
+            rows = ["| Not reached by any test | Lines |", "|---|--:|"]
+            rows += [f"| `{u['path']}` | {u['statements']} |" for u in untouched]
+            head += [
+                "",
+                f"> ⚠️ **{len(untouched)} file(s) — {gate['untouched_statements']} "
+                "lines — have no test at all yet.** These are new parts still "
+                "being built. They are deliberately left out of the pass mark "
+                "so that starting a new feature does not fail the build, but "
+                "they are listed here rather than quietly ignored.",
+                "",
+                details("<b>Which parts are not tested yet</b>", "\n".join(rows)),
+            ]
+
     files = cov.get("files", {})
     if files:
         rows = ["| Part of the tool | Covered | |", "|---|--:|---|"]
@@ -1018,6 +1044,7 @@ def build_run(args) -> Run:
         cases=cases,
         legs=legs,
         coverage=load_json(args.coverage_json),
+        coverage_gate=load_json(args.coverage_gate_json),
         lint=load_json(args.lint_json) if args.lint_json else None,
         evidence=load_json(args.evidence_json),
         stages=stages,
@@ -1038,6 +1065,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--junit", nargs="*", default=["pytest-results.xml"],
                     help="JUnit XML files, globs, or directories to search")
     ap.add_argument("--coverage-json", default=None)
+    ap.add_argument("--coverage-gate-json", default=None,
+                    help="output of scripts/coverage_gate.py")
     ap.add_argument("--lint-json", default=None)
     ap.add_argument("--evidence-json", default=None)
     ap.add_argument("--stage", action="append", default=[],

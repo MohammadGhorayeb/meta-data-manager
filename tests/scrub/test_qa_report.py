@@ -281,6 +281,25 @@ def test_slowest_checks_lists_each_check_once_not_once_per_version(tmp_path):
     assert md.count("|\n") - 2 == 3 or md.count("s |") == 3
 
 
+def test_untested_files_are_named_in_the_report_not_just_excluded():
+    """Scaffolding is excluded from the pass mark so that starting a feature
+    does not fail the build — but excluded must never mean invisible."""
+    run = _run(
+        coverage={"totals": {"percent_covered": 70.2, "covered_lines": 1318,
+                             "num_statements": 1771}, "files": {}},
+        coverage_gate={"gated_percent": 84.8, "overall_percent": 70.2,
+                       "floor": 82, "passed": True, "exercised_files": 26,
+                       "untouched_statements": 131,
+                       "untouched_files": [
+                           {"path": "src/scrub/standards/isobmff.py",
+                            "statements": 131}]})
+    md = qr.section_coverage(run)
+    assert "84.8%" in md and "floor 82%" in md
+    assert "src/scrub/standards/isobmff.py" in md
+    assert "131" in md
+    assert "have no test at all yet" in md
+
+
 def test_empty_run_still_renders_a_report():
     md = qr.render_full(_run())
     assert qr.MARKER in md
