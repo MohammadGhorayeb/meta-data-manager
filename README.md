@@ -43,7 +43,7 @@ Depth-first **by dependency, not popularity** — leaf formats before the contai
 
 ## Near-future goals
 Images are done + benchmarked ([`docs/benchmark.md`](docs/benchmark.md)), and **Phase 2 audio is closed**: **MP3** (tag strip + canonical re-encode with cross-engine A2 evidence), **FLAC** (lossless A2, bit-identical audio) and **M4A** (ISOBMFF box surgery with sample-table patching — the format MAT2 refuses). Its ledger of what audio can and cannot be made anonymous — six solved results, four structural limits, four gaps named rather than glossed — is at the end of [`docs/p2_audio_plan.md`](docs/p2_audio_plan.md). Next:
-- **Phase 3 — documents (PDF, then OOXML/Word):** the RSID problem and PDF incremental-update history.
+- **Phase 3 — documents (PDF, then OOXML/Word)** is open: the plan is [`docs/p3_documents_plan.md`](docs/p3_documents_plan.md). Two named targets — PDF **incremental-update history** (old revisions left in the file: the famous redaction-disclosure mode) and **OOXML RSIDs**, which survive every surveyed tool including MAT2. The A2-at-F2 frontier for PDF is the open research question, to be characterised rather than asserted.
 - **Optional:** the JPEG E4 residual bound (primary-quantization trace after F3).
 
 ## Far-future goals
@@ -62,6 +62,8 @@ docs/
   limits.md                Every known limit in plain words — source of truth for the CI report
   implementation_plan.md   Phased build plan
   p1_images_plan.md        Phase 1 (images) work items, experiments, milestones
+  p2_audio_plan.md         Phase 2 (audio) plan + closing ledger: solved vs cannot
+  p3_documents_plan.md     Phase 3 (documents) plan — PDF then OOXML
   p1_report.pdf            Plain-language progress & testing report
 tests/
   harness/                 Phase 0 differential-testing harness + format plugins
