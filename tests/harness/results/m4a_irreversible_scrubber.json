@@ -5,7 +5,7 @@
     "version": "0.1.0-p2",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-08-02T19:08:27.719027+00:00",
+  "generated_at": "2026-08-03T18:45:10.318260+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -50,12 +50,12 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:moov_before_mdat",
+            "feature_id": "struct:audio_digest",
             "annotated_as": null,
             "hex_context": null
           },
           "correlates_with": "producer (across 2)",
-          "evidence": "struct:moov_before_mdat constant within producer, differs across"
+          "evidence": "struct:audio_digest constant within producer, differs across"
         },
         {
           "kind": "source_fingerprint",
@@ -76,12 +76,12 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:audio_digest",
+            "feature_id": "struct:moov_before_mdat",
             "annotated_as": null,
             "hex_context": null
           },
           "correlates_with": "producer (across 2)",
-          "evidence": "struct:audio_digest constant within producer, differs across"
+          "evidence": "struct:moov_before_mdat constant within producer, differs across"
         },
         {
           "kind": "source_fingerprint",
@@ -136,7 +136,7 @@
       "adversary": "A2",
       "fidelity": "F3",
       "verdict": "fail",
-      "reason": "source fingerprint survives in the coded audio \u2014 but ONLY where the source's own first-generation encode differed (a 192 kbps original vs a 128 kbps one). Producers that encoded identical audio and differed only in muxing collapse to BYTE-IDENTICAL output here. What remains is the primary-encoding trace: re-encoding cannot undo what the first encoder already discarded, the audio analogue of Sorell's primary-quantization residual in JPEG. Measuring whether that trace actually identifies a producer needs an audio-space classifier (the MP3 E-ENGINE treatment), which M4A does not have yet \u2014 so it is recorded as an open residual, not a pass. Features: struct:audio_digest, struct:size",
+      "reason": "source fingerprint survives in the coded audio \u2014 but ONLY where the source's own first-generation encode differed (a 192 kbps original vs a 128 kbps one). Producers that encoded identical audio and differed only in muxing collapse to BYTE-IDENTICAL output here. What remains is the primary-encoding trace: re-encoding cannot undo what the first encoder already discarded, the audio analogue of Sorell's primary-quantization residual in JPEG. Audio-space measurement (E-M4A-AUDIO): the source's own quality setting is recoverable from the sound at 0.88 on unscrubbed and copy-tier files and falls to chance after F3 (0.58 vs chance 0.50). Engine identity (ffmpeg AAC vs Apple AAC) is NOT separable even unscrubbed (0.67) \u2014 those two encoders are near-twins, so this corpus cannot answer the engine question either way. Scope: spectral features; MDCT-domain classifiers untested.. Features: struct:audio_digest, struct:size",
       "leaks": [
         {
           "kind": "source_fingerprint",

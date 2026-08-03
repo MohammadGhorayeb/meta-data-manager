@@ -10,7 +10,7 @@
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
 ## Status
-Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio complete** — MP3 (F1 + F3, cross-engine A2 evidence), FLAC (F1 + F2, lossless A2) and M4A (F1/F2/F3, the format MAT2 refuses). Fully implemented and measured, **228 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
+Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio complete** — MP3 (F1 + F3, cross-engine A2 evidence), FLAC (F1 + F2, lossless A2) and M4A (F1/F2/F3, the format MAT2 refuses). Fully implemented and measured, **242 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
 
 ### Results (measured, not assumed)
 | Format | A1 metadata (F1/F2/F3) | A2 fingerprint (F1/F2/F3) |
@@ -44,7 +44,7 @@ Depth-first **by dependency, not popularity** — leaf formats before the contai
 ## Near-future goals
 Images are done + benchmarked ([`docs/benchmark.md`](docs/benchmark.md)). **Phase 2 audio** now has **MP3** (F1 tag strip — ID3v1/v2, APEv2, Lyrics3, GPS-tagged album art, appended hitchhikers; F3 canonical re-encode with cross-engine A2 evidence) and **FLAC** (F1 bit-preserving block strip incl. the vendor string and out-of-spec ID3 prefixes; F2 lossless re-encode that erases the encoder's framing fingerprint with bit-identical audio). The phase plan is [`docs/p2_audio_plan.md`](docs/p2_audio_plan.md). Next:
 - **Phase 3 — documents (PDF, then OOXML/Word):** the RSID problem and PDF incremental-update history. Phase 2 is closed.
-- **M4A follow-ups:** an audio-space classifier (the E-ENGINE treatment) to settle whether the primary-encoding trace actually identifies a producer, and a benchmark row recording that MAT2 refuses the format outright.
+- **Phase 2 is closed.** Its ledger of what audio can and cannot be made anonymous — six solved results, four structural limits, four named gaps — is at the end of [`docs/p2_audio_plan.md`](docs/p2_audio_plan.md).
 - **Optional:** the JPEG E4 residual bound (primary-quantization trace after F3).
 
 ## Far-future goals

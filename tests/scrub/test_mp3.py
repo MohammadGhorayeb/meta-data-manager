@@ -203,3 +203,32 @@ def test_f3_content_preserved_perceptually(tmp_path):
     ncc = f3._best_ncc(f3._bandlimit(f3._pcm_mono(data)),
                        f3._bandlimit(f3._pcm_mono(scrubbed)))
     assert ncc >= f3.PERCEPTUAL_MIN_NCC
+
+
+@_needs_lame
+def test_perceptual_gate_accepts_noise_that_a_codec_restructures(tmp_path):
+    """The two-stage gate, from the side that motivated it.
+
+    AAC reproduces noise perceptually rather than sample-for-sample, so a re-encode
+    of noisy material scores 0.86-0.90 on waveform correlation while being inaudibly
+    identical — a waveform-only gate refuses cymbals, applause and rain. Stage 2
+    accepts it only when the signals are still strongly correlated AND their energy
+    envelopes match. Here: same audio must pass, and a DIFFERENT noise recording must
+    still be rejected, which is the case an envelope-only check would wave through.
+    """
+    from src.scrub.errors import ContentError
+    from src.scrub.standards import perceptual
+
+    a = str(tmp_path / "n1.mp3")
+    b = str(tmp_path / "n2.mp3")
+    for path, seed in ((a, 1), (b, 99)):
+        wav = str(tmp_path / f"w{seed}.wav")
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                        f"anoisesrc=duration=2:color=pink:seed={seed}:amplitude=0.6",
+                        "-ac", "2", "-ar", "44100", wav], check=True)
+        subprocess.run(["lame", "--quiet", "-V", "2", wav, path], check=True)
+
+    data = open(a, "rb").read()
+    perceptual.check(data, f3.scrub(data), 44100)          # same audio: passes
+    with pytest.raises(ContentError):                       # different noise: rejected
+        perceptual.check(data, open(b, "rb").read(), 44100)

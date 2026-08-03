@@ -54,4 +54,18 @@ def test_a2_at_f3_records_the_collapse_and_the_residual(doc):
     reason = _cell(doc, "A2", "F3")["reason"]
     assert "BYTE-IDENTICAL" in reason
     assert "primary-encoding trace" in reason
-    assert "not a pass" in reason, "an unmeasured residual must not read as measured"
+
+
+def test_a2_at_f3_carries_the_audio_space_measurement(doc):
+    """The container channel cannot say whether the surviving trace is *recoverable*,
+    so the cell must carry the audio-space result — or say plainly that it was not
+    measured. Silence would read as "clean", which is the overclaim this project
+    exists to avoid."""
+    from tests.scrub import e_m4a_audio
+    reason = _cell(doc, "A2", "F3")["reason"]
+    if e_m4a_audio.have_second_engine():
+        assert "E-M4A-AUDIO" in reason
+        assert "chance" in reason
+        assert "MDCT-domain classifiers untested" in reason, "scope must be stated"
+    else:
+        assert "NOT measured" in reason

@@ -17,8 +17,53 @@ _Comparison against the tools the field already uses (W9). Findings were reprodu
 | Measured (adversary × fidelity) guarantee matrix | ✅ | ❌ | ❌ | ❌ |
 | Differential-test verified · fails closed | ✅ | ❌ | ❌ | ❌ |
 | Documents impossible residuals honestly (PRNU) | ✅ | ❌ | ❌ | ❌ |
+| **Handles M4A audio at all** | ✅ F1/F2/F3 | ⚠️ tags only | ❌ **refuses the format** | n/a |
+| **Clears a FLAC APPLICATION block** (arbitrary third-party payload) | ✅ | ⚠️ not by default | ❌ **leaves it intact** | n/a |
+| Removes the FLAC vendor string (names the encoder) | ✅ | ⚠️ manual | ❌ leaves it | n/a |
+| **Lossless *and* untraceable (FLAC)** | ✅ F2 | ❌ | ❌ | n/a |
+| Erases the audio encoder fingerprint, measured cross-engine | ✅ MP3 F3 | ❌ | ❌ | n/a |
 
 **The one-line takeaway:** every tool deletes tags. Only ours lets you keep the picture *pixel-perfect* when you want fidelity, become *untraceable* when you want anonymity, and backs both with a measured, verified matrix.
+
+
+### Audio: where the other tools stop
+
+Measured with **MAT2 0.14.0** on this project's own torture corpus
+(`tests/scrub/m4a_corpus.py`, `tests/scrub/flac_corpus.py`), reproduced with
+`mat2 --inplace <file>`.
+
+**M4A — MAT2 refuses it outright**: `bm.m4a's format (audio/mp4a-latm) is not
+supported`. Not a weaker clean — no clean at all, so a user handed an `.m4a` gets
+nothing back.
+
+ExifTool does accept it and removes every planted tag — but running
+`exiftool -all= ` on the same file leaves, measured with our own residual check:
+
+| Survivor | What it is |
+|---|---|
+| `mvhd` / `tkhd` / `mdhd` creation + modification times | **when the file was made** — structural fields, not tags, so a tag-oriented pass does not touch them |
+| a `free` box | dead space that can hold arbitrary bytes, and whose size is a muxer tell |
+
+Ours removes both, patches the sample tables so the audio still decodes once the
+metadata is cut out, and normalises the muxer layout losslessly at F2.
+
+**FLAC — MAT2 accepts it but leaves two things behind.** On a file carrying an
+`APPLICATION` block, cover art, Vorbis tags and an ID3v2 prefix, MAT2's output still
+contained:
+
+| Survivor | What it is |
+|---|---|
+| `MOEX` + `app-hidden-SECRET` | the **APPLICATION block payload** — arbitrary third-party data, passed straight through |
+| `Lavf62.12.101` | the **vendor string**, which names the encoder that made the file |
+
+Our F1 and F2 outputs contained none of the planted secrets. The APPLICATION block is
+the more serious of the two: it is a general-purpose container that any application
+may write anything into, so leaving it intact means a privacy tool has forwarded
+data it never inspected.
+
+FLAC is also the audio headline for fidelity: **A2 with bit-identical audio**, the
+only lossless route to untraceability in the phase, matching what PNG does for
+images.
 
 ## Evidence 1 — content preservation (a normal JPEG)
 

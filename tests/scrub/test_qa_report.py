@@ -11,6 +11,7 @@ Companion to test_qa_report_limits.py, which guards the honest-limits section.
 from __future__ import annotations
 
 import os
+import re
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -177,6 +178,15 @@ def test_badge_urls_escape_the_characters_shields_io_reserves():
     assert "threat_model" in qr.badge("threat model", "x", "grey")
 
 
+def test_badge_urls_cannot_break_out_of_a_markdown_link():
+    """A bare ')' in the URL would end the link destination early. Balanced
+    parens happen to survive CommonMark; an unbalanced one would not."""
+    markdown = qr.badge("threat model", "medium-tier (A2)", "5f3dc4")
+    destination = markdown.split("](", 1)[1].removesuffix(")")
+    assert "(" not in destination and ")" not in destination
+    assert "%28A2%29" in destination
+
+
 def test_coverage_bar_is_proportional_and_fixed_width():
     assert qr.bar(0, 10) == "░" * 10
     assert qr.bar(100, 10) == "█" * 10
@@ -202,7 +212,7 @@ def test_test_stage_duration_is_wall_clock_not_summed_across_versions():
 
 def test_jargon_is_translated_for_a_non_technical_reader():
     assert qr.humanize("test_f3_normalizes_encoder_fingerprint").startswith(
-        "F3 (lossy re-encode)")
+        "Full rebuild")
     assert qr.humanize("test_a1_leak") == "The metadata snoop leak"
     assert qr.humanize("test_removes_gps[F1-case2]").endswith("GPS location")
 
@@ -240,14 +250,18 @@ def test_capability_table_never_promises_identical_and_untraceable_at_once():
     """A blanket "keeps the file identical: yes" next to "untraceable: yes"
     would read as *both, in one pass* — which is false wherever untraceability
     needs the lossy mode. Each promise must name the mode that delivers it."""
+    lossless = ("Light clean", "Deep clean")
     for c in qr.load_capabilities():
-        assert "in F" in c["keeps"] or c["keeps"].startswith("❌"), c
+        # Each promise must name the mode that delivers it, never a bare "yes".
+        assert c["keeps"].startswith("❌") or any(m in c["keeps"] for m in lossless), c
         if c["untraceable"].startswith("✅"):
-            assert "in F" in c["untraceable"], c
-            # If untraceability costs quality, it cannot be one of the modes
-            # that leave the file byte-identical.
+            assert any(m in c["untraceable"]
+                       for m in (*lossless, "Full rebuild")), c
+            # If untraceability costs quality it must be the rebuild, which is
+            # by definition not one of the modes that leave the file identical.
             if "tiny" in c["untraceable"]:
-                assert "F3" in c["untraceable"] and "F3" not in c["keeps"], c
+                assert "Full rebuild" in c["untraceable"], c
+                assert "Full rebuild" not in c["keeps"], c
     md = qr.section_capabilities(_run())
     assert "can need different modes" in md
 
@@ -298,6 +312,79 @@ def test_untested_files_are_named_in_the_report_not_just_excluded():
     assert "src/scrub/standards/isobmff.py" in md
     assert "131" in md
     assert "have no test at all yet" in md
+
+
+def test_per_format_story_comes_first_and_build_detail_after():
+    """The report leads with what the tool does per file type; how the build
+    itself went is secondary. Order is the whole point of this section."""
+    md = qr.render_full(_run(legs=["3.14"]))
+    formats = md.index("What the tool does with each kind of file")
+    build = md.index("How this build went")
+    assert formats < build
+    # Images first, then each audio format, then the roadmap.
+    order = [md.index(h) for h in ("🖼️ Images", "🎵 MP3 audio", "🎶 FLAC audio",
+                                   "🎬 M4A audio", "What is coming next")]
+    assert order == sorted(order), "format sections are out of build order"
+
+
+def test_each_format_states_what_works_and_what_does_not():
+    md = qr.section_formats(_run())
+    assert "**What works**" in md
+    assert "**What does not, yet**" in md
+    # JPEG needs the lossy mode; the report must name which one and its cost.
+    assert "erased by **Full rebuild**, for a tiny invisible amount" in md
+    # PNG gets there for free — the distinction readers actually care about.
+    assert "erased by **Deep clean**, at no cost to quality at all" in md
+
+
+def test_the_reader_facing_part_never_says_f1_f2_or_f3():
+    """"F1/F2/F3" is internal shorthand. A non-technical reader should never
+    have to learn it, so it appears in exactly one place: the glossary row that
+    maps the friendly names back to the codes for anyone reading the docs."""
+    reader_facing = "\n".join([
+        qr.section_formats(_run()),
+        qr.section_limits(*qr.load_limits()).split("Where the evidence lives")[0],
+    ])
+    assert not re.search(r"\bF[123]\b", reader_facing), \
+        "internal tier codes leaked into the plain-language part of the report"
+
+
+def test_the_technical_glossary_still_maps_the_codes():
+    """Jargon-free for readers, but someone cross-referencing the code or the
+    docs must still be able to line the two vocabularies up."""
+    md = qr.section_capabilities(_run())
+    assert "🟢 Light clean | `F1`" in md
+    assert "🔵 Deep clean | `F2`" in md
+    assert "🟠 Full rebuild | `F3`" in md
+
+
+def test_a_format_with_no_measured_win_is_not_dressed_up():
+    """M4A is not untraceable yet. The report must say so plainly rather than
+    letting the tag-removal pass imply the whole job is done."""
+    caps = {c["fmt"]: c for c in qr.load_capabilities()}
+    if "m4a" not in caps:
+        return
+    works, open_, solved = qr._verdict_lines(caps["m4a"])
+    assert solved == ""
+    assert any("not untraceable yet" in o for o in open_)
+    assert not any("Untraceable" in w for w in works)
+
+
+def test_every_published_format_has_a_plain_language_story():
+    """A format that publishes results but has no docs/formats.md block would
+    render measurements with no explanation — the report must flag that."""
+    stories = qr.load_format_stories()
+    published = {c["fmt"] for c in qr.load_capabilities()}
+    missing = published - set(stories)
+    assert not missing, (
+        f"no FORMAT block in docs/formats.md for: {', '.join(sorted(missing))}")
+
+
+def test_a_missing_format_story_is_reported_not_silently_skipped(monkeypatch):
+    monkeypatch.setattr(qr, "load_format_stories", dict)
+    md = qr.section_formats(_run())
+    assert "No plain-language explanation" in md
+    assert "docs/formats.md" in md
 
 
 def test_empty_run_still_renders_a_report():

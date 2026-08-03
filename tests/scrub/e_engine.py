@@ -163,9 +163,22 @@ def condition_features(paths: dict, fidelity: str, tmpdir: str,
     return feats
 
 
-def loco_accuracy(feats: dict, producers: list[str], contents: list[str]) -> dict:
-    """Leave-one-content-out nearest-centroid ENGINE classification."""
-    classes = engines(producers)
+def loco_accuracy(feats: dict, producers: list[str], contents: list[str],
+                  class_of=None) -> dict:
+    """Leave-one-content-out nearest-centroid ENGINE classification.
+
+    `class_of` maps a producer to its engine class; it defaults to this module's MP3
+    peer set. It is a parameter so the same adversary simulation can be pointed at
+    another format's producers — M4A reuses it verbatim rather than growing a second,
+    subtly different copy of the classifier.
+    """
+    if class_of is None:
+        def class_of(p):
+            return PRODUCERS[p][0]
+    classes = []
+    for p in producers:
+        if class_of(p) not in classes:
+            classes.append(class_of(p))
     M = np.array([feats[k] for k in feats])
     mu, sd = M.mean(axis=0), M.std(axis=0) + 1e-12
     z = {k: (v - mu) / sd for k, v in feats.items()}
@@ -175,11 +188,11 @@ def loco_accuracy(feats: dict, producers: list[str], contents: list[str]) -> dic
         train = [c for c in contents if c != held]
         centroids = {}
         for e in classes:
-            vecs = [z[(p, c)] for p in producers if PRODUCERS[p][0] == e
+            vecs = [z[(p, c)] for p in producers if class_of(p) == e
                     for c in train]
             centroids[e] = np.mean(vecs, axis=0)
         for p in producers:
-            true_e = PRODUCERS[p][0]
+            true_e = class_of(p)
             v = z[(p, held)]
             pred = min(classes, key=lambda e: np.linalg.norm(v - centroids[e]))
             confusion[(true_e, pred)] = confusion.get((true_e, pred), 0) + 1

@@ -130,9 +130,13 @@ def residuals(data: bytes) -> list[str]:
                 stamps = box.payload[4:4 + width * 2]
                 if stamps.strip(b"\x00"):
                     out.append(f"{box.type.decode('latin-1')} timestamps survived")
-    # Defense in depth: iTunes atom names and art magics must not appear anywhere.
+    # Defense in depth: iTunes atom names and art magics must not survive. Scanned
+    # over the METADATA region only, never the audio payload — coded AAC is dense
+    # binary and contains short markers like JPEG's `FF D8 FF` by pure chance, so a
+    # whole-file scan reports art in every clean file it is handed.
+    meta_only = b"".join(iso.serialize([b]) for b in boxes if b.type != b"mdat")
     for magic, label in ((b"\xa9nam", "iTunes title atom"), (b"\xa9ART", "artist atom"),
                          (b"covr", "cover art atom"), (b"\xff\xd8\xff", "JPEG art")):
-        if magic in data:
-            out.append(f"{label} present in output")
+        if magic in meta_only:
+            out.append(f"{label} present in the metadata region")
     return out

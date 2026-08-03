@@ -85,8 +85,8 @@ _MATCH_ORDER = ["irreversibility", "fingerprint", "content", "tooling",
 # Jargon -> everyday words, used to turn a test's function name into a sentence
 # a non-technical reader can follow.
 GLOSSARY = {
-    "f1": "F1 (bit-preserving mode)", "f2": "F2 (lossless re-encode)",
-    "f3": "F3 (lossy re-encode)", "a1": "the metadata snoop",
+    "f1": "light clean", "f2": "deep clean", "f3": "full rebuild",
+    "a1": "the metadata snoop",
     "a2": "the fingerprint snoop", "a3": "the original-copy snoop",
     "dqt": "JPEG compression table", "exif": "EXIF camera data",
     "xmp": "XMP metadata", "iptc": "IPTC caption data",
@@ -119,6 +119,39 @@ FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
                 "pdf": "PDF (documents)", "ooxml": "Word (.docx)",
                 "mp4": "MP4 (video)", "heic": "HEIC (iPhone photos)",
                 "raw": "Camera RAW"}
+
+# The three cleaning strengths, in words a reader can act on. "F1/F2/F3" is the
+# project's internal shorthand and stays in the technical docs; nobody outside
+# should have to learn it to read this report. The code is kept alongside each
+# name once, in the glossary, so the two can still be matched up.
+FIDELITY_TIERS = [
+    ("F1", "🟢", "Light clean",
+     "Nothing at all — the picture or sound is left byte-for-byte identical.",
+     "Strip out every hidden tag and leave everything else exactly as it was."),
+    ("F2", "🔵", "Deep clean",
+     "Nothing at all — rebuilt from scratch, still perfectly identical.",
+     "Strip the tags *and* rebuild how the file is packed, without losing a "
+     "thing. For some file types this is enough to erase the maker's "
+     "fingerprint too — the best of both worlds."),
+    ("F3", "🟠", "Full rebuild",
+     "A tiny, invisible amount.",
+     "Remake the file from scratch through one standard encoder, so every file "
+     "the tool produces looks the same to a forensic examiner. The only way to "
+     "erase a fingerprint that is baked into the content itself."),
+]
+
+FIDELITY_NAME = {code: f"{icon} {name}"
+                 for code, icon, name, _, _ in FIDELITY_TIERS}
+FIDELITY_PLAIN = {code: name for code, _, name, _, _ in FIDELITY_TIERS}
+
+
+def fidelity_list(codes: list[str]) -> str:
+    """'F1', 'F3' -> 'Light clean and Full rebuild'."""
+    names = [FIDELITY_PLAIN.get(c, c) for c in codes]
+    if len(names) > 1:
+        return ", ".join(names[:-1]) + " and " + names[-1]
+    return names[0] if names else ""
+
 
 # Every stage of the pipeline, with what it checks said without jargon.
 STAGES = [
@@ -313,6 +346,46 @@ def load_limits() -> tuple[str, str]:
     return _extract_block(text, "LIMITS"), _extract_block(text, "RESIDUALS")
 
 
+def load_format_stories() -> dict[str, str]:
+    """Per-format plain-language stories, read from docs/formats.md.
+
+    Same contract as load_limits(): the prose lives in one document, the
+    verdicts beside it are read from the measured matrices. If the two ever
+    disagree, the matrix is right — see the header of docs/formats.md.
+    """
+    path = os.path.join(REPO, "docs", "formats.md")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    return {fmt: block for fmt, _ in ROADMAP
+            if (block := _extract_block(text, f"FORMAT:{fmt}"))}
+
+
+# How the per-format part of the report is grouped and ordered. Images are one
+# unit because they share a story; each audio format gets its own because their
+# outcomes genuinely differ.
+FORMAT_GROUPS = [
+    ("Images", "🖼️", ["jpeg", "png"]),
+    ("MP3 audio", "🎵", ["mp3"]),
+    ("FLAC audio", "🎶", ["flac"]),
+    ("M4A audio", "🎬", ["m4a"]),
+    ("Documents", "📄", ["pdf", "ooxml"]),
+    ("Video and camera", "📷", ["mp4", "heic", "raw"]),
+]
+
+# Which tests belong to which format, for the per-format check counts. Specific
+# formats are matched before JPEG, whose tests are named after the fidelity
+# tiers (test_f1/f2/f3) rather than the format.
+FORMAT_TEST_PATTERNS = [
+    ("png", ["png"]),
+    ("mp3", ["mp3", "e_lame", "e_engine"]),
+    ("flac", ["flac"]),
+    ("m4a", ["m4a", "isobmff"]),
+    ("jpeg", ["jpeg", "test_f1", "test_f2", "test_f3", "segment", "dqt", "e3"]),
+]
+
+
 def load_capabilities() -> list[dict]:
     """Per-format capability rows, derived from the Pareto matrices on disk."""
     rows = []
@@ -333,14 +406,15 @@ def load_capabilities() -> list[dict]:
         # file and untraceability in the same row would promise something this
         # tool cannot do in one pass.
         lossless = [f for f in ("F1", "F2") if a1[f] == "pass"]
-        keeps = f"✅ Yes — in {' and '.join(lossless)}" if lossless else "❌ Not yet"
+        keeps = (f"✅ Yes — with {fidelity_list(lossless)}" if lossless
+                 else "❌ Not yet")
 
         untraceable = "❌ Not yet"
         for f in ("F1", "F2", "F3"):
             if a2[f] == "pass":
                 cost = ("no quality loss" if f in ("F1", "F2")
                         else "a tiny, invisible quality cost")
-                untraceable = f"✅ Yes — in {f}, {cost}"
+                untraceable = f"✅ Yes — with {FIDELITY_PLAIN[f]}, {cost}"
                 break
         rows.append({"fmt": fmt, "label": FORMAT_LABEL.get(fmt, fmt.upper()),
                      "removes": removes, "keeps": keeps,
@@ -383,8 +457,13 @@ def badge(label: str, message: str, colour: str, style: str = "flat-square",
         # shields.io: `%` must be percent-encoded first, then `-`/`_`/space are
         # escaped by doubling. Order matters — encoding `%` last would mangle
         # the `%25` this step just produced.
-        return (str(s).replace("%", "%25").replace("-", "--")
-                .replace("_", "__").replace(" ", "_"))
+        #
+        # Parentheses are encoded too. They are legal in a Markdown link
+        # destination only while balanced, so a value like "medium-tier (A2)"
+        # renders today but breaks the moment someone writes an unmatched one.
+        return (str(s).replace("%", "%25")
+                .replace("(", "%28").replace(")", "%29")
+                .replace("-", "--").replace("_", "__").replace(" ", "_"))
     url = (f"https://img.shields.io/badge/{esc(label)}-{esc(message)}-"
            f"{colour}?style={style}")
     if logo:
@@ -763,6 +842,146 @@ def section_lint(run: Run) -> str:
             + details("<b>Breakdown by rule</b>", "\n".join(rows)))
 
 
+def _format_checks(run: Run, fmt: str) -> tuple[int, int]:
+    """(passed, failed) checks attributable to one format."""
+    passed = failed = 0
+    for c in run.cases:
+        nid = c.nodeid.lower()
+        for key, pats in FORMAT_TEST_PATTERNS:
+            if any(p in nid for p in pats):
+                if key == fmt:
+                    if c.status == "pass":
+                        passed += 1
+                    elif c.status == "fail":
+                        failed += 1
+                break
+    return passed, failed
+
+
+def _verdict_lines(cap: dict) -> tuple[list[str], list[str], str]:
+    """(what works, what does not, the mode that makes it untraceable)."""
+    works, open_ = [], []
+    cost = {"F1": ", and the file is left completely untouched",
+            "F2": ", at no cost to quality at all",
+            "F3": ", for a tiny invisible amount of quality"}
+
+    a1_pass = [f for f in ("F1", "F2", "F3") if cap["a1"][f] == "pass"]
+    if a1_pass:
+        works.append("**Every hidden tag is removed** — using "
+                     + fidelity_list(a1_pass) + ".")
+    else:
+        open_.append("Hidden tags are **not** fully removed yet.")
+
+    solved_at = next((f for f in ("F1", "F2", "F3") if cap["a2"][f] == "pass"), None)
+    if solved_at:
+        works.append("**Nobody can tell who made it** — the maker's fingerprint "
+                     f"is erased by **{FIDELITY_PLAIN[solved_at]}**"
+                     f"{cost[solved_at]}.")
+    a2_fail = [f for f in ("F1", "F2", "F3") if cap["a2"][f] == "fail"]
+    if a2_fail and solved_at:
+        verb = "leave" if len(a2_fail) > 1 else "leaves"
+        open_.append(f"{fidelity_list(a2_fail)} {verb} that fingerprint in "
+                     f"place — which is exactly why **{FIDELITY_PLAIN[solved_at]}** "
+                     "exists.")
+    elif a2_fail:
+        open_.append("The maker's fingerprint **survives every mode** — this "
+                     "file type is not untraceable yet.")
+    return works, open_, solved_at or ""
+
+
+def _format_mode_table(cap: dict) -> str:
+    """One row per cleaning mode — far easier to read than a cramped grid."""
+    rows = ["| Cleaning mode | Hidden tags removed | Nobody can tell who made it "
+            "| What it costs you |", "|---|:--:|:--:|---|"]
+    for code, ic, name, cost, _ in FIDELITY_TIERS:
+        a1, a2 = cap["a1"][code], cap["a2"][code]
+        if a1 == "not_applicable" and a2 == "not_applicable":
+            rows.append(f"| {ic} **{name}** | — | — | "
+                        "*Not needed for this kind of file* |")
+            continue
+        mark = {"pass": "✅", "fail": "❌", "not_applicable": "—",
+                "not_tested": "·", None: "·"}
+        rows.append(f"| {ic} **{name}** | {mark.get(a1)} | {mark.get(a2)} | {cost} |")
+    return "\n".join(rows)
+
+
+def section_formats(run: Run) -> str:
+    """The per-format story: what works, what does not, and what we did.
+
+    Verdicts come from the measured matrices; the prose comes from
+    docs/formats.md. Neither can silently go stale.
+    """
+    caps = {c["fmt"]: c for c in load_capabilities()}
+    stories = load_format_stories()
+    if not caps:
+        return ""
+
+    glossary = ["Every file can be cleaned three ways. They differ in how hard "
+                "the tool works — and in whether you give up any quality.", ""]
+    for _, ic, name, cost, what in FIDELITY_TIERS:
+        glossary.append(f"- {ic} **{name}** — {what} **Costs you:** {cost}")
+    glossary += [
+        "",
+        "Two different things can be hidden in a file, and they need different "
+        "amounts of work:",
+        "",
+        "- **Hidden tags** are the obvious ones — where a photo was taken, "
+        "which phone took it, when, the little preview image, comments. Every "
+        "mode removes these.",
+        "- **The maker's fingerprint** is not a tag at all. It is the tell-tale "
+        "way a particular app or device squeezes a file, like recognising a "
+        "typewriter from the dents it leaves. That is what needs the stronger "
+        "modes.",
+    ]
+
+    out = ["# 📂 What the tool does with each kind of file", "",
+           "*One section per file type: what works, what does not, and what we "
+           "did about it. Every tick and cross below is read from a real "
+           "measurement taken by this build — not from a list kept by hand.*",
+           "",
+           details("📖 <b>First time here? The three cleaning modes, in one "
+                   "minute</b>", "\n".join(glossary), open_=True)]
+
+    covered: list[str] = []
+    for title, ic, fmts in FORMAT_GROUPS:
+        present = [f for f in fmts if f in caps]
+        if not present:
+            continue
+        covered += present
+        out += ["", "---", "", f"## {ic} {title}"]
+
+        for f in present:
+            c = caps[f]
+            works, open_, _ = _verdict_lines(c)
+            passed, bad = _format_checks(run, f)
+            checks = (f"❌ {bad} of {passed + bad} checks failed" if bad
+                      else f"✅ all {passed} checks passed")
+            body = [f"### {c['label']}"] if len(present) > 1 else []
+            body += ["", _format_mode_table(c), "", f"*{checks} for this file "
+                     "type in this build.*"]
+            if works:
+                body += ["", "**What works**", ""] + [f"- {w}" for w in works]
+            if open_:
+                body += ["", "**What does not, yet**", ""] + [f"- {o}" for o in open_]
+            story = stories.get(f)
+            if story:
+                body += ["", "**In plain words**", "", story]
+            else:
+                body += ["", "> ⚠️ No plain-language explanation for this format "
+                         f"in `docs/formats.md` (missing a `FORMAT:{f}` block). "
+                         "The measurements above stand; the explanation is "
+                         "absent, not empty."]
+            out += ["", "\n".join(body)]
+
+    planned = [label for fmt, label in ROADMAP if fmt not in covered]
+    if planned:
+        out += ["", "---", "", "## 🔜 What is coming next", "",
+                "Built on the same tested foundation, in this order — each one "
+                "ships only once its own measurements pass:", "",
+                "\n".join(f"{i}. {label}" for i, label in enumerate(planned, 1))]
+    return "\n".join(out)
+
+
 def section_capabilities(run: Run) -> str:
     caps = load_capabilities()
     if not caps:
@@ -772,7 +991,7 @@ def section_capabilities(run: Run) -> str:
     rows += [f"| **{c['label']}** | {c['removes']} | {c['keeps']} | "
              f"{c['untraceable']} |" for c in caps]
 
-    grid = ["| Format | Snoop | Bit-preserving (F1) | Lossless (F2) | Lossy (F3) |",
+    grid = ["| Format | Snoop | 🟢 Light clean | 🔵 Deep clean | 🟠 Full rebuild |",
             "|---|---|:--:|:--:|:--:|"]
     mark = {"pass": "✅ beaten", "fail": "❌ still traceable",
             "not_applicable": "— n/a", "not_tested": "· not measured"}
@@ -806,15 +1025,16 @@ def section_capabilities(run: Run) -> str:
             "app or device made the file from *how* the file was compressed — "
             "like recognising a typewriter from the dents it leaves in paper.",
             "",
-            "**The three cleaning strengths**",
+            "**If you are reading the technical documents too**",
             "",
-            "- **F1 — bit-preserving:** delete every tag; the picture or audio "
-            "data is left byte-for-byte untouched. No quality cost.",
-            "- **F2 — lossless re-encode:** delete every tag *and* repack the "
-            "compression. Still perfect quality.",
-            "- **F3 — lossy re-encode:** re-compress through one standard "
-            "encoder so every file comes out looking the same to a forensic "
-            "tool. Tiny, invisible quality cost.",
+            "They use short codes for the three modes. Same things, shorter "
+            "names:",
+            "",
+            "| In this report | In the code and docs |",
+            "|---|---|",
+            "| 🟢 Light clean | `F1` — bit-preserving |",
+            "| 🔵 Deep clean | `F2` — lossless re-encode |",
+            "| 🟠 Full rebuild | `F3` — lossy re-encode |",
         ])),
     ])
 
@@ -911,6 +1131,20 @@ def section_flow(run: Run) -> str:
                       run.flow, open_=True))
 
 
+def section_build_divider(run: Run) -> str:
+    """Marks the shift from 'what the tool does' to 'how this build went'."""
+    if run.ok():
+        note = ("Everything below is about **this build** rather than the tool "
+                "itself — which checks ran, how long they took, and how much of "
+                "the code they touched. It all passed; read on only if you want "
+                "the detail.")
+    else:
+        note = ("Everything below is about **this build** rather than the tool "
+                "itself. **Something failed here** — start with the diagram to "
+                "see where.")
+    return f"# 🏗️ How this build went\n\n{note}"
+
+
 def section_footer(run: Run) -> str:
     m = run.meta
     parts = [f"Commit <code>{(m.get('commit') or 'local')[:7]}</code>",
@@ -930,18 +1164,24 @@ def section_footer(run: Run) -> str:
 def render_full(run: Run) -> str:
     limits, residuals = load_limits()
     sections = [
+        # The verdict, then straight into the per-format story — that is what
+        # a reader actually came for. The machinery of the build (which stage
+        # ran where, coverage, timings) sits underneath it.
         section_header(run),
+        section_formats(run),
+        section_limits(limits, residuals, run),
+        section_evidence(run),
+        section_flow(run),
+        # --- how this build itself went ---
+        section_build_divider(run),
         section_flow_diagram(run),
         section_stage_table(run),
         section_failures(run),
         section_coverage(run),
         section_areas(run),
-        section_evidence(run),
         section_capabilities(run),
-        section_limits(limits, residuals, run),
         section_lint(run),
         section_slowest(run),
-        section_flow(run),
         section_footer(run),
     ]
     return MARKER + "\n" + "\n\n---\n\n".join(s for s in sections if s.strip()) + "\n"

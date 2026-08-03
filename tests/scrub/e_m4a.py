@@ -84,7 +84,7 @@ def same_audio_collapse(fidelity: str, sources: dict, tmpdir: str) -> bool:
     return len(digests) == 1
 
 
-def evaluate_cell(fidelity: str, sources: dict, tmpdir: str):
+def evaluate_cell(fidelity: str, sources: dict, tmpdir: str, audio_note: str = ""):
     from tests.harness.contract import Cell, Leak, Locus, V
     r = run_condition(fidelity, sources, tmpdir)
     if r["muxer_fail"] or r["encoder_fail"]:
@@ -105,10 +105,10 @@ def evaluate_cell(fidelity: str, sources: dict, tmpdir: str):
                     "in muxing collapse to BYTE-IDENTICAL output here. What remains "
                     "is the primary-encoding trace: re-encoding cannot undo what the "
                     "first encoder already discarded, the audio analogue of Sorell's "
-                    "primary-quantization residual in JPEG. Measuring whether that "
-                    "trace actually identifies a producer needs an audio-space "
-                    "classifier (the MP3 E-ENGINE treatment), which M4A does not "
-                    "have yet — so it is recorded as an open residual, not a pass")
+                    "primary-quantization residual in JPEG"
+                    + (". " + audio_note if audio_note else
+                       ". Whether that trace identifies a producer is unmeasured "
+                       "here — recorded as an open residual, not a pass"))
             else:
                 which.append("the coded audio — the AAC encoder's own fingerprint, "
                              "which a stream copy preserves by definition; reaching "

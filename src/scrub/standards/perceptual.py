@@ -32,6 +32,13 @@ GATE_BAND_HZ = 16000
 # A faithful re-encode sits at ~0.999+; gross corruption or a swapped file is far
 # below. Unrelated audio measures ~0.000.
 DEFAULT_MIN_NCC = 0.99
+# Stage-2 fallback thresholds (see `check`). The floor is far above what unrelated
+# audio scores (~0.00) and comfortably below the worst legitimate case measured on
+# this project's corpus (white noise through AAC, 0.85), so it separates "the same
+# recording, restructured inaudibly" from "a different recording" without being
+# tuned to any one file.
+WAVEFORM_FLOOR = 0.75
+MIN_ENVELOPE = 0.99
 
 
 def pcm_mono(data: bytes, ffmpeg: str = "ffmpeg"):
@@ -77,11 +84,17 @@ def bandlimit(x, cutoff: int = GATE_BAND_HZ, fs: int = PCM_RATE):
 
 def best_ncc(a, b, maxlag: int = 3000, window: int = 200_000) -> float:
     """Best normalized cross-correlation over a small delay-alignment window."""
+    return best_ncc_lag(a, b, maxlag, window)[0]
+
+
+def best_ncc_lag(a, b, maxlag: int = 3000, window: int = 200_000):
+    """As best_ncc, but also returns the lag that achieved it, so a follow-up
+    measurement can compare the two signals already aligned."""
     import numpy as np
     n = min(len(a), len(b), window)
     if n < 2000:
-        return 0.0
-    best = -1.0
+        return 0.0, 0
+    best, best_lag = -1.0, 0
     for lag in range(-maxlag, maxlag + 1, 25):
         if lag >= 0:
             x, y = a[lag:lag + n], b[:n]
@@ -95,20 +108,96 @@ def best_ncc(a, b, maxlag: int = 3000, window: int = 200_000) -> float:
         if sx < 1e-6 or sy < 1e-6:
             continue
         c = float(np.mean((x2 - x2.mean()) * (y2 - y2.mean())) / (sx * sy))
-        best = max(best, c)
-    return best
+        if c > best:
+            best, best_lag = c, lag
+    return best, best_lag
+
+
+def _align(a, b, lag: int):
+    """Trim two signals to their overlapping region at the given lag."""
+    n = min(len(a), len(b))
+    if lag >= 0:
+        return a[lag:lag + n], b[:n]
+    return a[:n], b[-lag:-lag + n]
+
+
+def envelope_similarity(a, b, fs: int = PCM_RATE, bands: int = 24) -> float:
+    """Correlation of two signals' time-frequency ENERGY envelopes.
+
+    Why this exists: AAC does not reproduce noise waveforms, it reproduces their
+    perceptual character — so a re-encode of noisy material is inaudibly identical
+    while correlating poorly sample-by-sample. Measured on this project's own corpus:
+    white noise through AAC scores 0.86-0.90 on waveform correlation and is not
+    remotely damaged, where MP3 on the same material scores 0.998. A gate that only
+    looked at waveforms would refuse cymbals, applause, rain and breath — most real
+    music — as "diverged".
+
+    This measures what a listener actually hears: how energy is distributed across
+    frequency and time. It is deliberately used only as a SECOND opinion, never
+    alone, because two different noise recordings have similar envelopes while being
+    entirely different audio — see `check`.
+    """
+    import numpy as np
+    frame, hop = 4096, 2048
+    n = min(len(a), len(b))
+    if n < frame * 4:
+        return 0.0
+    a, b = a[:n], b[:n]
+    win = np.hanning(frame)
+    edges = np.linspace(0, frame // 2 + 1, bands + 1).astype(int)
+
+    def env(x):
+        rows = []
+        for start in range(0, n - frame, hop):
+            spec = np.abs(np.fft.rfft(x[start:start + frame] * win))
+            rows.append([spec[lo:hi].sum() if hi > lo else 0.0
+                         for lo, hi in zip(edges[:-1], edges[1:], strict=True)])
+        return np.log10(np.array(rows) + 1e-12)
+
+    ea, eb = env(a).ravel(), env(b).ravel()
+    if ea.size == 0 or ea.std() < 1e-9 or eb.std() < 1e-9:
+        return 0.0
+    return float(np.corrcoef(ea, eb)[0, 1])
 
 
 def check(original: bytes, scrubbed: bytes, source_rate: int = PCM_RATE,
           min_ncc: float = DEFAULT_MIN_NCC, ffmpeg: str = "ffmpeg",
           label: str = "re-encode") -> float:
-    """Raise ContentError unless the scrubbed audio matches within the audible band.
-    Returns the score so callers can record it."""
+    """Raise ContentError unless the scrubbed audio still sounds like the original.
+
+    Two stages, and the second one exists because waveform correlation alone is the
+    wrong question for codecs that reproduce noise perceptually rather than
+    sample-for-sample (AAC does; MP3 largely does not):
+
+      1. Waveform correlation in the audible band. Passes outright at `min_ncc` —
+         this is the normal case and the strictest evidence.
+      2. If that falls short, the signals must STILL be strongly correlated
+         (`WAVEFORM_FLOOR` — proof it is the same recording, not merely similar
+         material) AND their time-frequency energy envelopes must match
+         (`MIN_ENVELOPE` — proof the difference is inaudible restructuring).
+
+    Both conditions are required in stage 2, because either alone is forgeable:
+    envelopes alone would accept two different noise recordings, which correlate
+    near zero on the waveform; waveform alone rejects perfectly good AAC. Unrelated
+    audio fails both and is rejected, which the tests assert directly.
+
+    Returns the waveform score so callers can record it.
+    """
     band = gate_band(source_rate)
-    ncc = best_ncc(bandlimit(pcm_mono(original, ffmpeg), cutoff=band),
-                   bandlimit(pcm_mono(scrubbed, ffmpeg), cutoff=band))
-    if ncc < min_ncc:
-        raise ContentError(
-            f"{label} diverged perceptually: NCC {ncc:.4f} < {min_ncc} "
-            f"(compared below {band} Hz)")
-    return ncc
+    a = bandlimit(pcm_mono(original, ffmpeg), cutoff=band)
+    b = bandlimit(pcm_mono(scrubbed, ffmpeg), cutoff=band)
+    ncc, lag = best_ncc_lag(a, b)
+    if ncc >= min_ncc:
+        return ncc
+
+    env = 0.0
+    if ncc >= WAVEFORM_FLOOR:
+        env = envelope_similarity(*_align(a, b, lag))
+        if env >= MIN_ENVELOPE:
+            return ncc
+
+    raise ContentError(
+        f"{label} diverged perceptually: waveform NCC {ncc:.4f} < {min_ncc} "
+        f"and the fallback did not hold (needs NCC >= {WAVEFORM_FLOOR} with "
+        f"envelope >= {MIN_ENVELOPE}, got envelope {env:.4f}); "
+        f"compared below {band} Hz")

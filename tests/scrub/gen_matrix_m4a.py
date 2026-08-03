@@ -53,6 +53,37 @@ def _diverse(tmpdir, n=4):
     return paths
 
 
+def _audio_note(tmpdir: str) -> str:
+    """Settle the audio-space question the container channel cannot answer: after
+    F3, is the SOURCE's own encode still recoverable from the sound? Needs a second
+    AAC engine to be a fair peer set; without one the cell says so rather than
+    implying the question was answered."""
+    from tests.scrub import e_m4a_audio
+    if not e_m4a_audio.have_second_engine():
+        return ("Audio-space residual NOT measured here (needs a second AAC engine; "
+                "`aac_at` is macOS-only and no standard Linux ffmpeg ships one) — "
+                "see E-M4A-AUDIO.")
+    try:
+        r = e_m4a_audio.run(tmpdir=os.path.join(tmpdir, "e_audio"))
+    except Exception as exc:                      # never let an experiment break the matrix
+        return f"Audio-space residual not measured (E-M4A-AUDIO failed: {exc})."
+    if not e_m4a_audio.controls_valid(r):
+        return ("Audio-space result INCONCLUSIVE: the classifier could not recover "
+                "the source setting even from unscrubbed files, so its failure after "
+                "F3 proves nothing.")
+    raw, f3c = r["raw"], r["F3"]
+    eng = r["raw"]["engine"]
+    verdict = ("still recoverable" if f3c["recoverable"] else "falls to chance")
+    return (f"Audio-space measurement (E-M4A-AUDIO): the source's own quality "
+            f"setting is recoverable from the sound at {raw['accuracy']:.2f} on "
+            f"unscrubbed and copy-tier files and {verdict} after F3 "
+            f"({f3c['accuracy']:.2f} vs chance {f3c['chance']:.2f}). Engine identity "
+            f"(ffmpeg AAC vs Apple AAC) is NOT separable even unscrubbed "
+            f"({eng['accuracy']:.2f}) — those two encoders are near-twins, so this "
+            f"corpus cannot answer the engine question either way. Scope: spectral "
+            f"features; MDCT-domain classifiers untested.")
+
+
 def build_doc(tmpdir: str) -> dict:
     plugin = M4aPlugin()
     scrubber = _scrubber()
@@ -66,7 +97,8 @@ def build_doc(tmpdir: str) -> dict:
 
     sources = e_m4a.build_sources(tmpdir, repeats=3)
     for fid in ("F1", "F2", "F3"):
-        cells.append(e_m4a.evaluate_cell(fid, sources, tmpdir))
+        note = _audio_note(tmpdir) if fid == "F3" else ""
+        cells.append(e_m4a.evaluate_cell(fid, sources, tmpdir, audio_note=note))
 
     diverse = _diverse(tmpdir, n=4)
     gv, gsig = fingerprint_guard.evaluate(scrubber, plugin, diverse, "F1",
