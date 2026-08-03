@@ -26,8 +26,16 @@ from tests.scrub import m4a_corpus as mc
 # Layout features: the muxer's choices, independent of the audio.
 _MUXER_KEYS = ("struct:brand", "struct:top_level_order", "struct:moov_before_mdat",
                "struct:free_bytes", "struct:box_inventory")
-# The coded audio: the ENCODER's fingerprint, out of reach of a stream copy.
-_ENCODER_KEYS = ("struct:audio_digest",)
+# The coded audio reaches this channel only through file SIZE — a source encoded at a
+# higher bitrate makes a bigger file, and at F1/F2 we copy that stream verbatim.
+#
+# The audio DIGEST is deliberately not here. Judging M4A on its own compressed content
+# in the categorical channel made it the only format held to that bar: MP3's channel
+# is headers only, and its audio question is answered by E-ENGINE. M4A now works the
+# same way — the coded-audio question belongs to E-M4A-AUDIO, which measures whether
+# the trace is *recoverable* rather than merely *present*. Presence is not a leak;
+# recoverability is.
+_ENCODER_KEYS = ("struct:size",)
 
 
 def build_sources(tmpdir: str, repeats: int = 3) -> dict:
@@ -99,20 +107,27 @@ def evaluate_cell(fidelity: str, sources: dict, tmpdir: str, audio_note: str = "
         if r["encoder_fail"]:
             if fidelity == "F3" and collapsed:
                 which.append(
-                    "the coded audio — but ONLY where the source's own first-"
-                    "generation encode differed (a 192 kbps original vs a 128 kbps "
-                    "one). Producers that encoded identical audio and differed only "
-                    "in muxing collapse to BYTE-IDENTICAL output here. What remains "
-                    "is the primary-encoding trace: re-encoding cannot undo what the "
-                    "first encoder already discarded, the audio analogue of Sorell's "
-                    "primary-quantization residual in JPEG"
+                    "FILE SIZE, and nothing else. The muxer layout is fully "
+                    "normalized here, and producers whose first-generation audio was "
+                    "identical collapse to BYTE-IDENTICAL output. What still "
+                    "separates the remaining producer is that its source was encoded "
+                    "at a different bitrate, so its decoded audio re-compresses to a "
+                    "slightly different size (~1.4% on this corpus). That is the "
+                    "primary-encoding trace surfacing through a side channel: "
+                    "re-encoding cannot undo what the first encoder discarded, the "
+                    "audio analogue of Sorell's primary-quantization residual. Note "
+                    "the peer set holds CONTENT constant, which makes size a clean "
+                    "producer signal here; against real files of differing length and "
+                    "material it is far weaker. A size-bucketing pad would close it "
+                    "at the cost of bigger files — not currently done"
                     + (". " + audio_note if audio_note else
-                       ". Whether that trace identifies a producer is unmeasured "
-                       "here — recorded as an open residual, not a pass"))
+                       ". Whether the trace identifies a producer in the audio itself "
+                       "is unmeasured here — an open residual, not a pass"))
             else:
-                which.append("the coded audio — the AAC encoder's own fingerprint, "
-                             "which a stream copy preserves by definition; reaching "
-                             "it requires the canonical re-encode at F3")
+                which.append("the coded audio, reaching this channel through file "
+                             "size — a stream copy preserves the source's own "
+                             "encode by definition, so a higher-bitrate original "
+                             "stays a bigger file; reaching it requires F3")
         return Cell("A2", fidelity, V.FAIL, leaks=leaks,
                     reason="source fingerprint survives in " + "; ".join(which) +
                            ". Features: " + ", ".join(sorted(r["struct_fingerprints"])))

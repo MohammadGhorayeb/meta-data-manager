@@ -5,7 +5,7 @@
     "version": "0.1.0-p2",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-08-02T18:06:22.217564+00:00",
+  "generated_at": "2026-08-03T21:20:07.036715+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -52,12 +52,12 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:lame_version",
+            "feature_id": "struct:xing_magic",
             "annotated_as": null,
             "hex_context": null
           },
-          "correlates_with": "producer (across 3)",
-          "evidence": "struct:lame_version constant within producer, differs across"
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:xing_magic constant within producer, differs across"
         },
         {
           "kind": "source_fingerprint",
@@ -71,6 +71,19 @@
           },
           "correlates_with": "producer (across 2)",
           "evidence": "struct:channel_mode constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:lame_version",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:lame_version constant within producer, differs across"
         },
         {
           "kind": "source_fingerprint",
@@ -97,19 +110,6 @@
           },
           "correlates_with": "producer (across 3)",
           "evidence": "struct:bitrate_hist constant within producer, differs across"
-        },
-        {
-          "kind": "source_fingerprint",
-          "locus": {
-            "space": "structural",
-            "offset": null,
-            "length": null,
-            "feature_id": "struct:xing_magic",
-            "annotated_as": null,
-            "hex_context": null
-          },
-          "correlates_with": "producer (across 2)",
-          "evidence": "struct:xing_magic constant within producer, differs across"
         }
       ]
     },
@@ -117,7 +117,7 @@
       "adversary": "A2",
       "fidelity": "F3",
       "verdict": "pass",
-      "reason": "encoder fingerprint normalized to the canonical LAME class; peer set = lame_vbr, ffmpeg_vbr, shine_cbr (cross-engine), sample rates [44100, 22050]. Verified per rate group \u2014 44100 Hz: pass; 22050 Hz: pass. Cross-engine audio residual measured and NOT found, per sample-rate group \u2014 engine classification accuracy unscrubbed -> after F3, 44100 Hz: 0.94 -> 0.50 (chance 0.50); 22050 Hz: 1.00 -> 0.61 (chance 0.50) (E-ENGINE, leave-one-content-out over broadband audio). Scope: spectral features; MDCT-domain classifiers untested. Residual: anonymity is WITHIN a sample-rate group, not one universal class \u2014 192 kbps CBR is illegal for MPEG-2 rates, so those files emit at 160 and form their own group. The group follows the source's sample rate, which is content we preserve by design, not a producer trait. Plus one generation of loss."
+      "reason": "encoder fingerprint normalized to the canonical LAME class; peer set = lame_vbr, ffmpeg_vbr, shine_cbr (cross-engine), sample rates [44100, 22050]. Verified per rate group \u2014 44100 Hz: pass; 22050 Hz: pass. Cross-engine audio residual measured and NOT found, per sample-rate group \u2014 engine classification accuracy unscrubbed -> after F3, 44100 Hz: 0.89 -> 0.53 (chance 0.50); 22050 Hz: 0.94 -> 0.58 (chance 0.50) (E-ENGINE, leave-one-content-out over broadband audio). Scope: spectral features; MDCT-domain classifiers untested. Residual: anonymity is WITHIN a sample-rate group, not one universal class \u2014 192 kbps CBR is illegal for MPEG-2 rates, so those files emit at 160 and form their own group. The group follows the source's sample rate, which is content we preserve by design, not a producer trait. Plus one generation of loss."
     },
     {
       "adversary": "A3",

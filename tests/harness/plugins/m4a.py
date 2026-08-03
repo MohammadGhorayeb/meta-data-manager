@@ -82,6 +82,25 @@ class M4aPlugin:
             "moov_before_mdat": moov_first,          # the faststart muxer choice
             "free_bytes": free_total,
             "box_inventory": all_types,
-            "audio_digest": hashlib.sha1(
-                mdat.payload if mdat else b"").hexdigest()[:16],
         }
+
+    def coded_audio_digest(self, path: str) -> str:
+        """Hash of the coded audio, deliberately NOT part of structural_features.
+
+        It used to be, and that made M4A the only format judged against its own
+        compressed content in the categorical A2 channel: two sources encoded at
+        different bitrates hash differently no matter how perfectly the container is
+        scrubbed, so M4A could never pass while MP3 — whose structural channel is
+        headers only — did. Same evidence, different yardsticks, and the results
+        table silently compared them as if they were the same.
+
+        Coded-audio identity is an AUDIO-space question, and audio space has a proper
+        adversary simulation: `tests/scrub/e_m4a_audio.py`, the M4A counterpart of
+        E-ENGINE. This method stays available for experiments that want it explicitly.
+        """
+        try:
+            boxes = iso.parse(open(path, "rb").read())
+        except Exception:
+            return ""
+        mdat = next((b for b in boxes if b.type == b"mdat"), None)
+        return hashlib.sha1(mdat.payload if mdat else b"").hexdigest()[:16]

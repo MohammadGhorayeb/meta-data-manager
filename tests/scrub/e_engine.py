@@ -46,14 +46,25 @@ from tests.scrub import mp3_corpus as mc
 # silence is silent, not whether the scrub works. Real forensic audio (music,
 # speech) is broadband, so the corpus is: several noise colours at distinct seeds,
 # a chirp, and a noise+tone mix. All deterministic (fixed seeds) so this reproduces.
+# Twelve, not six. Six gave 18 trials per condition and a standard error of ~0.12,
+# which is wider than the effect being measured — the same experiment then landed on
+# opposite sides of the verdict on macOS and Linux. Twelve halves that error, and
+# the verdict is a significance test rather than a threshold (see ALPHA).
 CONTENTS = [
     ("pink1", "anoisesrc=duration=2:color=pink:seed=1:amplitude=0.6"),
     ("pink2", "anoisesrc=duration=2:color=pink:seed=2:amplitude=0.4"),
+    ("pink3", "anoisesrc=duration=2:color=pink:seed=6:amplitude=0.5"),
     ("white1", "anoisesrc=duration=2:color=white:seed=3:amplitude=0.3"),
+    ("white2", "anoisesrc=duration=2:color=white:seed=8:amplitude=0.45"),
     ("brown1", "anoisesrc=duration=2:color=brown:seed=4:amplitude=0.7"),
+    ("brown2", "anoisesrc=duration=2:color=brown:seed=9:amplitude=0.55"),
+    ("violet1", "anoisesrc=duration=2:color=violet:seed=10:amplitude=0.35"),
     ("chirp", "aevalsrc='0.5*sin(2*PI*(200*t+4000*t*t))':d=2:s=44100"),
+    ("chirp2", "aevalsrc='0.45*sin(2*PI*(800*t+2500*t*t))':d=2:s=44100"),
     ("mix", "anoisesrc=duration=2:color=white:seed=5:amplitude=0.25,"
             "aeval='val(0)+0.4*sin(2*PI*1000*t)'"),
+    ("mix2", "anoisesrc=duration=2:color=pink:seed=11:amplitude=0.3,"
+             "aeval='val(0)+0.35*sin(2*PI*2500*t)'"),
 ]
 
 # producer -> (engine class, argv builder from wav; None = encoded via ffmpeg)
@@ -63,10 +74,25 @@ PRODUCERS = {
     "shine_cbr": ("shine", lambda wav, out: ["shineenc", "-q", "-b", "128", wav, out]),
 }
 
-# Margin over chance above which we call the engine recoverable. With 12 trials the
-# standard error is ~0.14, so 0.15 is roughly one sigma — deliberately generous to
-# the ADVERSARY (privacy-conservative: we would rather over-report a leak).
-RECOVERABLE_MARGIN = 0.15
+# Verdict rule. A fixed margin was the first attempt and it was wrong: with 18 trials
+# the standard error is ~0.12, so 0.61 and 0.67 are statistically indistinguishable
+# from each other AND from chance — yet a 0.15 margin calls the first "at chance" and
+# the second "recoverable". That is not a measurement, it is a coin flip dressed as
+# one, and it duly disagreed between macOS and Linux for the same experiment.
+#
+# The verdict is now a one-sided binomial test: is the classifier doing better than
+# chance more often than luck explains? ALPHA is deliberately loose (0.10, not 0.05)
+# because the privacy-conservative error is to over-report a leak, not to miss one.
+RECOVERABLE_MARGIN = 0.15          # kept for reporting; no longer decides the verdict
+ALPHA = 0.10
+
+
+def significantly_above_chance(correct: int, total: int, chance: float) -> float:
+    """One-sided binomial p-value for `correct`/`total` beating `chance`."""
+    from scipy.stats import binomtest
+    if total == 0:
+        return 1.0
+    return float(binomtest(correct, total, chance, alternative="greater").pvalue)
 
 
 def _run(cmd):
@@ -201,7 +227,10 @@ def loco_accuracy(feats: dict, producers: list[str], contents: list[str],
     acc = correct / total
     chance = 1.0 / len(classes)
     return {"accuracy": acc, "correct": correct, "total": total, "chance": chance,
-            "classes": classes, "recoverable": acc - chance > RECOVERABLE_MARGIN,
+            "classes": classes, "p_value": significantly_above_chance(
+                correct, total, chance),
+            "recoverable": significantly_above_chance(correct, total, chance) < ALPHA,
+            "margin": acc - chance,
             "confusion": {f"{a}->{b}": n for (a, b), n in sorted(confusion.items())}}
 
 
@@ -238,7 +267,7 @@ def main() -> None:
             verdict = "RECOVERABLE" if m["recoverable"] else "at chance"
             print(f"  [{fid:3}] {tag} engine classification "
                   f"{m['accuracy']:.2f} ({m['correct']}/{m['total']}), "
-                  f"chance {m['chance']:.2f} -> {verdict}")
+                  f"chance {m['chance']:.2f}, p={m['p_value']:.4f} -> {verdict}")
         print(f"  controls valid: {controls_valid(r)} "
               f"(raw/F1 must be RECOVERABLE, else F3 here proves nothing)\n")
 

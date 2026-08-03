@@ -119,10 +119,10 @@ neither is re-encoded. F3 = re-encode AAC through one locked setting, mirroring 
 | # | Question | Status |
 |---|---|---|
 | **E-LAME** | Does the MP3 header identify the producer, and does F3 erase it? | ✅ Yes / yes, per sample-rate group, cross-engine |
-| **E-ENGINE** | With the header normalised, does the *sound* still identify the source engine? | ✅ No — 0.94→0.50 at 44.1 kHz, 1.00→0.61 at 22.05 kHz |
+| **E-ENGINE** | With the header normalised, does the *sound* still identify the source engine? | ✅ No — 0.89→0.53 (p=0.43) and 0.94→0.58 (p=0.20), n=36 per group |
 | **E-FLAC** | Do FLAC block layout, padding size and vendor string identify the encoder, and does F2 erase them **losslessly**? | ✅ Yes / yes — fingerprint at F1, gone at F2, audio bit-identical |
 | **E-M4A** | Do atom ordering and `free`-space layout identify the muxer, and does the coded audio identify the encoder? | ✅ Yes to both at F1. F2 normalises the layout losslessly; F3 collapses same-source producers to byte-identical output |
-| **E-M4A-AUDIO** | With the container normalised, is the source's own encode still readable from the sound? | ✅ No — the source quality setting reads at 0.88 unscrubbed and falls to chance after F3. Engine identity was *not* separable even unscrubbed (0.67), so that question stays open rather than being claimed |
+| **E-M4A-AUDIO** | With the container normalised, is the source's own encode still readable from the sound? | ✅ No — the source quality setting reads at 0.88 unscrubbed and falls to chance after F3. Engine identity was *not* separable even unscrubbed (0.56), so that question stays open rather than being claimed |
 
 E-ENGINE's design rules apply to all of these and were learned the hard way: compare
 **engines, not front-ends** (two front-ends of one engine produce identical output,
@@ -171,9 +171,9 @@ instead of resolving itself in our favour.
 |---|---|---|
 | 1 | **All named metadata is removed, at every tier, for all three formats** — tags, embedded cover art (a nested image carrying its own EXIF/GPS), ghost tags at the end of the file, appended hitchhiker data, and the structural timestamps that are not tags at all. | A1 passes in every matrix cell |
 | 2 | **FLAC reaches A2 for free** — the encoder's framing fingerprint is erased with **bit-identical audio**. Alongside PNG, one of only two formats where anonymity costs nothing. | E-FLAC; STREAMINFO MD5 |
-| 3 | **MP3 reaches A2 across genuinely different engines**, per sample-rate group, in header space *and* in the sound: an engine classifier goes 0.94 → chance at 44.1 kHz, 1.00 → 0.61 at 22.05 kHz. | E-LAME, E-ENGINE, peer set incl. `shineenc` |
+| 3 | **MP3 reaches A2 across genuinely different engines**, per sample-rate group, in header space *and* in the sound: an engine classifier goes 0.89 → 0.53 at 44.1 kHz and 0.94 → 0.58 at 22.05 kHz, neither significantly above chance (n=36). | E-LAME, E-ENGINE, peer set incl. `shineenc` |
 | 4 | **M4A is handled at all** — the format MAT2 refuses outright. Container layout is normalised losslessly at F2; F3 collapses same-source producers to byte-identical output. | E-M4A |
-| 5 | **The M4A audio residual is cleared within what we can measure**: the source's own quality setting reads at 0.88 on untouched files and falls to chance after F3. | E-M4A-AUDIO |
+| 5 | **The M4A audio residual is cleared within what we can measure**: the source's own quality setting reads at 0.88 on untouched files and falls to chance (0.50) after F3; what remains is a ~1.4% file-size difference. | E-M4A-AUDIO |
 | 6 | **The tool leaves no fingerprint of its own.** Three candidates were caught by the guard during this phase and removed rather than excused: FLAC's fixed padding, FLAC's fixed empty comment block, and ffmpeg's vendor string leaking through re-encodes. | fingerprint guard, all matrices |
 
 ### Cannot be solved, and why

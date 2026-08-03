@@ -129,9 +129,19 @@ jobs:
       # version-specific is most of the diagnosis.
       fail-fast: false
       matrix:
-        # 3.11 is the floor, not a preference: numpy, scipy and PyWavelets all
-        # declare requires-python >=3.11, so 3.10 cannot install from wheels.
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        # Floor and ceiling, not every version in between. 3.11 is the floor for a
+        # hard reason: numpy, scipy and PyWavelets all declare requires-python
+        # >=3.11, so 3.10 cannot install from wheels at all. 3.14 is the newest, and
+        # is where a deprecation lands first.
+        #
+        # The middle versions were dropped after they earned nothing: across the runs
+        # to date, every failure reproduced identically on all four legs (the last one
+        # was `1 failed, 237 passed, 4 skipped` four times over). The real variation in
+        # this project is the EXTERNAL toolchain — ffmpeg and lame differ between
+        # macOS and Ubuntu, and that is what actually broke a claim — not the Python
+        # minor version. Two legs cover the wheel-availability and syntax boundaries
+        # where version breakage genuinely shows up, at half the wall-clock.
+        python-version: ["3.11", "3.14"]
     steps:
       - uses: actions/checkout@v7
 

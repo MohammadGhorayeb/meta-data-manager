@@ -66,14 +66,22 @@ the file, which together name the program that produced it.
 setting — and we check the result two different ways rather than one. In the
 file's **structure**, every producer collapses to a single signature. In the
 **sound itself**, a classifier that tries to guess the source encoder from audio
-alone falls from 0.94 to chance (0.50). The comparison set includes `shine`, a
-genuinely different encoder, not just a different program driving the same one.
+alone falls from **0.89 to 0.53** — indistinguishable from guessing. The
+comparison set includes `shine`, a genuinely different encoder, not just a
+different program driving the same one.
 
 **Stated honestly:** the promise is *anonymity within a sample-rate group*, not
 one universal signature. Low-sample-rate audio cannot legally use the standard
 setting, so it lands in its own group. The group follows the recording's own
 sample rate, which we preserve on purpose — resampling would change the audio.
 Anonymity is verified inside each group separately, never averaged across them.
+
+One more piece of honesty about *how sure* we are: the low-sample-rate group's
+evidence is the weaker of the two. Both groups come out indistinguishable from
+guessing, but that group sits closer to the line, and an earlier, smaller version
+of this test disagreed with itself between two machines. We enlarged the test
+until the answer stopped moving, and we report the weaker case as weaker rather
+than letting the stronger one speak for both.
 <!-- FORMAT:mp3:END -->
 
 <!-- FORMAT:flac:BEGIN -->
@@ -104,9 +112,24 @@ encoded the same way.
 
 **What is still open:** where the original was itself encoded at a different
 quality — a 192 kbps source against a 128 kbps one — a trace of that *first*
-encoding survives our rebuild. Whether that trace can actually identify who made
-the file needs a sound-based test of the kind MP3 has, and we have not built one
-for M4A yet. Until we do, the result stays a **fail**. Worth noting: the standard
-alternative tool refuses M4A files outright, so everything above is capability it
-does not have at all.
+encoding survives our rebuild.
+
+We have since built the sound-based test for M4A, and it is reassuring: a test
+that tries to read the original's quality setting from the **sound alone** gets
+it right **88% of the time** on an untouched file, and drops to a **coin flip**
+after our full rebuild. What remains is narrower than that, and it is why this
+row still reads as a **fail**: the rebuilt file's **size** is still very slightly
+different (about 1.4%), because audio that started life at a higher quality
+re-compresses to a slightly different size. Everything else about the file is
+identical.
+
+That is a genuine difference and we count it rather than explain it away — but
+two things bound it. Our comparison holds the *audio itself* constant, which
+makes size an unusually clean signal here; among real files of different lengths
+and material it is far weaker. And we could close it entirely by padding every
+file out to a fixed size, at the cost of making files bigger — a trade we have
+not taken, and would rather state than make quietly.
+
+Worth noting: the standard alternative tool refuses M4A files outright, so
+everything above is capability it does not have at all.
 <!-- FORMAT:m4a:END -->

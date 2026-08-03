@@ -5,7 +5,7 @@
     "version": "0.1.0-p2",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-08-03T18:45:10.318260+00:00",
+  "generated_at": "2026-08-03T21:17:18.862055+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -42,7 +42,7 @@
       "adversary": "A2",
       "fidelity": "F1",
       "verdict": "fail",
-      "reason": "source fingerprint survives in muxer layout (box order / brand / free slack); the coded audio \u2014 the AAC encoder's own fingerprint, which a stream copy preserves by definition; reaching it requires the canonical re-encode at F3. Features: struct:audio_digest, struct:moov_before_mdat, struct:size, struct:top_level_order",
+      "reason": "source fingerprint survives in muxer layout (box order / brand / free slack); the coded audio, reaching this channel through file size \u2014 a stream copy preserves the source's own encode by definition, so a higher-bitrate original stays a bigger file; reaching it requires F3. Features: struct:moov_before_mdat, struct:size, struct:top_level_order",
       "leaks": [
         {
           "kind": "source_fingerprint",
@@ -50,12 +50,12 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:audio_digest",
+            "feature_id": "struct:moov_before_mdat",
             "annotated_as": null,
             "hex_context": null
           },
           "correlates_with": "producer (across 2)",
-          "evidence": "struct:audio_digest constant within producer, differs across"
+          "evidence": "struct:moov_before_mdat constant within producer, differs across"
         },
         {
           "kind": "source_fingerprint",
@@ -76,19 +76,6 @@
             "space": "structural",
             "offset": null,
             "length": null,
-            "feature_id": "struct:moov_before_mdat",
-            "annotated_as": null,
-            "hex_context": null
-          },
-          "correlates_with": "producer (across 2)",
-          "evidence": "struct:moov_before_mdat constant within producer, differs across"
-        },
-        {
-          "kind": "source_fingerprint",
-          "locus": {
-            "space": "structural",
-            "offset": null,
-            "length": null,
             "feature_id": "struct:size",
             "annotated_as": null,
             "hex_context": null
@@ -102,21 +89,8 @@
       "adversary": "A2",
       "fidelity": "F2",
       "verdict": "fail",
-      "reason": "source fingerprint survives in the coded audio \u2014 the AAC encoder's own fingerprint, which a stream copy preserves by definition; reaching it requires the canonical re-encode at F3. Features: struct:audio_digest, struct:size",
+      "reason": "source fingerprint survives in the coded audio, reaching this channel through file size \u2014 a stream copy preserves the source's own encode by definition, so a higher-bitrate original stays a bigger file; reaching it requires F3. Features: struct:size",
       "leaks": [
-        {
-          "kind": "source_fingerprint",
-          "locus": {
-            "space": "structural",
-            "offset": null,
-            "length": null,
-            "feature_id": "struct:audio_digest",
-            "annotated_as": null,
-            "hex_context": null
-          },
-          "correlates_with": "producer (across 2)",
-          "evidence": "struct:audio_digest constant within producer, differs across"
-        },
         {
           "kind": "source_fingerprint",
           "locus": {
@@ -136,21 +110,8 @@
       "adversary": "A2",
       "fidelity": "F3",
       "verdict": "fail",
-      "reason": "source fingerprint survives in the coded audio \u2014 but ONLY where the source's own first-generation encode differed (a 192 kbps original vs a 128 kbps one). Producers that encoded identical audio and differed only in muxing collapse to BYTE-IDENTICAL output here. What remains is the primary-encoding trace: re-encoding cannot undo what the first encoder already discarded, the audio analogue of Sorell's primary-quantization residual in JPEG. Audio-space measurement (E-M4A-AUDIO): the source's own quality setting is recoverable from the sound at 0.88 on unscrubbed and copy-tier files and falls to chance after F3 (0.58 vs chance 0.50). Engine identity (ffmpeg AAC vs Apple AAC) is NOT separable even unscrubbed (0.67) \u2014 those two encoders are near-twins, so this corpus cannot answer the engine question either way. Scope: spectral features; MDCT-domain classifiers untested.. Features: struct:audio_digest, struct:size",
+      "reason": "source fingerprint survives in FILE SIZE, and nothing else. The muxer layout is fully normalized here, and producers whose first-generation audio was identical collapse to BYTE-IDENTICAL output. What still separates the remaining producer is that its source was encoded at a different bitrate, so its decoded audio re-compresses to a slightly different size (~1.4% on this corpus). That is the primary-encoding trace surfacing through a side channel: re-encoding cannot undo what the first encoder discarded, the audio analogue of Sorell's primary-quantization residual. Note the peer set holds CONTENT constant, which makes size a clean producer signal here; against real files of differing length and material it is far weaker. A size-bucketing pad would close it at the cost of bigger files \u2014 not currently done. Audio-space measurement (E-M4A-AUDIO): the source's own quality setting is recoverable from the sound at 0.88 on unscrubbed and copy-tier files and falls to chance after F3 (0.50 vs chance 0.50). Engine identity (ffmpeg AAC vs Apple AAC) is NOT separable even unscrubbed (0.56) \u2014 those two encoders are near-twins, so this corpus cannot answer the engine question either way. Scope: spectral features; MDCT-domain classifiers untested.. Features: struct:size",
       "leaks": [
-        {
-          "kind": "source_fingerprint",
-          "locus": {
-            "space": "structural",
-            "offset": null,
-            "length": null,
-            "feature_id": "struct:audio_digest",
-            "annotated_as": null,
-            "hex_context": null
-          },
-          "correlates_with": "producer (across 2)",
-          "evidence": "struct:audio_digest constant within producer, differs across"
-        },
         {
           "kind": "source_fingerprint",
           "locus": {

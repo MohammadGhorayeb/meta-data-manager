@@ -78,8 +78,11 @@ def _audio_note(tmpdir: str) -> str:
             bad.append(f"{rate} Hz RESIDUAL: engine still recoverable after F3 at "
                        f"{f3['accuracy']:.2f} vs chance {f3['chance']:.2f}")
         else:
+            # p-values, not just accuracies: a bare accuracy near chance is what made
+            # this claim disagree between macOS and Linux in the first place.
             parts.append(f"{rate} Hz: {raw['accuracy']:.2f} -> {f3['accuracy']:.2f} "
-                         f"(chance {f3['chance']:.2f})")
+                         f"(chance {f3['chance']:.2f}, p={f3['p_value']:.2f}, "
+                         f"n={f3['total']})")
     if bad:
         return "Audio-space cross-engine result NOT clean: " + "; ".join(bad + parts)
     return ("Cross-engine audio residual measured and NOT found, per sample-rate "
