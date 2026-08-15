@@ -366,12 +366,70 @@ MAT2 (expected: yes) and our F1 (target: no)?
 
 | # | Question | Status |
 |---|---|---|
-| **E-PDF-HISTORY** | Does an earlier revision survive our scrub? Build a PDF with N incremental updates, scrub, and carve for text that was "deleted" in revision 1. | 🔜 |
+| **E-PDF-HISTORY** | Does an earlier revision survive our scrub? Build a PDF with N incremental updates, scrub, and carve for text that was "deleted" in revision 1. | ✅ baseline measured (§2.1); our own row lands with M2 |
 | **E-PDF** | Do object order, xref style and font-subset tags identify the producing application, and does the canonical rewrite (F2) erase them? Reported per channel — serializer versus layout. | 🔜 |
 | **E-PDF-LAYOUT** | After F2 normalises the serializer, is the producer still recoverable from the **content-stream operators**? The `E-ENGINE` analogue, in operator space. | 🔜 |
 | **E-PDF-RASTER** | After F3 destroys the operators, is the producer still recoverable from the **rendered pixels**? And does lowering DPI kill it? | 🔜 |
 | **E-RSID** | Do RSIDs survive MAT2 and ExifTool, and does our F1 clear them? The published claim, measured on our own corpus. | 🔜 |
 | **E-DOCX-THUMB** | Is `docProps/thumbnail.jpeg` cleared, and is its own EXIF cleared with it? | 🔜 |
+
+### 2.1 E-PDF-HISTORY, measured (M1)
+
+`tests/scrub/pdf_corpus.py` + `tests/scrub/e_pdf_history.py`. The corpus is written
+**by hand, byte by byte**, for a reason that only became obvious once tried: pikepdf
+*cannot* append an incremental update — it always rewrites to a single revision, which
+is exactly the behaviour under test. A corpus built with it could not express history
+at all. It is also kept clear of `src/scrub/formats/pdf/`, so no experiment ends up
+measuring the scrubber against its own misunderstanding of the format.
+
+Three attacks, because each defeats a different bad fix:
+
+- **rollback** — truncate after an earlier `%%EOF`, open the prefix, read it with
+  `pdftotext`. Recovers the earlier draft *as a document*.
+- **carve** — raw byte search, which catches a tool that breaks the `/Prev` chain
+  while leaving the old object bytes in place.
+- **object ledger** — object definitions physically present versus reachable from the
+  trailer, split into **superseded** (a number defined more than once — what an
+  incremental update leaves) and **orphaned** (present but unreachable). An
+  orphan-only check calls the raw corpus clean, because every number in it is still
+  reachable; the stale thing is the *earlier definition* of a live number.
+
+Measured on a 3-revision document (secrets in revisions 1–2, public text in 3):
+
+| cleaner | revisions | stale objs | text | recoverable |
+|---|---:|---:|---|---|
+| untouched (control) | 3 | 4 | kept | every planted secret, and both earlier `/Info`s |
+| pikepdf/qpdf rewrite | 1 | 0 | kept | **nothing** |
+| MAT2 default | 2 | 9 | **destroyed** | MAT2's own `/Producer` + wall-clock date |
+| MAT2 `--lightweight` | 2 | 9 | kept | MAT2's own `/Producer` + wall-clock date |
+| ExifTool `-all=` | **4** | 5 | kept | every planted secret, and the `/Info` it "cleared" |
+
+Three findings worth carrying forward:
+
+1. **A whole-document rewrite is the entire mechanism.** The plain pikepdf rewrite
+   strips no metadata whatsoever and still leaves nothing recoverable. So when F1
+   lands, the credit for defeating history belongs to the rewrite, not to the scrub —
+   which is why the two are measured separately here, before F1 exists to conflate
+   them.
+2. **ExifTool `-all=` *adds* a revision.** It edits PDFs by appending, so it removes
+   nothing at all; it warns about this itself ("PDF edits are reversible. Deleted
+   tags may be recovered!"). A user who reaches for the obvious tool gets a file that
+   is bigger, looks clean, and still contains every draft.
+3. **MAT2 clears `/Info` by appending an incremental update of its own.** The
+   document's own history really is destroyed by the re-render — genuine capability,
+   and better than ExifTool here. But roll back one revision and MAT2's output names
+   `cairo 1.18.4` and carries a wall-clock `CreationDate` **with the operator's UTC
+   offset**: when the scrub was run, to the second, and roughly where. Reproduced on
+   a real 295 KB PDF as well as the synthetic corpus, on both MAT2 paths. By this
+   project's own definition of done (no producer string, no mtime stamping) that
+   output fails the fingerprint guard — so this is a benchmark row, in
+   `docs/benchmark.md` Evidence 6.
+
+What M1 does **not** settle, recorded so the phase never overstates it: redaction.
+`pdf_corpus.redacted_pdf()` is a *single-revision* file with text under an opaque
+black rectangle. Collapsing revisions does nothing for it — there is no history —
+and `pdftotext` reads the secret straight out. Different leak, W7's problem, and it
+has a test of its own so the distinction cannot quietly erode.
 
 Phase 2's design rules carry over and are not negotiable: **assert the controls** (if
 the attack cannot identify the producer of an unscrubbed file, its failure on a
@@ -395,7 +453,7 @@ because this project has been bitten by exactly this.
 | # | Deliverable | Status |
 |---|---|---|
 | **M0** | W0 spike — measured qpdf's byte layout against our own fingerprint guard; serializer decision recorded | ✅ |
-| **M1** | PDF corpus + E-PDF-HISTORY: incremental-update history provably gone | 🔜 |
+| **M1** | PDF corpus + E-PDF-HISTORY: incremental-update history provably gone | ✅ baseline (§2.1) — attacks + controls land; our own row needs M2 |
 | **M2** | PDF walker + serializer + tokenizer; **recursive** F1 + plugin + dispatch; `/Info`, XMP, `/ID[0]`, `/Thumb`, inline images and embedded-JPEG EXIF all cleared | 🔜 |
 | **M3** | E-PDF at `raw` and `F1` — which channel leaks, measured before F2 is designed | 🔜 |
 | **M4** | PDF F2 (canonical serialise + content-stream canonicalisation) + E-PDF-LAYOUT + matrix — the honest A2-at-F2 answer, whatever it is | 🔜 |
