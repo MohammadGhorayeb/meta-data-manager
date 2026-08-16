@@ -367,7 +367,7 @@ MAT2 (expected: yes) and our F1 (target: no)?
 | # | Question | Status |
 |---|---|---|
 | **E-PDF-HISTORY** | Does an earlier revision survive our scrub? Build a PDF with N incremental updates, scrub, and carve for text that was "deleted" in revision 1. | ✅ baseline measured (§2.1); our own row lands with M2 |
-| **E-PDF** | Do object order, xref style and font-subset tags identify the producing application, and does the canonical rewrite (F2) erase them? Reported per channel — serializer versus layout. | 🔜 |
+| **E-PDF** | Do object order, xref style and font-subset tags identify the producing application, and does the canonical rewrite (F2) erase them? Reported per channel — serializer versus layout. | ✅ at `raw`/`F1` (§2.3); the F2 column needs M4 |
 | **E-PDF-LAYOUT** | After F2 normalises the serializer, is the producer still recoverable from the **content-stream operators**? The `E-ENGINE` analogue, in operator space. | 🔜 |
 | **E-PDF-RASTER** | After F3 destroys the operators, is the producer still recoverable from the **rendered pixels**? And does lowering DPI kill it? | 🔜 |
 | **E-RSID** | Do RSIDs survive MAT2 and ExifTool, and does our F1 clear them? The published claim, measured on our own corpus. | 🔜 |
@@ -486,6 +486,60 @@ file), and ICC profiles keep their descriptive tags while the header is already
 zeroed. Both name the foundry or the platform rather than the author — an A2 channel,
 and M4's problem.
 
+### 2.3 E-PDF, measured at `raw` and `F1` (M3)
+
+`tests/scrub/e_pdf.py`, `tests/harness/plugins/pdf.py`, matrix in
+`tests/harness/results/pdf_irreversible_scrubber.json`.
+
+**Peer set: five producers, one document.** Chrome/Skia, LibreOffice, macOS Quartz via
+`cupsfilter`, and the two pikepdf synthetics — which differ deliberately on *both*
+channels (xref table vs xref streams; `Td` with integer coordinates and `Tj` versus
+`Tm` with decimals and `TJ`). The layout half of that is the honest stand-in for "a
+different typesetter", exactly as FLAC's compression levels stand in for "a different
+encoder", and it is named as a stand-in rather than dressed up as two real engines.
+Extracted text is byte-identical across all five, so content really is held constant.
+
+| channel | `raw` | `F1` |
+|---|---|---|
+| **serializer** | header, binary comment, xref kind, object streams, trailer keys, indirect `/Length` | **nothing — closed** |
+| **layout** | operators, number precision, font subsets, glyph digest, stream count | all five still leak |
+| **size** | leaks | leaks |
+
+Controls valid on all three channels. So **A2@F1 = fail, and the failure is precisely
+and only the layout engine plus size** — which is what M4 is built from. "A2 fails"
+alone would have said the same thing whether F1 had closed one channel or neither.
+
+Two corrections made before this was published, both the kind that would have shipped
+a wrong claim quietly:
+
+- **`indirect_lengths` counted streams, not indirect lengths.** The feature's name
+  claimed a serializer trait while its computation measured a layout one, so the
+  first run reported the serializer channel as still leaking after F1. It is now
+  `/Length N 0 R` matched properly, with stream count split out under *layout* —
+  where it belongs, since what a file embeds is the typesetter's decision.
+- **The fingerprint guard failed three times before it passed**, and only the third
+  cause was ours. First the "diverse" inputs were four near-identical documents, so
+  the guard reported *their* shared structure as our signature. Then, with real
+  diversity, what remained was the PDF skeleton — which is the `mandatory_constants()`
+  problem W0 predicted: PDF's syntax *is* ASCII keywords, and unlike FLAC's short
+  magic prologue its mandatory skeleton is interleaved through the whole file.
+  Resolved by declaring **the empty document our own writer emits**, generated rather
+  than transcribed: any run common to every output that is a substring of a document
+  with no content is by construction pure structure. Because that declaration is
+  broad, `test_matrix_pdf.py` checks it rather than trusting it — the skeleton must
+  contain no producer string, no timestamp and no padding run, so adding a
+  `/Producer` tomorrow fails a test even though the guard would still pass. The last
+  two residuals were corpus artefacts again (every document had a font, every stream
+  was Flate-compressed), fixed by varying both.
+
+**What M4 now has to normalise**, in the order W5 predicts it can: number formatting
+and operator token style (losslessly), then `Td`/`TD`/`Tm` choice and `Tj` splitting,
+then font-table internals and subset tag naming. **Glyph geometry — where each glyph
+actually sits, and which glyphs are in the subset — is the predicted floor**, and
+`struct:glyph_digest` is already the key that will report whether F2 clears it. The
+test asserts that key is leaking today, so an F2 that "passes" by breaking the
+measurement rather than the leak cannot slip through.
+
 Phase 2's design rules carry over and are not negotiable: **assert the controls** (if
 the attack cannot identify the producer of an unscrubbed file, its failure on a
 scrubbed one proves nothing); **verdicts are significance tests, not thresholds** on a
@@ -510,7 +564,7 @@ because this project has been bitten by exactly this.
 | **M0** | W0 spike — measured qpdf's byte layout against our own fingerprint guard; serializer decision recorded | ✅ |
 | **M1** | PDF corpus + E-PDF-HISTORY: incremental-update history provably gone | ✅ baseline (§2.1) — attacks + controls land; our own row needs M2 |
 | **M2** | PDF walker + serializer + tokenizer; **recursive** F1 + plugin + dispatch; `/Info`, XMP, `/ID[0]`, `/Thumb`, inline images and embedded-JPEG EXIF all cleared | ✅ (§2.2) |
-| **M3** | E-PDF at `raw` and `F1` — which channel leaks, measured before F2 is designed | 🔜 |
+| **M3** | E-PDF at `raw` and `F1` — which channel leaks, measured before F2 is designed | ✅ (§2.3) |
 | **M4** | PDF F2 (canonical serialise + content-stream canonicalisation) + E-PDF-LAYOUT + matrix — the honest A2-at-F2 answer, whatever it is | 🔜 |
 | **M5** | PDF F3 + E-PDF-RASTER incl. the DPI knob; redaction detector | 🔜 |
 | **M6** | DOCX walker + F1 + plugin + matrix, ZIP timestamps consistent | 🔜 |

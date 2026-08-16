@@ -306,6 +306,250 @@ def torture_pdf(path: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# The A2 peer set: one document, many producers
+# --------------------------------------------------------------------------- #
+# Real prose, not a one-liner. A single line of text has no font-subset variety and
+# almost no positioning operators, so a peer set built on one would show "no producer
+# separation" for the reason that there is nothing to separate — the vacuous pass
+# Phase 2's design rules exist to prevent.
+SOURCE_TEXT = """Quarterly Review - Regional Operations
+
+The programme closed the quarter ahead of schedule, with 4,182 units
+delivered against a target of 3,900. Field teams in the northern and
+coastal districts reported no material delays.
+
+Budget variance stood at 2.4% under plan. The largest single line was
+equipment leasing at 118,400, followed by transport at 61,250.
+
+Recommendations:
+  1. Extend the coastal contract by two quarters.
+  2. Retire the legacy fleet before the next audit window.
+  3. Consolidate reporting into a single monthly cycle.
+
+Prepared for internal circulation only. Figures are provisional until
+the external audit concludes in the following period.
+"""
+
+
+def _run_quiet(cmd, **kw) -> bool:
+    try:
+        p = subprocess.run(cmd, capture_output=True, timeout=120, **kw)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return p.returncode == 0
+
+
+def _synthetic(path: str, style: str) -> str:
+    """A PDF built directly with pikepdf, in one of two deliberate house styles.
+
+    These are **not padding**. `cupsfilter` is macOS-only and Chrome is unlikely on
+    a CI runner, so without a producer pair that exists everywhere `check_evidence`
+    would report every PDF A2 cell as `not_tested` on Linux and the published
+    verdicts would go permanently unchallenged — limit #12, which exists because
+    this project has been bitten by exactly that.
+
+    The two styles differ on **both** channels, deliberately:
+      * serializer — xref table versus xref streams, and whether objects are packed
+        into object streams;
+      * layout — `Td` with integer coordinates and one `Tj` per line, versus `Tm`
+        with decimal coordinates and `TJ` arrays.
+    The layout half is the honest stand-in for "a different typesetter", exactly as
+    FLAC's compression levels stand in for "a different encoder": it is the same
+    kind of choice a real layout engine makes, named as a stand-in rather than
+    dressed up as two real engines.
+    """
+    import pikepdf
+
+    lines = SOURCE_TEXT.strip().split("\n")
+    body = [b"BT /F1 11 Tf"]
+    for i, line in enumerate(lines):
+        text = line.replace("\\", "").replace("(", "").replace(")", "").encode("latin-1")
+        if style == "td_int":
+            body.append(b"1 0 0 1 %d %d Tm (" % (72, 720 - 16 * i) + text + b") Tj")
+        else:
+            body.append(b"1 0 0 1 %.2f %.2f Tm [(" % (72.0, 720.0 - 15.75 * i)
+                        + text + b")] TJ")
+    body.append(b"ET")
+
+    pdf = pikepdf.new()
+    page = pdf.add_blank_page(page_size=(612, 792))
+    page.obj.Contents = pikepdf.Stream(pdf, b"\n".join(body) + b"\n")
+    page.obj.Resources = pikepdf.Dictionary(
+        Font=pikepdf.Dictionary(F1=pikepdf.Dictionary(
+            Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+            BaseFont=pikepdf.Name.Helvetica if style == "td_int"
+            else pikepdf.Name.Courier,
+            Encoding=pikepdf.Name.WinAnsiEncoding)))
+    pdf.docinfo["/Producer"] = f"SynthWriter-{style}"
+    mode = (pikepdf.ObjectStreamMode.disable if style == "td_int"
+            else pikepdf.ObjectStreamMode.generate)
+    pdf.save(path, deterministic_id=True, object_stream_mode=mode)
+    return path
+
+
+def a1_variants(tmpdir: str, n_variants: int = 3, n_repeats: int = 5):
+    """Same page, metadata differing only by a per-variant sentinel.
+
+    A correct F1 collapses them to identical bytes -> A1 pass. The sentinel goes into
+    both `/Info` **and** an XMP packet, because a PDF routinely carries the same value
+    in both and clearing one is the classic half-scrub.
+    """
+    import pikepdf
+
+    groups = []
+    for i in range(n_variants):
+        sentinel = chr(65 + i) * 6
+        base = _synthetic(os.path.join(tmpdir, f"a1_v{i}.pdf"), "td_int")
+        with pikepdf.open(base, allow_overwriting_input=True) as pdf:
+            pdf.docinfo["/Author"] = f"Author-{sentinel}"
+            pdf.docinfo["/Title"] = f"Title-{sentinel}"
+            pdf.docinfo["/Keywords"] = f"GPS-{sentinel}-48.85N"
+            pdf.Root.Metadata = pikepdf.Stream(
+                pdf, _xmp(f"xmp-creator-{sentinel}".encode()))
+            pdf.save(base, deterministic_id=True)
+        with open(base, "rb") as f:
+            variant = f.read()
+        paths = []
+        for r in range(n_repeats):
+            p = os.path.join(tmpdir, f"a1_v{i}_r{r}.pdf")
+            with open(p, "wb") as f:
+                f.write(variant)
+            paths.append(p)
+        groups.append(paths)
+    return groups
+
+
+def diverse_inputs(tmpdir: str, n: int = 4) -> list[str]:
+    """Small but genuinely varied PDFs for the fingerprint guard.
+
+    Diversity is the guard's whole premise: it reports byte runs common to every
+    output, on the assumption that anything shared must have come from the tool. Feed
+    it four documents with the same object graph and it reports *their* shared
+    structure as our signature — measured, on a first version of this function that
+    varied only page size and text. So these vary page count, font, resource shape
+    and whether an image is embedded, which changes the object graph itself.
+
+    Small on purpose too: `common_substrings` is roughly O(n·m) and W0 measured it
+    hanging past 120 s on two 300 KB PDFs. These are a few KB each, the same
+    discipline `gen_matrix_m4a._diverse()` uses with its 0.6 s clips.
+    """
+    import pikepdf
+
+    from tests.scrub import corpus as jpeg_corpus
+
+    fonts = ["/Helvetica", "/Courier", "/Times-Roman", "/Symbol"]
+    out = []
+    for i in range(n):
+        p = os.path.join(tmpdir, f"div_{i}.pdf")
+        pdf = pikepdf.new()
+        for page_index in range(1 + i % 3):             # 1, 2 or 3 pages
+            page = pdf.add_blank_page(page_size=(400 + 37 * i, 500 + 53 * i))
+            text = (f"Sample {i}.{page_index} " * (1 + i)).strip().encode("latin-1")
+            if i == 0:
+                # No font at all — vector marks only. A corpus where every document
+                # has a `/Font` resource makes the page dictionary's shape common to
+                # every output, and the guard correctly reports that as a constant.
+                body = b"0.2 0.4 0.6 rg\n%d %d 120 80 re f\n" % (40, 300)
+                resources = pikepdf.Dictionary()
+            else:
+                body = (b"BT /F%d %d Tf %d %d Td (" % (i, 8 + 2 * i, 30 + 7 * i,
+                                                       400 + 11 * i)
+                        + text + b") Tj ET\n")
+                resources = pikepdf.Dictionary(
+                    Font=pikepdf.Dictionary(**{f"F{i}": pikepdf.Dictionary(
+                        Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+                        BaseFont=pikepdf.Name(fonts[i % len(fonts)]))}))
+            if i % 2:                                    # half carry an image
+                image = pikepdf.Stream(pdf, jpeg_corpus.make_base_jpeg())
+                image.Type, image.Subtype = pikepdf.Name.XObject, pikepdf.Name.Image
+                image.Width, image.Height = 64, 48
+                image.BitsPerComponent, image.ColorSpace = 8, pikepdf.Name.DeviceRGB
+                image.Filter = pikepdf.Name.DCTDecode
+                resources.XObject = pikepdf.Dictionary(
+                    **{f"Im{i}": pdf.make_indirect(image)})
+                body += b"q 80 0 0 60 %d 100 cm /Im%d Do Q\n" % (20 + i, i)
+            page.obj.Contents = pikepdf.Stream(pdf, body)
+            page.obj.Resources = resources
+        pdf.docinfo["/Producer"] = f"DiverseWriter-{i}"
+        # Compression varies too: F1 passes raw stream bytes and their filter through
+        # untouched, so a corpus compressed uniformly makes `/Filter /FlateDecode`
+        # common to every output — the input's convention showing up as ours.
+        pdf.save(p, deterministic_id=True, compress_streams=bool(i % 2))
+        out.append(p)
+    return out
+
+
+def available_producers() -> dict[str, bool]:
+    """Which producers this machine can actually run. Absent ones are reported as
+    absent so the matrix can say *not measured* rather than *clean*."""
+    return {"chrome_skia": HAVE_CHROME, "libreoffice": HAVE_SOFFICE,
+            "quartz_cups": HAVE_CUPSFILTER, "synth_td_int": True,
+            "synth_tm_real": True}
+
+
+def producers(tmpdir: str, repeats: int = 3) -> dict[str, list[str]]:
+    """A2 peer set: the SAME source document through different PDF producers.
+
+    Content is held constant and the producer varies — the shape every A2 peer set
+    in this project takes. A producer that is not installed is simply missing from
+    the returned dict; callers report that rather than quietly shrinking the set.
+    """
+    source = os.path.join(tmpdir, "source.txt")
+    with open(source, "w", encoding="utf-8") as f:
+        f.write(SOURCE_TEXT)
+
+    out: dict[str, list[str]] = {}
+    for name in ("synth_td_int", "synth_tm_real"):
+        style = "td_int" if name.endswith("td_int") else "tm_real"
+        out[name] = [_synthetic(os.path.join(tmpdir, f"{name}__r{r}.pdf"), style)
+                     for r in range(repeats)]
+
+    if HAVE_CHROME:
+        paths = []
+        for r in range(repeats):
+            p = os.path.join(tmpdir, f"chrome_skia__r{r}.pdf")
+            # No --user-data-dir: measured hanging indefinitely with one (Chrome
+            # never finishes creating the throwaway profile), while the default
+            # profile renders in ~2s. --print-to-pdf does not write to the profile.
+            if _run_quiet([CHROME, "--headless", "--disable-gpu", "--no-first-run",
+                           "--no-default-browser-check", "--no-pdf-header-footer",
+                           f"--print-to-pdf={p}", source]):
+                paths.append(p)
+        if paths:
+            out["chrome_skia"] = paths
+
+    if HAVE_SOFFICE:
+        paths = []
+        for r in range(repeats):
+            sub = os.path.join(tmpdir, f"lo{r}")
+            os.makedirs(sub, exist_ok=True)
+            if _run_quiet(["soffice", "--headless", "--convert-to", "pdf",
+                           "--outdir", sub, source]):
+                p = os.path.join(sub, "source.pdf")
+                if os.path.exists(p):
+                    paths.append(p)
+        if paths:
+            out["libreoffice"] = paths
+
+    if HAVE_CUPSFILTER:
+        paths = []
+        for r in range(repeats):
+            p = os.path.join(tmpdir, f"quartz_cups__r{r}.pdf")
+            with open(p, "wb") as fh:
+                try:
+                    done = subprocess.run(["cupsfilter", source], stdout=fh,
+                                          stderr=subprocess.DEVNULL, timeout=120)
+                except (OSError, subprocess.TimeoutExpired):
+                    done = None
+            if done is not None and done.returncode == 0 and os.path.getsize(p):
+                paths.append(p)
+        if paths:
+            out["quartz_cups"] = paths
+
+    return {k: v for k, v in out.items() if len(v) == repeats}
+
+
+# --------------------------------------------------------------------------- #
 # Reading the corpus back — used by the experiment and by callers that need to
 # know what "the truth" was before a scrub.
 # --------------------------------------------------------------------------- #

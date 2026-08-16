@@ -240,8 +240,10 @@ def test_capabilities_come_from_the_measured_matrices_not_a_hardcoded_list():
     assert caps, "no Pareto matrices found under tests/harness/results/"
     fmts = {c["fmt"] for c in caps}
     assert {"jpeg", "png", "mp3"} <= fmts
-    # Nothing may be claimed for a format with no matrix on disk.
-    assert "pdf" not in fmts
+    # Nothing may be claimed for a format with no matrix on disk. Was `pdf` until
+    # Phase 3 published one; `docx` is the next format with nothing measured yet, so
+    # this line moves again when OOXML lands. That churn is the test working.
+    assert "docx" not in fmts
     md = qr.section_capabilities(_run())
     assert "MP3" in md
 

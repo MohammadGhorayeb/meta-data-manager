@@ -26,6 +26,7 @@ exclude it.)
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 
 from src.scrub.formats.pdf import content as ct
@@ -38,8 +39,34 @@ SERIALIZER_KEYS = ("struct:header", "struct:binary_comment", "struct:xref_kind",
                    "struct:trailer_keys", "struct:indirect_lengths")
 
 # Keys naming the LAYOUT ENGINE — how the page was typeset.
+#
+# `stream_count` sits here rather than with the serializer, and the distinction was
+# worth getting right: how many stream objects a file has is decided by what the
+# layout engine embedded (fonts, images, per-page content), not by how the bytes were
+# laid out. An earlier version computed it under the name `indirect_lengths`, which
+# made F1 look as though it left a serializer trait behind when what actually
+# survived was a layout one.
 LAYOUT_KEYS = ("struct:operators", "struct:number_style", "struct:font_subsets",
-               "struct:glyph_digest")
+               "struct:glyph_digest", "struct:stream_count")
+
+_INDIRECT_LENGTH = re.compile(rb"/Length\s+\d+\s+\d+\s+R")
+
+
+def empty_document_skeleton() -> bytes:
+    """What our serializer emits for a document with **no content at all**.
+
+    Generated, not transcribed, so it cannot drift from the writer. A one-page PDF
+    with an empty content stream and no resources: everything in these bytes is
+    structure the format requires plus the canonical form we chose, and none of it
+    can carry provenance, because there is no provenance in the input to carry.
+    """
+    import pikepdf
+
+    pdf = pikepdf.new()
+    page = pdf.add_blank_page(page_size=(612, 792))
+    page.obj.Contents = pikepdf.Stream(pdf, b"")
+    page.obj.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary())
+    return ser.serialize(pdf)
 
 
 class PdfPlugin:
@@ -76,21 +103,31 @@ class PdfPlugin:
         """Format-required invariants the fingerprint guard must not read as a tool
         signature — recorded in the matrix's `excluded` block, never hidden.
 
-        PDF makes this harder than any format so far, and the difficulty is worth
-        stating rather than papering over: its syntax **is** ASCII keywords, so at
-        `min_len=4` the guard surfaces `obj`, `endobj`, `xref`, `/Type` and the
-        20-byte xref entry format on every conformant file ever written. Those are
-        genuinely mandated and belong here.
+        PDF is harder here than any format so far, and the difficulty is worth
+        stating rather than papering over. Its syntax **is** ASCII keywords, so at
+        `min_len=4` the guard surfaces `obj`, `endobj`, `xref` and `/Type` on every
+        conformant file ever written. Worse, unlike FLAC or PNG — a short magic
+        prologue then content — a PDF's mandatory skeleton is *interleaved through
+        the whole file*: catalog, page tree, page objects, xref table and trailer are
+        present in every document no matter what it contains.
 
-        What is *not* mandated, and is therefore deliberately left exposed to the
-        guard, is our canonical numbering — that the catalog is object 1 and the
-        trailer says `/Root 1 0 R`. That is a real constant we introduce. It is also
-        unavoidable in a way FLAC's empty Vorbis comment was not: a PDF must have a
-        catalog and must number it something, and the only alternatives are to
-        inherit the input producer's numbering (strictly worse — it is *their*
-        fingerprint) or to randomise it (non-deterministic, which the harness floor
-        forbids). It marks a file as canonically rewritten, never as rewritten from
-        what — limit #9 — and the matrix says so instead of the guard hiding it.
+        So the last entry is **the empty document our own writer produces**,
+        generated rather than hand-listed. Any byte run common to every output that
+        is a substring of that skeleton is, by construction, pure structure: it
+        carries no content and no provenance because the document it came from has
+        none. Anything *not* in it is real signal and the guard still fails on it.
+
+        Declaring our canonical numbering this way is the same judgement
+        `plugins/flac.py` already records for its last-block flag — a canonical form
+        is a constant we choose, and the alternatives are worse: inherit the input
+        producer's numbering (that is *their* fingerprint) or randomise it
+        (non-deterministic, which the harness floor forbids). It marks a file as
+        canonically rewritten, never as rewritten *from what* — limit #9.
+
+        Because that declaration is broad, it is checked rather than trusted:
+        `test_matrix_pdf.py` asserts the undeclared residue contains no producer
+        string, no timestamp and no padding run, so adding a `/Producer` tomorrow
+        fails a test even though the guard itself would still pass.
         """
         return [
             ser.VERSION,                       # the pinned header
@@ -101,6 +138,7 @@ class PdfPlugin:
             b"/Type", b"/Catalog", b"/Pages", b"/Page", b"/Kids", b"/Count",
             b"/Parent", b"/Contents", b"/Resources", b"/MediaBox", b"/Length",
             b"/Root", b"/Size", b"/Filter", b"/Font", b"/XObject", b"/Subtype",
+            empty_document_skeleton(),
         ]
 
     def structural_features(self, path: str) -> dict:
@@ -121,7 +159,11 @@ class PdfPlugin:
             "object_streams": layout.object_streams,
             "linearized": layout.linearized,
             "trailer_keys": _trailer_keys(data),
-            "indirect_lengths": data.count(b"/Length ") - data.count(b"/Length 0"),
+            # An indirect /Length is `/Length 12 0 R` — a real serializer choice
+            # (cairo makes it, our writer never does). Counting `/Length ` instead
+            # would count streams, which is a layout trait wearing a serializer name.
+            "indirect_lengths": len(_INDIRECT_LENGTH.findall(data)),
+            "stream_count": data.count(b"\nstream"),
         }
         features.update(_layout_features(path))
         return features

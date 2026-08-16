@@ -133,3 +133,42 @@ not taken, and would rather state than make quietly.
 Worth noting: the standard alternative tool refuses M4A files outright, so
 everything above is capability it does not have at all.
 <!-- FORMAT:m4a:END -->
+
+<!-- FORMAT:pdf:BEGIN -->
+Only the **light clean** exists so far; the other two modes are being built, and
+the table says *not measured* for them rather than guessing.
+
+PDFs have a problem the other formats don't. **A PDF is edited by adding to the
+end of it, not by rewriting it** — so every earlier draft of a document is still
+inside the file. Open it and you see the latest version; cut the file at an
+earlier stopping point and the old draft opens like a normal document. This is
+the leak behind most published "redaction" disasters.
+
+**What we solved:** we don't edit the file, we **rebuild it from scratch**, so
+old drafts are never copied across. There is no deletion step that could miss
+one. We also write every byte of the new file ourselves rather than letting a
+library save it, because every PDF library stamps its own signature into the
+file's opening line — we measured five different ones. The clean reaches inside
+embedded photos too, removing their GPS and camera data while leaving the actual
+image untouched, bit for bit.
+
+Measured against the standard tools on a document with three hidden drafts: the
+most widely used one **removes nothing at all** — it also edits by adding to the
+end, so it leaves a *fourth* version and every earlier draft intact. The other
+one does destroy the history, but leaves its own name and a **clock timestamp
+with the operator's timezone** one layer down.
+
+**What is still open:** with the metadata gone, the *way the page was typeset*
+still identifies which program made it — where each letter sits, how much decimal
+precision the coordinates carry, which fonts were embedded. We measured this
+rather than assuming it, and measured it in two halves: everything about **how
+the file is built** is now identical across five different producers, and
+everything about **how the page was laid out** is untouched. That split is the
+point — it says exactly what the next mode has to fix, and part of it (the letter
+positions themselves) cannot be changed without re-typesetting the page, which
+would change how it looks.
+
+Two things we do **not** fix, and say so plainly: text hidden under a black box
+is still in the file (a different problem — see the limits), and embedded fonts
+keep their own small print about who made the font.
+<!-- FORMAT:pdf:END -->
