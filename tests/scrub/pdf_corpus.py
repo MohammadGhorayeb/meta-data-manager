@@ -204,6 +204,108 @@ def redacted_pdf(path: str, sentinel: str = "SECRET") -> str:
 
 
 # --------------------------------------------------------------------------- #
+# The torture document: every locus at once
+# --------------------------------------------------------------------------- #
+# Built with pikepdf rather than by hand. The hand writer above exists because
+# pikepdf cannot express incremental updates; this file is single-revision, so the
+# library is simply the less error-prone way to attach a dozen odd objects. That it
+# carries qpdf's own fingerprint is realistic — real inputs come from real tools.
+TORTURE_SECRETS = [
+    b"Author-SECRET", b"Title-SECRET", b"Keywords-SECRET",   # /Info
+    b"xmp-creator-SECRET",                                   # XMP, document level
+    b"xmp-on-image-SECRET",                                  # XMP hanging off an XObject
+    b"annot-author-SECRET",                                  # annotation /T
+    b"piece-info-SECRET",                                    # /PieceInfo private data
+    b"spider-url-SECRET",                                    # /SpiderInfo capture URL
+    b"ocg-creator-SECRET",                                   # /OCProperties /CreatorInfo
+    b"/Users/secret/path.docx",                              # /Launch target
+    b"TestCam",                                              # EXIF in the embedded JPEG
+]
+
+
+def _xmp(text: bytes) -> bytes:
+    return (b'<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+            b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF '
+            b'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+            b'<rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/">'
+            b"<xmp:CreatorTool>" + text + b"</xmp:CreatorTool>"
+            b"</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>")
+
+
+def torture_pdf(path: str) -> str:
+    """One page carrying every locus the W2 list names that F1 is expected to clear.
+
+    Deliberately includes the two that no object-graph walk finds on its own — a page
+    `/Thumb` and an **inline image** whose `ID` payload is a full JPEG with EXIF — plus
+    XMP hanging off an image rather than off the catalog, because "delete
+    `Root.Metadata`" passes a naive test and leaves that one behind.
+    """
+    import pikepdf
+
+    from tests.scrub import corpus as jpeg_corpus
+
+    jpeg = jpeg_corpus.build_torture_jpeg()          # EXIF + GPS + thumbnail + trailer
+    pdf = pikepdf.new()
+    page_content = (b"BT /F1 14 Tf 72 720 Td (Visible document text.) Tj ET\n"
+                    b"q 100 0 0 60 72 600 cm /Im0 Do Q\n"
+                    b"q 40 0 0 40 72 500 cm\n"
+                    b"BI /W 8 /H 8 /CS /RGB /F /DCTDecode ID " + jpeg + b"\nEI Q\n")
+
+    image = pikepdf.Stream(pdf, jpeg)
+    image.Type, image.Subtype = pikepdf.Name.XObject, pikepdf.Name.Image
+    image.Width, image.Height, image.BitsPerComponent = 64, 48, 8
+    image.ColorSpace, image.Filter = pikepdf.Name.DeviceRGB, pikepdf.Name.DCTDecode
+    # XMP on an XObject, not on the catalog — the locus a document-level-only scrub
+    # walks straight past.
+    image.Metadata = pikepdf.Stream(pdf, _xmp(b"xmp-on-image-SECRET"))
+
+    thumb = pikepdf.Stream(pdf, jpeg)
+    thumb.Width, thumb.Height, thumb.BitsPerComponent = 64, 48, 8
+    thumb.ColorSpace, thumb.Filter = pikepdf.Name.DeviceRGB, pikepdf.Name.DCTDecode
+
+    page = pdf.add_blank_page(page_size=(612, 792))
+    page.obj.Contents = pikepdf.Stream(pdf, page_content)
+    page.obj.Resources = pikepdf.Dictionary(
+        Font=pikepdf.Dictionary(F1=pikepdf.Dictionary(
+            Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+            BaseFont=pikepdf.Name.Helvetica)),
+        XObject=pikepdf.Dictionary(Im0=pdf.make_indirect(image)))
+    page.obj.Thumb = pdf.make_indirect(thumb)
+    page.obj.PieceInfo = pikepdf.Dictionary(
+        ADBE_Illustrator=pikepdf.Dictionary(
+            LastModified=pikepdf.String("D:20240101120000Z"),
+            Private=pikepdf.String("piece-info-SECRET")))
+    page.obj.SpiderInfo = pikepdf.Dictionary(
+        S=pikepdf.Name.SPS, F=8, C=pikepdf.String("spider-url-SECRET"))
+    page.obj.Annots = pikepdf.Array([pdf.make_indirect(pikepdf.Dictionary(
+        Type=pikepdf.Name.Annot, Subtype=pikepdf.Name.Text,
+        Rect=pikepdf.Array([10, 10, 30, 30]),
+        T=pikepdf.String("annot-author-SECRET"),
+        M=pikepdf.String("D:20240102130000Z"),
+        Contents=pikepdf.String("a comment"),
+        A=pikepdf.Dictionary(S=pikepdf.Name.Launch,
+                             F=pikepdf.String("/Users/secret/path.docx"))))])
+
+    pdf.Root.Metadata = pikepdf.Stream(pdf, _xmp(b"xmp-creator-SECRET"))
+    pdf.Root.OCProperties = pikepdf.Dictionary(
+        OCGs=pikepdf.Array([pdf.make_indirect(pikepdf.Dictionary(
+            Type=pikepdf.Name.OCG, Name=pikepdf.String("Layer 1"),
+            Usage=pikepdf.Dictionary(CreatorInfo=pikepdf.Dictionary(
+                Creator=pikepdf.String("ocg-creator-SECRET"),
+                Subtype=pikepdf.Name.Artwork))))]),
+        D=pikepdf.Dictionary(Order=pikepdf.Array([])))
+    with pdf.open_metadata() as _:
+        pass                                   # force the XMP packet to be written
+    pdf.Root.Metadata = pikepdf.Stream(pdf, _xmp(b"xmp-creator-SECRET"))
+    pdf.docinfo["/Author"] = "Author-SECRET"
+    pdf.docinfo["/Title"] = "Title-SECRET"
+    pdf.docinfo["/Keywords"] = "Keywords-SECRET"
+    pdf.docinfo["/Producer"] = "TortureWriter 1.0"
+    pdf.save(path, deterministic_id=True)
+    return path
+
+
+# --------------------------------------------------------------------------- #
 # Reading the corpus back — used by the experiment and by callers that need to
 # know what "the truth" was before a scrub.
 # --------------------------------------------------------------------------- #

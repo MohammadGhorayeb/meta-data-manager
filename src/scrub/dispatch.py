@@ -45,4 +45,6 @@ def default_dispatcher() -> Dispatcher:
     d.register(M4aHandler())
     from .formats.mp3.handler import Mp3Handler
     d.register(Mp3Handler())
+    from .formats.pdf.handler import PdfHandler
+    d.register(PdfHandler())
     return d

@@ -431,6 +431,61 @@ black rectangle. Collapsing revisions does nothing for it — there is no histor
 and `pdftotext` reads the secret straight out. Different leak, W7's problem, and it
 has a test of its own so the distinction cannot quietly erode.
 
+### 2.2 M2 as built — walker, serializer, tokenizer, recursive F1
+
+`src/scrub/formats/pdf/{walker,serialize,content,f1,handler}.py`, registered in
+dispatch. Tests in `tests/scrub/test_pdf.py`; the harness plugin is
+`tests/harness/plugins/pdf.py`.
+
+**Verified against six real producers** — Skia (Chrome and the project's own reports),
+LibreOffice, macOS Quartz via `cupsfilter`, cairo via MAT2 (xref *streams* and object
+streams), ExifTool's incremental output, and the synthetic corpus. Text is
+byte-identical through `pdftotext` in every case, output is one revision, and the
+serializer's own orphan check passes.
+
+The binary header comment turns out to be a clean per-producer constant, which is the
+sharpest confirmation of the W0 decision: Skia `%\xd3\xeb\xe9\xe1`, cairo
+`%\xb5\xed\xae\xfb`, LibreOffice `%\xc3\xa4\xc3\xbc\xc3\xb6\xc3\x9f`, Quartz a
+twelve-byte one, qpdf `%\xbf\xf7\xa2\xfe`. We emit none.
+
+**Four bugs the corpus caught, each worth keeping in mind:**
+
+1. **Direct dictionaries were invisible.** The first strip pass walked only *indirect*
+   objects, so `/OCProperties → /OCGs → /Usage → /CreatorInfo` and an annotation's
+   `/A` launch action — both ordinarily direct sub-dictionaries — survived. The
+   residual check shared the blind spot and reported clean. Both now use one
+   generator: **a verifier with less reach than the scrubber cannot see what the
+   scrubber missed.**
+2. **`EI` occurs inside JPEG data.** The inline-image terminator scan found a
+   whitespace-bounded `EI` inside the embedded image, truncating it and mis-parsing
+   the rest of the page. Fixed by starting the scan after the JPEG's own `EOI`,
+   which the JPEG walker already knows how to find. Not a corner case — it happened
+   on the first torture file built.
+3. **Tokenizing a window walks into binary.** The inline dictionary reader tokenized
+   a 512-byte lookahead to get one token, and that window runs straight into the
+   image payload. Hence `next_token()`: read one token, advance, stop at `ID`.
+4. **Indirect `/Length` would have emitted an orphan.** cairo writes `/Length` as a
+   separate object; the traversal numbered it, the dictionary rendered `/Length`
+   direct, and nothing then referenced the object. Caught by turning the accounting
+   ledger on our own output — a serializer that emits an unreferenced object is
+   producing exactly the residue this phase removes.
+
+**Determinism** is checked out of process with `PYTHONHASHSEED` varied, per §5: the
+in-process floor test shares one hash seed across all five repeats, so a `set`-ordered
+output path would look perfectly deterministic there and differ on the next CLI call.
+
+**What F1 refuses** rather than half-scrubbing: encrypted, signed, XFA, attachments,
+junk before the header, hybrid `/XRefStm`, and anything after the final `%%EOF`.
+Encryption is checked from the bytes *before* opening — pikepdf raises `PasswordError`
+first, so a later check would never run and the user would get a password complaint
+instead of the reason.
+
+**Residuals, measured and now in `docs/limits.md` (#13–#15):** embedded font programs
+keep `name`/`OS/2`/`head` (measured: `head.created` intact on a scrubbed LibreOffice
+file), and ICC profiles keep their descriptive tags while the header is already
+zeroed. Both name the foundry or the platform rather than the author — an A2 channel,
+and M4's problem.
+
 Phase 2's design rules carry over and are not negotiable: **assert the controls** (if
 the attack cannot identify the producer of an unscrubbed file, its failure on a
 scrubbed one proves nothing); **verdicts are significance tests, not thresholds** on a
@@ -454,7 +509,7 @@ because this project has been bitten by exactly this.
 |---|---|---|
 | **M0** | W0 spike — measured qpdf's byte layout against our own fingerprint guard; serializer decision recorded | ✅ |
 | **M1** | PDF corpus + E-PDF-HISTORY: incremental-update history provably gone | ✅ baseline (§2.1) — attacks + controls land; our own row needs M2 |
-| **M2** | PDF walker + serializer + tokenizer; **recursive** F1 + plugin + dispatch; `/Info`, XMP, `/ID[0]`, `/Thumb`, inline images and embedded-JPEG EXIF all cleared | 🔜 |
+| **M2** | PDF walker + serializer + tokenizer; **recursive** F1 + plugin + dispatch; `/Info`, XMP, `/ID[0]`, `/Thumb`, inline images and embedded-JPEG EXIF all cleared | ✅ (§2.2) |
 | **M3** | E-PDF at `raw` and `F1` — which channel leaks, measured before F2 is designed | 🔜 |
 | **M4** | PDF F2 (canonical serialise + content-stream canonicalisation) + E-PDF-LAYOUT + matrix — the honest A2-at-F2 answer, whatever it is | 🔜 |
 | **M5** | PDF F3 + E-PDF-RASTER incl. the DPI knob; redaction detector | 🔜 |

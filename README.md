@@ -10,7 +10,7 @@
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
 ## Status
-Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio complete** — MP3 (F1 + F3, cross-engine A2 evidence), FLAC (F1 + F2, lossless A2) and M4A (F1/F2/F3, the format MAT2 refuses). **Phase 3 documents is underway**: the PDF corpus and the revision-history experiment are measured (see below); the handler itself is next. Fully implemented and measured, **253 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
+Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio complete** — MP3 (F1 + F3, cross-engine A2 evidence), FLAC (F1 + F2, lossless A2) and M4A (F1/F2/F3, the format MAT2 refuses). **Phase 3 documents is underway**: **PDF F1 is implemented** — our own walker, serializer and content tokenizer, recursive into embedded images — and the revision-history experiment is measured (see below). Fully implemented and measured, **278 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at `docs/p1_report.pdf`; a benchmark vs standard tools is at `docs/benchmark.md`.
 
 ### Results (measured, not assumed)
 | Format | A1 metadata (F1/F2/F3) | A2 fingerprint (F1/F2/F3) |
@@ -20,6 +20,7 @@ Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2
 | **MP3**  | pass / n-a / pass  | fail / n-a / **pass** |
 | **FLAC** | pass / pass / n-a  | fail / **pass** / n-a |
 | **M4A**  | pass / pass / pass | fail / fail\* / fail\* |
+| **PDF**  | pass / — / —       | — / — / — (F2/F3 not built yet) |
 
 A1 (metadata) is defeated everywhere. A2 (encoder fingerprint) is defeated by re-encoding — and **twice now at no quality cost at all**: **PNG F2** and **FLAC F2** are lossless, returning bit-identical pixels and bit-identical audio, while **JPEG F3** and **MP3 F3** must spend a lossy generation to get there. The dividing line is whether the fingerprint lives in a separable layer (PNG's deflate, FLAC's metadata blocks and framing) or is baked into the compressed content itself (JPEG's DQT, MP3's LAME/Xing contour). Each format's fingerprint and residuals (PRNU, primary quantization, MP3 generation loss, within-class anonymity) are documented, never silently claimed clean.
 
@@ -45,7 +46,11 @@ Depth-first **by dependency, not popularity** — leaf formats before the contai
 Images are done + benchmarked ([`docs/benchmark.md`](docs/benchmark.md)), and **Phase 2 audio is closed**: **MP3** (tag strip + canonical re-encode with cross-engine A2 evidence), **FLAC** (lossless A2, bit-identical audio) and **M4A** (ISOBMFF box surgery with sample-table patching — the format MAT2 refuses). Its ledger of what audio can and cannot be made anonymous — six solved results, four structural limits, four gaps named rather than glossed — is at the end of [`docs/p2_audio_plan.md`](docs/p2_audio_plan.md). Next:
 - **Phase 3 — documents (PDF, then OOXML/Word)** is under way: the plan is [`docs/p3_documents_plan.md`](docs/p3_documents_plan.md). Two named targets — PDF **incremental-update history** (old revisions left in the file: the famous redaction-disclosure mode) and **OOXML RSIDs**, which survive every surveyed tool including MAT2. The A2-at-F2 frontier for PDF is the open research question, to be characterised rather than asserted.
 
-  **Measured so far (M1).** A PDF is edited by *appending*, so "deleted" text is still in the file; truncate at an earlier `%%EOF` and the earlier draft opens as a document. On a 3-revision corpus: **ExifTool `-all=` adds a fourth revision and removes nothing** (it warns about this itself), while **MAT2** destroys the document's history by re-rendering but then clears `/Info` by appending an update of its own — leaving `cairo 1.18.4` and a **wall-clock timestamp with the operator's UTC offset** one revision down, reproduced on both its paths and on a real 295 KB file. A full document rewrite is what actually closes this, and it is the mechanism the PDF F1 tier will be built on. Details in [`docs/benchmark.md`](docs/benchmark.md) Evidence 6. Redaction — text under a black box in a single-revision file — is a *different* leak that this does not touch, and is kept explicitly separate.
+  **Measured (M1).** A PDF is edited by *appending*, so "deleted" text is still in the file; truncate at an earlier `%%EOF` and the earlier draft opens as a document. On a 3-revision corpus: **ExifTool `-all=` adds a fourth revision and removes nothing** (it warns about this itself), while **MAT2** destroys the document's history by re-rendering but then clears `/Info` by appending an update of its own — leaving `cairo 1.18.4` and a **wall-clock timestamp with the operator's UTC offset** one revision down, reproduced on both its paths and on a real 295 KB file. Details in [`docs/benchmark.md`](docs/benchmark.md) Evidence 6.
+
+  **Built (M2): PDF F1.** A rewrite from the object graph through **our own serializer** — pikepdf reads, we emit the bytes, because qpdf's constant header comment and its inherited `/ID[0]` both fail this project's own fingerprint guard. History dies by construction: only what the catalog reaches is written, so superseded objects are never emitted and there is no deletion pass to get wrong. Recursive from day one — an embedded JPEG goes through the Phase 1 handler and its entropy-coded scan comes back byte-identical while its EXIF and thumbnail are gone. Clears `/Info`, XMP *wherever it hangs* (including off an image), `/ID`, page `/Thumb`, `/PieceInfo`, `/SpiderInfo`, OCG `/CreatorInfo`, annotation authors, and **inline images** — a `BI … ID … EI` JPEG that no object-graph walk can see. Verified on six real producers (Skia, LibreOffice, Quartz, cairo, ExifTool output, synthetic), text byte-identical throughout. Encrypted, signed, XFA, attachment-bearing and hybrid-xref files are **refused**, not half-scrubbed.
+
+  Redaction — text under a black box in a single-revision file — is a *different* leak that none of this touches, and is kept explicitly separate ([limit #13](docs/limits.md)).
 - **Optional:** the JPEG E4 residual bound (primary-quantization trace after F3).
 
 ## Far-future goals
@@ -72,7 +77,8 @@ tests/
   corpus/e3/               PNG/JPEG peer corpus for the A2 experiments (images git-ignored)
   scrub/                   Unit + harness tests, forensic-recovery guard, and the
                            A2 experiments: E3 (JPEG DQT), E-LAME (MP3 header space),
-                           E-ENGINE (MP3 audio space, cross-engine)
+                           E-ENGINE (MP3 audio space, cross-engine),
+                           E-PDF-HISTORY (PDF revision rollback)
 src/scrub/
   cli.py  dispatch.py      Entry point + magic-number routing
   standards/               Shared modules: TIFF-IFD, XMP, ICC, IPTC-IIM (written once, reused)
@@ -80,6 +86,9 @@ src/scrub/
   formats/png/             PNG handler: chunk walker (CRC) + f1/f2
   formats/mp3/             MP3 handler: frame/tag walker + f1/f3
   formats/flac/            FLAC handler: metadata-block walker + f1/f2
+  formats/m4a/             M4A handler: ISOBMFF box surgery + f1/f2/f3
+  formats/pdf/             PDF handler: structure walker + our own serializer +
+                           content-stream tokenizer + recursive f1
 scripts/
   qa_report.py             Builds the plain-language CI report (run page + PR comment)
   check_evidence.py        Re-measures the Pareto matrices; fails if a published claim drifted

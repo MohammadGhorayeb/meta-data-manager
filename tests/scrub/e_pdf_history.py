@@ -260,13 +260,13 @@ def cleaners() -> dict:
         out["mat2_lightweight"] = lambda s, d: clean_mat2(s, d, lightweight=True)
     if HAVE_EXIFTOOL:
         out["exiftool_all"] = clean_exiftool
-    try:                                    # our own handler, once P3 M2 lands
+    try:                                    # our own handler, tier by tier
         from src.scrub import cli
         from src.scrub.dispatch import default_dispatcher
-        if default_dispatcher().resolve(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n") is not None:
-            for fid in ("F1", "F2"):
-                out[f"scrubber_{fid}"] = (
-                    lambda s, d, _f=fid: (cli.scrub_file(s, d, _f), d)[1])
+        handler = default_dispatcher().resolve(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        for fid in handler.fidelities:      # only the tiers that actually exist
+            out[f"scrubber_{fid}"] = (
+                lambda s, d, _f=fid: (cli.scrub_file(s, d, _f), d)[1])
     except Exception:
         pass
     return out

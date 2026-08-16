@@ -19,9 +19,17 @@ def test_dispatch_resolves_jpeg_by_magic():
 
 def test_dispatch_unsupported_raises():
     d = default_dispatcher()
-    # A PDF header: no image handler claims it (JPEG=FFD8FF, PNG=89504E47…).
+    # A ZIP header. Was a PDF header until Phase 3 registered a PDF handler — the
+    # example has to be a format we genuinely do not claim, or the test passes for
+    # the wrong reason. OOXML lands next, so this line will need moving again.
     with pytest.raises(UnsupportedFormatError):
-        d.resolve(b"%PDF-1.7\r\n" + b"\x00" * 16)
+        d.resolve(b"PK\x03\x04" + b"\x00" * 16)
+
+
+def test_dispatch_resolves_pdf_by_magic():
+    from src.scrub.formats.pdf.handler import PdfHandler
+    d = default_dispatcher()
+    assert isinstance(d.resolve(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n"), PdfHandler)
 
 
 def test_cli_scrub_file_end_to_end(tmp_path):
