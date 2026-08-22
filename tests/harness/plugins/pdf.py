@@ -30,6 +30,7 @@ import re
 import subprocess
 
 from src.scrub.formats.pdf import content as ct
+from src.scrub.formats.pdf import f2 as pdf_f2
 from src.scrub.formats.pdf import serialize as ser
 from src.scrub.formats.pdf import walker as w
 
@@ -46,19 +47,43 @@ SERIALIZER_KEYS = ("struct:header", "struct:binary_comment", "struct:xref_kind",
 # laid out. An earlier version computed it under the name `indirect_lengths`, which
 # made F1 look as though it left a serializer trait behind when what actually
 # survived was a layout one.
-LAYOUT_KEYS = ("struct:operators", "struct:number_style", "struct:font_subsets",
-               "struct:glyph_digest", "struct:stream_count")
+# `operators` is split into the half F2 can normalise and the half it cannot, for the
+# same reason M3 split the serializer channel off from the layout one: a single key
+# reports the identical verdict whether F2 collapsed nothing or collapsed most of it.
+# `text_operators` is the vocabulary of the text machine — which of `Td`/`TD`/`T*`/`Tm`
+# and `Tj`/`TJ`/`'`/`"` a producer reaches for, which is spelling and nothing else.
+# `operators` stays as the full set, so nothing is hidden by the split and the
+# graphics vocabulary a producer genuinely uses still has to answer for itself.
+LAYOUT_KEYS = ("struct:operators", "struct:text_operators", "struct:number_style",
+               "struct:font_subsets", "struct:glyph_digest", "struct:stream_count")
+
+# The text machine's operators, per ISO 32000 §9.4. Anything else a content stream
+# contains is drawing, and drawing differences are what the engine actually chose to
+# put on the page rather than how it chose to write it down.
+_TEXT_OPERATORS = frozenset({
+    "BT", "ET", "Tc", "Tw", "Tz", "TL", "Tf", "Tr", "Ts",
+    "Td", "TD", "Tm", "T*", "Tj", "TJ", "'", '"'})
 
 _INDIRECT_LENGTH = re.compile(rb"/Length\s+\d+\s+\d+\s+R")
 
 
-def empty_document_skeleton() -> bytes:
+def empty_document_skeleton(fidelity: str = "F1") -> bytes:
     """What our serializer emits for a document with **no content at all**.
 
     Generated, not transcribed, so it cannot drift from the writer. A one-page PDF
     with an empty content stream and no resources: everything in these bytes is
     structure the format requires plus the canonical form we chose, and none of it
     can carry provenance, because there is no provenance in the input to carry.
+
+    Both tiers are needed, because they do not emit the same skeleton. F1 passes a
+    stream through with whatever encoding it arrived in; F2 re-encodes every stream
+    it can decode through one deflate setting, so an F2 file carries
+    `/Filter /FlateDecode` and a zlib header on every stream. That pair is a genuine
+    constant of our output and the guard found it the moment F2 landed — but it is a
+    constant of the *canonical form*, not of the input, which is exactly what this
+    function exists to declare. The compression **level** behind it is a separate
+    question and is answered by measurement, not by declaration: see
+    `f2._COMPRESS_LEVEL`.
     """
     import pikepdf
 
@@ -66,6 +91,8 @@ def empty_document_skeleton() -> bytes:
     page = pdf.add_blank_page(page_size=(612, 792))
     page.obj.Contents = pikepdf.Stream(pdf, b"")
     page.obj.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary())
+    if fidelity == "F2":
+        pdf_f2._recompress(pdf)
     return ser.serialize(pdf)
 
 
@@ -138,7 +165,8 @@ class PdfPlugin:
             b"/Type", b"/Catalog", b"/Pages", b"/Page", b"/Kids", b"/Count",
             b"/Parent", b"/Contents", b"/Resources", b"/MediaBox", b"/Length",
             b"/Root", b"/Size", b"/Filter", b"/Font", b"/XObject", b"/Subtype",
-            empty_document_skeleton(),
+            empty_document_skeleton("F1"),
+            empty_document_skeleton("F2"),
         ]
 
     def structural_features(self, path: str) -> dict:
@@ -219,8 +247,10 @@ def _layout_features(path: str) -> dict:
             for page in pdf.pages
             for font in ((page.obj.get("/Resources") or {}).get("/Font") or {}).values()
             if isinstance(font, pikepdf.Dictionary)}))
+    names = sorted(set(o.decode("latin-1") for o in operators))
     return {
-        "operators": tuple(sorted(set(o.decode("latin-1") for o in operators))),
+        "operators": tuple(names),
+        "text_operators": tuple(n for n in names if n in _TEXT_OPERATORS),
         # How many numbers carry a decimal point: producers differ sharply in how
         # much precision they emit, and it is normalisable losslessly at F2.
         "number_style": reals,

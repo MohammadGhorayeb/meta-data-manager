@@ -318,3 +318,37 @@ def operations(data: bytes) -> list[Operation]:
         else:
             pending.append(tok)
     return ops
+
+
+def walk_ops(data: bytes):
+    """Operations **and** inline images, in file order.
+
+    `operations()` above drops `BI … ID … EI` on the floor, which is right for the
+    harness plugin and for W7 — both only read operators. F2's canonicaliser rewrites
+    the stream and therefore has to put every inline image back exactly where it was,
+    so it needs the two interleaved. Kept separate rather than adding a flag to
+    `operations()`, because the plugin's feature vector must not shift under it.
+    """
+    images = {img.start: img for img in inline_images(data)}
+    out: list[Operation | InlineImage] = []
+    pending: list[Token] = []
+    pos = 0
+    while True:
+        pos = _skip_ws(data, pos)
+        img = images.get(pos)
+        if img is not None:
+            # `BI` takes no operands; anything pending belongs to no operator and is
+            # a malformed stream rather than something to silently attach.
+            pending = []
+            out.append(img)
+            pos = img.end
+            continue
+        tok = next_token(data, pos)
+        if tok is None:
+            return out
+        pos = tok.end
+        if tok.kind == "operator":
+            out.append(Operation(tok.raw, pending))
+            pending = []
+        else:
+            pending.append(tok)

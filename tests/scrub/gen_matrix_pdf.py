@@ -39,9 +39,8 @@ TOOL = {
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}",
 }
 
-_UNBUILT = ("F2 is Phase 3 M4 (canonical re-serialisation plus content-stream "
-            "canonicalisation) and F3 is M5 (rasterise). Neither exists, so this "
-            "cell is untested rather than inapplicable.")
+_UNBUILT = ("F3 is Phase 3 M5 (rasterise). It does not exist, so this cell is "
+            "untested rather than inapplicable.")
 
 
 def _scrubber():
@@ -56,22 +55,25 @@ def build_doc(tmpdir: str) -> dict:
 
     # --- A1: same page, metadata differing only by a sentinel ---
     variants = pc.a1_variants(tmpdir, n_variants=3, n_repeats=5)
-    cells.append(leak.evaluate_a1(scrubber, plugin, variants, "F1", n=5,
-                                  sentinel_field="metadata_variant",
-                                  modality="bytes"))
-    for fid in ("F2", "F3"):
-        cells.append(Cell("A1", fid, V.NOT_TESTED, reason=_UNBUILT))
+    for fid in ("F1", "F2"):
+        cells.append(leak.evaluate_a1(scrubber, plugin, variants, fid, n=5,
+                                      sentinel_field="metadata_variant",
+                                      modality="bytes"))
+    cells.append(Cell("A1", "F3", V.NOT_TESTED, reason=_UNBUILT))
 
     # --- A2: producer peer set, per channel ---
     sources = e_pdf.build_sources(tmpdir, repeats=3)
     raw = e_pdf.run_condition("raw", sources, tmpdir)
-    cells.append(e_pdf.evaluate_cell("F1", sources, tmpdir, raw=raw))
-    for fid in ("F2", "F3"):
-        cells.append(Cell("A2", fid, V.NOT_TESTED, reason=_UNBUILT))
+    for fid in ("F1", "F2"):
+        cells.append(e_pdf.evaluate_cell(fid, sources, tmpdir, raw=raw))
+    cells.append(Cell("A2", "F3", V.NOT_TESTED, reason=_UNBUILT))
 
     # --- fingerprint guard over small, diverse inputs ---
     diverse = pc.diverse_inputs(tmpdir, n=4)
-    gv, gsig = fingerprint_guard.evaluate(scrubber, plugin, diverse, "F1",
+    # Run on F2, the strongest tier that exists: it rewrites every content stream
+    # through one writer, which is exactly where a scrubber-wide constant would be
+    # introduced if we had introduced one.
+    gv, gsig = fingerprint_guard.evaluate(scrubber, plugin, diverse, "F2",
                                           min_len=config.MIN_SIG_LEN)
     excluded = [{"bytes_hex": c.hex(), "decoded": c.decode("latin-1", "replace")}
                 for c in plugin.mandatory_constants()]

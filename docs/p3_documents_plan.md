@@ -555,6 +555,98 @@ published verdicts would go permanently unchallenged. Absent producers make the 
 say *not measured*, never *clean* — the `shineenc` pattern, and limit #12 already exists
 because this project has been bitten by exactly this.
 
+### 2.4 M4 as built — F2, and the honest A2-at-F2 answer
+
+`src/scrub/formats/pdf/canon.py` (content-stream canonicaliser),
+`src/scrub/formats/pdf/f2.py` (the tier), matrix in
+`tests/harness/results/pdf_irreversible_scrubber.json`.
+
+W5's rule was: do not accept an A2@F2 fail until content-stream canonicalisation
+actually exists. It exists now, so the fail below is a measurement rather than an
+artefact of unfinished work.
+
+**What F2 normalises.** One content stream per page (ISO 32000 §7.8.2 — the reader
+concatenates them anyway); number spelling; `Td`/`TD`/`T*` folded into the absolute
+`Tm` they amount to; consecutive shows merged into one `TJ`; canonical strings, names
+and whitespace; one compression filter at one level; font subset tags reassigned in
+first-appearance order.
+
+**The rewrite needs no font metrics, which is what makes it safe.** `Td`/`TD`/`T*` are
+relative to the *line* matrix `Tlm`, and showing text advances only `Tm` — so `Tlm` is
+trackable exactly without glyph widths. The one case that would need widths is a
+second show after the first has advanced `Tm`, and that is handled by *merging* the
+run rather than computing where it got to.
+
+| channel | `raw` | `F1` | `F2` |
+|---|---|---|---|
+| **serializer** | leaks | **closed** | closed |
+| **layout** | all five leak | all five leak | **text-operator vocabulary collapses to one value for four of five**; `glyph_digest`, `font_subsets`, `number_style`, `stream_count` and the graphics vocabulary still leak |
+| **size** | leaks | leaks | leaks |
+
+So **A2@F2 = fail, and what survives is substance rather than style.** The two
+synthetics — built to differ on serializer *and* on layout spelling — become
+indistinguishable on the text channel, which is the result the split was added to be
+able to see. `struct:text_operators` was added to the plugin for exactly the reason M3
+split serializer from layout one level up: a single `operators` key reports the same
+verdict whether F2 collapsed most of the channel or none of it. `struct:operators`
+stays alongside it, so nothing is hidden by the split.
+
+The one producer that still differs on text vocabulary is macOS Quartz, and it differs
+because it genuinely sets `Tc`. Dropping the operator would make the cell pass and
+change the rendering — the wrong trade, so the leak stays and is named.
+
+**Content preservation is checked in pixel space, not only against ourselves.**
+`canon.painted()` — glyphs shown in order, non-rewritten operators with operands, and
+the replayed absolute position and spacing at each show — shares a state machine with
+the rewriter, so agreeing with it proves less than agreeing with poppler. All five
+producers render **byte-identical PNGs at 150 DPI** before and after F2, and extracted
+text is unchanged. A negative-control test mutates canonical output four ways (a glyph
+changed, a line moved 1 pt, a leading swallowed, a drawing operator dropped) and
+asserts the invariant catches each, so the content promise cannot pass vacuously.
+
+Three things went wrong before this was published, all of the shipping-a-wrong-claim
+species:
+
+- **`need_tm` was cleared on an empty flush.** A `Tf` between a `Td` and the text it
+  positions dropped the pending move, so the rewritten `Td` never became a `Tm` and
+  the line rendered at the previous position. Silent, and invisible to any check that
+  only compares which glyphs were painted — which is why `painted()` carries replayed
+  geometry as its third component rather than ink alone.
+- **Leading was treated as text-object state.** `TL` is *graphics* state (ISO 32000
+  §9.3): it survives `ET` and is saved and restored by `q`/`Q`, so a `T*` in one text
+  object can depend on a `TL` set in an earlier one. Resetting it per `BT` moves every
+  line that relies on that.
+- **Invoked streams inherit their initial text state.** A Form XObject, a tiling
+  pattern and a Type3 glyph procedure start in the *caller's* state, not the default
+  one. Assuming zero there emits a `0 Tw` that overrides the caller's spacing and
+  resolves `T*` against the wrong leading. `canon.canonicalize(..., inherits=True)`
+  now starts those as "inherited and unknown", refuses to resolve a `T*` it cannot
+  resolve, and F2 leaves that one stream alone rather than refusing the document —
+  with `residuals()` reporting it, so it fails loudly rather than passing as normalised.
+
+**The fingerprint guard failed the moment F2 landed, and it was right to.** The
+signature was ` 0 obj\n<< /Filter /FlateDecode /Length ` and ` >>\nstream\nx\xda` —
+every stream re-encoded at deflate level 9. Two separate fixes came out of it, and the
+distinction between them matters:
+
+- The *shape* (`/Filter /FlateDecode` on every stream) is a constant of the canonical
+  form, so it is **declared**: `empty_document_skeleton()` now generates an F2 skeleton
+  as well as an F1 one, and the existing M3 argument covers it — a run common to every
+  output that is a substring of a document with no content is structure by construction.
+- The *level* is not declared, it is **measured**. `78 9C` = 6, `78 DA` = 9, `78 01` = 1;
+  across the peer corpus four of five producers emit level 6 and one emits level 1, and
+  none emits 9. Level 9 did not normalise our output, it labelled it. Pinned to 6 —
+  the same "join the largest crowd that exists" reasoning the Phase 6 decoy-metadata
+  item records for mandatory timestamps.
+
+A third constant was removed rather than declared: the first cut emitted `0 Tw 0 Tc`
+before every show run. Spacing is now written only when it actually changes, so a
+document that never sets it comes out with no spacing operator at all — the FLAC
+empty-Vorbis-comment lesson, which is that a constant you can simply omit should never
+be normalised instead.
+
+---
+
 ---
 
 ## 3. Milestones
@@ -565,7 +657,7 @@ because this project has been bitten by exactly this.
 | **M1** | PDF corpus + E-PDF-HISTORY: incremental-update history provably gone | ✅ baseline (§2.1) — attacks + controls land; our own row needs M2 |
 | **M2** | PDF walker + serializer + tokenizer; **recursive** F1 + plugin + dispatch; `/Info`, XMP, `/ID[0]`, `/Thumb`, inline images and embedded-JPEG EXIF all cleared | ✅ (§2.2) |
 | **M3** | E-PDF at `raw` and `F1` — which channel leaks, measured before F2 is designed | ✅ (§2.3) |
-| **M4** | PDF F2 (canonical serialise + content-stream canonicalisation) + E-PDF-LAYOUT + matrix — the honest A2-at-F2 answer, whatever it is | 🔜 |
+| **M4** | PDF F2 (canonical serialise + content-stream canonicalisation) + matrix — the honest A2-at-F2 answer, whatever it is | ✅ (§2.4) — A2@F2 fails; text-operator spelling closed, glyph geometry is the residual |
 | **M5** | PDF F3 + E-PDF-RASTER incl. the DPI knob; redaction detector | 🔜 |
 | **M6** | DOCX walker + F1 + plugin + matrix, ZIP timestamps consistent | 🔜 |
 | **M7** | E-RSID: RSIDs cleared where MAT2 leaves them; benchmark row written | 🔜 |

@@ -1,9 +1,10 @@
 """The PDF Pareto matrix, and the claims it is allowed to make.
 
-The A2@F1 cell is the one that matters at this milestone: it must not say "A2 fails"
-and stop there. It has to name *which* producer channel leaked, because that is what
-M4 is built from — and a cell that averaged the serializer and layout channels
-together would report the same verdict whether F1 had closed one of them or neither.
+The A2 cells must not say "A2 fails" and stop there. They have to name *which*
+producer channel leaked — a cell that averaged the serializer and layout channels
+together would report the same verdict whether F1 had closed one of them or neither,
+and the same argument applies one level down at F2, where the text machine's operator
+vocabulary collapses and the graphics vocabulary does not.
 """
 from __future__ import annotations
 
@@ -53,14 +54,32 @@ def test_a2_at_f1_names_the_channel_that_leaked(doc):
 
 
 def test_unbuilt_tiers_are_untested_not_passed(doc):
-    """F2 and F3 do not exist. `not_tested`, never `not_applicable`: they are planned,
-    and a reader must be able to tell "we have not measured this" from "this cell can
-    never apply"."""
+    """F3 does not exist. `not_tested`, never `not_applicable`: it is planned, and a
+    reader must be able to tell "we have not measured this" from "this cell can never
+    apply"."""
     for adversary in ("A1", "A2"):
-        for fidelity in ("F2", "F3"):
-            cell = _cell(doc, adversary, fidelity)
-            assert cell["verdict"] == "not_tested"
-            assert "M4" in cell["reason"] or "M5" in cell["reason"]
+        cell = _cell(doc, adversary, "F3")
+        assert cell["verdict"] == "not_tested"
+        assert "M5" in cell["reason"]
+
+
+def test_a1_at_f2_passes(doc):
+    assert _cell(doc, "A1", "F2")["verdict"] == "pass"
+
+
+def test_a2_at_f2_still_fails_and_says_what_survived(doc):
+    """The honest M4 answer. F2 rewrites every content stream through one writer, so
+    the text machine's *spelling* is gone — but glyph geometry is not spelling, and a
+    cell that claimed a pass here would be reporting a broken measurement rather than
+    a closed leak. The leak list must still carry the glyph digest."""
+    cell = _cell(doc, "A2", "F2")
+    assert cell["verdict"] == "fail"
+    leaked = {leak["locus"]["feature_id"] for leak in cell["leaks"]}
+    assert "struct:glyph_digest" in leaked, (
+        "glyph geometry is the predicted F2 floor — if it stopped leaking, either the "
+        "tier is re-typesetting the page or the feature stopped measuring anything")
+    assert not (leaked & set(SERIALIZER_KEYS)), (
+        f"F2 inherits F1's serializer, so these must stay closed: {leaked}")
 
 
 def test_peer_set_is_reported_in_the_cell(doc):

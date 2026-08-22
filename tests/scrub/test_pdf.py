@@ -1,4 +1,4 @@
-"""PDF: walker, serializer, content tokenizer, and the recursive F1 tier.
+"""PDF: walker, serializer, content tokenizer, and the F1 and F2 tiers.
 
 The torture document is the centre of this file. Every assertion that matters is
 "this specific locus is empty afterwards", because a PDF scrub that only clears
@@ -7,6 +7,8 @@ full JPEG sitting inside a content stream.
 """
 from __future__ import annotations
 
+import io
+import pathlib
 import subprocess
 
 import pikepdf
@@ -14,8 +16,8 @@ import pytest
 
 from src.scrub import cli
 from src.scrub.errors import ContentError, FidelityError, ParseError
+from src.scrub.formats.pdf import canon, f1, f2
 from src.scrub.formats.pdf import content as ct
-from src.scrub.formats.pdf import f1
 from src.scrub.formats.pdf import serialize as ser
 from src.scrub.formats.pdf import walker as w
 from tests.scrub import corpus as jpeg_corpus
@@ -223,11 +225,187 @@ def test_f1_is_deterministic_across_processes(torture, tmp_path):
     assert len(digests) == 1, "output differs between interpreters"
 
 
-@pytest.mark.parametrize("fidelity", ["F2", "F3"])
-def test_unbuilt_tiers_refuse_rather_than_silently_downgrade(torture, tmp_path, fidelity):
+def test_unbuilt_tiers_refuse_rather_than_silently_downgrade(torture, tmp_path):
+    """F3 is M5. A tier that does not exist must refuse, never quietly hand back the
+    next tier down — a caller who asked for rasterisation and got a structural rewrite
+    would believe the text layer was gone when it is still fully extractable."""
     with pytest.raises(FidelityError):
-        cli.scrub_file(torture, str(tmp_path / "o.pdf"), fidelity)
+        cli.scrub_file(torture, str(tmp_path / "o.pdf"), "F3")
     assert not (tmp_path / "o.pdf").exists()
+
+
+# --------------------------------------------------------------------------- #
+# F2: content-stream canonicalisation
+# --------------------------------------------------------------------------- #
+def test_canon_collapses_two_spellings_of_the_same_page():
+    """The whole premise of the tier, at its smallest. Two producers write the same
+    line four ways — `Td` with integers and one `Tj` per word, versus `Tm` with
+    trailing zeros and `TJ` arrays — and canonicalisation must make them one file."""
+    td_style = b"BT /F1 12 Tf 14 TL 72 720 Td (Hello) Tj ( world) Tj T* (two) Tj ET"
+    tm_style = (b"BT /F1 12.00 Tf 1 0 0 1 72.0 720.000 Tm [(Hello)] TJ [( world)] TJ "
+                b"1 0 0 1 72 706 Tm [(two)] TJ ET")
+    assert canon.canonicalize(td_style) == canon.canonicalize(tm_style)
+
+
+@pytest.mark.parametrize("source", [
+    b"BT /F1 12 Tf 16 TL 72 700 Td (a) ' 3 1 (b) \" (c) ' ET",
+    b"BT 20 TL 10 700 Td (x) Tj ET q BT 5 TL 10 600 Td (y) Tj T* (z) Tj ET Q "
+    b"BT 10 500 Td T* (w) Tj ET",
+    rb"BT 0 0 Td <48656C6C6F> Tj (A\(B\101) Tj ET",
+    b"BT 12 0 0 12 5 5 Tm 2 3 Td (a) Tj -1 -1 Td (b) Tj ET",
+    b"q 1 0 0 RG 10 10 100 100 re f Q",
+    b"q 1 0 0 1 0 0 cm BI /W 1 /H 1 /CS /G /BPC 8 /L 1 ID \x00 EI Q BT 0 0 Td (t) Tj ET",
+    b"",
+])
+def test_canon_preserves_what_the_stream_paints(source):
+    out = canon.canonicalize(source)
+    assert canon.painted(source) == canon.painted(out)
+    assert canon.canonicalize(out) == out, "canonicalisation must be a fixed point"
+
+
+@pytest.mark.parametrize("mutation,replacement", [
+    (b"(Hello)", b"(Hellp)"),                     # a glyph changed
+    (b"1 0 0 1 72 700 Tm", b"1 0 0 1 72 701 Tm"),  # a line moved
+    (b"1 0 0 1 72 684 Tm", b"1 0 0 1 72 700 Tm"),  # leading swallowed
+    (b"5 5 10 10 re\n", b""),                     # a drawing operator dropped
+])
+def test_the_paint_invariant_is_not_vacuous(mutation, replacement):
+    """A self-check that passes on everything proves nothing. Each mutation is a real
+    content change, and `painted()` has to see every one of them — otherwise the F2
+    content promise is an assertion that cannot fail."""
+    source = (b"BT /F1 12 Tf 16 TL 72 700 Td (Hello) Tj T* (world) Tj ET "
+              b"1 0 0 RG 5 5 10 10 re f")
+    good = canon.canonicalize(source)
+    broken = good.replace(mutation, replacement)
+    assert broken != good, "the mutation did not apply — the test would be vacuous"
+    assert canon.painted(broken) != canon.painted(source)
+
+
+def test_canon_leaves_no_relative_positioning_behind():
+    """`Td`, `TD`, `T*` and `TL` are four ways of saying where the next line starts,
+    and which one a producer reaches for is spelling. After canonicalisation only the
+    absolute `Tm` should remain — otherwise the choice is still in the file."""
+    source = (b"BT /F1 12 Tf 14 TL 72 720 Td (a) Tj T* (b) Tj 5 -20 TD (c) Tj ET")
+    out = canon.canonicalize(source)
+    ops = {o.operator for o in ct.operations(out)}
+    assert not (ops & canon.REWRITTEN_AWAY), f"relative positioning survived: {ops}"
+    assert b"Tm" in out
+
+
+def test_canon_refuses_a_form_whose_leading_is_inherited():
+    """A Form XObject starts in its caller's text state, so a `T*` with no `TL` of its
+    own cannot be resolved to an absolute position. Refusing is the only correct
+    answer; guessing zero silently moves every line in the form."""
+    form = b"BT 0 0 Td (a) Tj T* (b) Tj ET"
+    with pytest.raises(ParseError, match="inherited from the caller"):
+        canon.canonicalize(form, inherits=True)
+    assert f2.canonical_or_none(form, inherits=True) is None, (
+        "one unresolvable stream must be left alone, not fail the whole document")
+
+
+def test_canon_invents_no_spacing_operator_for_an_invoked_stream():
+    """`0 Tw 0 Tc` before every run was the first implementation, and it put a
+    constant into every file we emit — the FLAC empty-comment mistake. A stream that
+    never sets spacing must come out with no spacing operator at all."""
+    out = canon.canonicalize(b"BT /F1 12 Tf 0 0 Td (in a form) Tj ET", inherits=True)
+    assert b"Tw" not in out and b"Tc" not in out
+
+
+def test_f2_clears_every_locus_f1_does(torture, tmp_path):
+    out = tmp_path / "f2.pdf"
+    cli.scrub_file(torture, str(out), "F2")
+    blobs = _all_bytes(str(out))
+    survivors = [s.decode("latin-1") for s in pc.TORTURE_SECRETS
+                 if any(s in b for b in blobs)]
+    assert survivors == [], f"secret survived F2: {survivors}"
+    assert f2.residuals(out.read_bytes()) == []
+
+
+def test_f2_renders_the_same_page(torture, tmp_path):
+    """The content promise, checked in pixel space rather than through our own
+    invariant. `painted()` and the rewriter share a state machine, so agreeing with
+    each other proves less than agreeing with poppler."""
+    pytest.importorskip("shutil")
+    import shutil
+    if not shutil.which("pdftoppm"):
+        pytest.skip("poppler not installed")
+    out = tmp_path / "f2.pdf"
+    cli.scrub_file(torture, str(out), "F2")
+
+    def render(path):
+        stem = str(tmp_path / ("r_" + pathlib.Path(path).stem))
+        subprocess.run(["pdftoppm", "-r", "150", "-png", "-singlefile", path, stem],
+                       check=True, capture_output=True)
+        return pathlib.Path(stem + ".png").read_bytes()
+
+    assert render(str(out)) == render(torture)
+    assert pc.pdftotext(str(out)) == pc.pdftotext(torture)
+
+
+def test_f2_normalises_the_compression_filter(torture, tmp_path):
+    """One filter and one deflate level for everything we may decode, so neither is a
+    producer tell. Level 6 rather than 9 is measured, not assumed: it is what four of
+    the five peer producers emit, and 9 is what none of them emits."""
+    out = tmp_path / "f2.pdf"
+    cli.scrub_file(torture, str(out), "F2")
+    with pikepdf.open(str(out)) as pdf:
+        for obj in pdf.objects:
+            if not isinstance(obj, pikepdf.Stream):
+                continue
+            filters = f1._filter_names(obj)
+            if set(filters) & f2._KEEP_FILTER:
+                continue
+            assert filters == ["/FlateDecode"], f"stray filter {filters}"
+            assert obj.read_raw_bytes()[:2] == b"\x78\x9c", "deflate level is not 6"
+
+
+def test_f2_normalises_font_subset_tags(tmp_path):
+    """`/ABCDEF+Helvetica` carries an arbitrary per-producer tag. Reassigning it is
+    lossless — ISO 32000 §9.6.4 asks only that it be unique within the document."""
+    src = tmp_path / "sub.pdf"
+    with pikepdf.new() as pdf:
+        page = pdf.add_blank_page(page_size=(200, 200))
+        page.obj.Contents = pikepdf.Stream(pdf, b"BT /F1 12 Tf 10 100 Td (hi) Tj ET")
+        font = pdf.make_indirect(pikepdf.Dictionary(
+            Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+            BaseFont=pikepdf.Name("/QWERTY+Helvetica")))
+        page.obj.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font))
+        pdf.save(src)
+    out = f2.scrub(src.read_bytes())
+    assert b"QWERTY+" not in out
+    assert b"AAAAAA+Helvetica" in out
+
+
+def test_f2_merges_a_multi_stream_page(tmp_path):
+    """How a producer chops a page into content streams is style with no rendering
+    meaning — ISO 32000 §7.8.2 says the reader concatenates them."""
+    src = tmp_path / "split.pdf"
+    with pikepdf.new() as pdf:
+        page = pdf.add_blank_page(page_size=(200, 200))
+        page.obj.Contents = pikepdf.Array([
+            pdf.make_stream(b"BT /F1 12 Tf 10 100 Td (a)"),
+            pdf.make_stream(b" Tj ET")])
+        page.obj.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(
+            F1=pdf.make_indirect(pikepdf.Dictionary(
+                Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+                BaseFont=pikepdf.Name.Helvetica))))
+        pdf.save(src)
+    with pikepdf.open(io.BytesIO(f2.scrub(src.read_bytes()))) as after:
+        assert isinstance(after.pages[0].obj.get("/Contents"), pikepdf.Stream)
+
+
+def test_f2_is_deterministic(torture):
+    raw = pathlib.Path(torture).read_bytes()
+    assert len({f2.scrub(raw) for _ in range(5)}) == 1
+
+
+def test_f2_content_change_fails_closed(torture, monkeypatch, tmp_path):
+    """If the rewrite ever paints something else, the tier must raise rather than
+    ship a file whose page we cannot vouch for."""
+    monkeypatch.setattr(canon, "canonicalize",
+                        lambda data, inherits=False: b"BT /F1 12 Tf 0 0 Td (X) Tj ET")
+    with pytest.raises(ContentError):
+        f2.scrub(pathlib.Path(torture).read_bytes())
 
 
 # --------------------------------------------------------------------------- #
