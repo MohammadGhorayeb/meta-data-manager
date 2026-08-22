@@ -83,6 +83,42 @@ Done when: each survives execution post-scrub; Rich Header / build-id / LC_UUID 
 - SVG, TIFF, GIF, WebP, EPUB, etc. — mostly reuse standard modules.
 - Final dispatch/CLI, batch mode, plugin-registration polish.
 - The per-format Pareto matrix, now empirically filled, becomes the tool's spec sheet.
+- **Decoy metadata (`--decoy`), default off** — deliberate *spoofing* rather than
+  removal, on an axis orthogonal to F1/F2/F3: the fidelity tiers trade content, this
+  trades truthfulness. Motivation is the one attack our A1/A2/A3 ladder does not
+  model — where **the fact of scrubbing is itself the leak** (a document leaked from
+  a pool of three, and only one person's files are conspicuously clean). Removal is
+  correct for A2, which asks *which producer*, not *was this cleaned*.
+  Cross-format by nature: PDF `/Info` dates, JPEG `DateTimeOriginal`, MP3 `TDRC`,
+  MP4 `creation_time` all pose the identical question, so it is one shared module,
+  not a per-handler feature.
+  Design constraints, all of them learned the hard way elsewhere in this project:
+  - **A random date is worse than no date.** A spoofed value must be consistent with
+    the file's own technology floor — PDF version header (1.5 = object streams,
+    2003; 1.7 = 2006), filter set, font technology, the embedded JPEG's encoder
+    traits that Phase 1 can already classify. A 2004 date on a file using object
+    streams is falsified by reading the header, and it upgrades "this was cleaned"
+    into "this was cleaned *and* forged". So: compute the earliest compatible date,
+    then draw above that floor.
+  - **The generator is a fingerprint.** A fixed `+00'00'` offset, uniform
+    second-precision, or a uniform-over-a-decade draw where real documents cluster
+    on weekday business hours *is* a producer signature across n files from one
+    user — the same class of tool constant that caught FLAC's empty Vorbis comment
+    and pikepdf's `/Producer`. The fingerprint guard must see this mode's output.
+  - **Where a timestamp is mandatory, join a crowd instead of inventing one.** ZIP
+    local file headers carry a required MS-DOS timestamp that cannot be omitted, so
+    DOCX (P3 M6) must pick a constant: `1980-01-01 00:00`, the ZIP epoch and the
+    reproducible-builds convention, which carries zero per-file entropy. That is the
+    principle in miniature and it is the opposite of randomising.
+  - **Ships only behind `E-DECOY`** — a classifier separating our synthetic dates
+    from genuine ones, with valid controls. Without that it is an unvalidated claim,
+    which this project does not publish.
+  - **`docs/limits.md` states the dual-use property plainly** when the mode lands:
+    convincing false provenance on a document has an obvious second use in forgery.
+  Not needed for the file's own bytes today: the scrubber has **no wall-clock call at
+  all** (`grep -rn "utime|datetime.now|time.time()|strftime" src/scrub/` is empty), so
+  outputs carry no date to begin with. Only the output's filesystem mtime says "now",
+  which is a workflow concern and a one-line `touch -t` for anyone who cares.
 
 ---
 
