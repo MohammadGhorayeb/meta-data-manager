@@ -5,7 +5,7 @@
     "version": "0.1.0-p3",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-08-22T19:23:08.806067+00:00",
+  "generated_at": "2026-08-23T13:16:43.804984+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -31,14 +31,18 @@
     {
       "adversary": "A1",
       "fidelity": "F3",
-      "verdict": "not_tested",
-      "reason": "F3 is Phase 3 M5 (rasterise). It does not exist, so this cell is untested rather than inapplicable."
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
     },
     {
       "adversary": "A2",
       "fidelity": "F1",
       "verdict": "fail",
-      "reason": "producer still identifiable. Leaking by channel \u2014 layout: struct:font_subsets, struct:glyph_digest, struct:number_style, struct:operators, struct:stream_count; size: struct:size. Peer set = synth_td_int, synth_tm_real, chrome_skia, libreoffice, quartz_cups.",
+      "reason": "producer still identifiable. Leaking by channel \u2014 layout: struct:font_subsets, struct:glyph_digest, struct:number_style, struct:operators, struct:stream_count, struct:text_operators; size: struct:size. Peer set = synth_td_int, synth_tm_real, chrome_skia, libreoffice, quartz_cups.",
       "leaks": [
         {
           "kind": "source_fingerprint",
@@ -117,6 +121,19 @@
           },
           "correlates_with": "producer (across 5)",
           "evidence": "struct:stream_count constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:text_operators",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 5)",
+          "evidence": "struct:text_operators constant within producer, differs across"
         }
       ]
     },
@@ -124,7 +141,7 @@
       "adversary": "A2",
       "fidelity": "F2",
       "verdict": "fail",
-      "reason": "producer still identifiable. Leaking by channel \u2014 layout: struct:font_subsets, struct:glyph_digest, struct:number_style, struct:operators, struct:stream_count; size: struct:size. Peer set = synth_td_int, synth_tm_real, chrome_skia, libreoffice, quartz_cups.",
+      "reason": "producer still identifiable. Leaking by channel \u2014 layout: struct:font_subsets, struct:glyph_digest, struct:number_style, struct:operators, struct:stream_count, struct:text_operators; size: struct:size. Peer set = synth_td_int, synth_tm_real, chrome_skia, libreoffice, quartz_cups.",
       "leaks": [
         {
           "kind": "source_fingerprint",
@@ -203,14 +220,42 @@
           },
           "correlates_with": "producer (across 5)",
           "evidence": "struct:stream_count constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:text_operators",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 5)",
+          "evidence": "struct:text_operators constant within producer, differs across"
         }
       ]
     },
     {
       "adversary": "A2",
       "fidelity": "F3",
-      "verdict": "not_tested",
-      "reason": "F3 is Phase 3 M5 (rasterise). It does not exist, so this cell is untested rather than inapplicable."
+      "verdict": "fail",
+      "reason": "the typesetter is still identifiable from the pixels \u2014 leave-one-document-out nearest neighbour on ink geometry: unscrubbed 1.00 (p=0.000), after F3 at 150 DPI 1.00 (p=0.000), chance 0.20, n=30. Peer set = chrome_skia, libreoffice, quartz_cups, synth_td_int, synth_tm_real",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "pixel",
+            "offset": null,
+            "length": null,
+            "feature_id": "ink_geometry",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 5)",
+          "evidence": "glyph positions, advances and line breaks survive rasterisation into the rendered page"
+        }
+      ]
     },
     {
       "adversary": "A3",

@@ -1,4 +1,4 @@
-"""PDF: walker, serializer, content tokenizer, and the F1 and F2 tiers.
+"""PDF: walker, serializer, content tokenizer, all three tiers, and the advisory.
 
 The torture document is the centre of this file. Every assertion that matters is
 "this specific locus is empty afterwards", because a PDF scrub that only clears
@@ -16,7 +16,7 @@ import pytest
 
 from src.scrub import cli
 from src.scrub.errors import ContentError, FidelityError, ParseError
-from src.scrub.formats.pdf import canon, f1, f2
+from src.scrub.formats.pdf import canon, f1, f2, f3, redaction
 from src.scrub.formats.pdf import content as ct
 from src.scrub.formats.pdf import serialize as ser
 from src.scrub.formats.pdf import walker as w
@@ -225,12 +225,11 @@ def test_f1_is_deterministic_across_processes(torture, tmp_path):
     assert len(digests) == 1, "output differs between interpreters"
 
 
-def test_unbuilt_tiers_refuse_rather_than_silently_downgrade(torture, tmp_path):
-    """F3 is M5. A tier that does not exist must refuse, never quietly hand back the
-    next tier down — a caller who asked for rasterisation and got a structural rewrite
-    would believe the text layer was gone when it is still fully extractable."""
+def test_an_unknown_fidelity_is_refused(torture, tmp_path):
+    """All three tiers exist now, so the fail-closed case is a bad tier name — it must
+    still raise rather than quietly fall back to a tier the caller did not ask for."""
     with pytest.raises(FidelityError):
-        cli.scrub_file(torture, str(tmp_path / "o.pdf"), "F3")
+        cli.scrub_file(torture, str(tmp_path / "o.pdf"), "F4")
     assert not (tmp_path / "o.pdf").exists()
 
 
@@ -467,3 +466,145 @@ def test_scrubs_a_real_multipage_report(tmp_path):
     assert pc.pdftotext(str(out)) == pc.pdftotext("docs/p1_report.pdf")
     layout = w.walk(out.read_bytes())
     assert len(layout.revisions) == 1 and layout.binary_comment is None
+
+
+# --------------------------------------------------------------------------- #
+# F3: rasterise
+# --------------------------------------------------------------------------- #
+def _need_poppler():
+    import shutil
+    if not shutil.which("pdftoppm"):
+        pytest.skip("poppler not installed")
+
+
+def _render(path: str, out_dir, dpi: int = 150) -> bytes:
+    stem = str(out_dir / ("r_" + pathlib.Path(path).stem))
+    subprocess.run(["pdftoppm", "-r", str(dpi), "-png", "-singlefile", path, stem],
+                   check=True, capture_output=True)
+    return pathlib.Path(stem + ".png").read_bytes()
+
+
+def test_f3_destroys_the_text_layer(torture, tmp_path):
+    """The tier's defining cost, asserted rather than described. If text still comes
+    out, the page was not actually rasterised and the file only looks scrubbed."""
+    _need_poppler()
+    out = tmp_path / "f3.pdf"
+    cli.scrub_file(torture, str(out), "F3")
+    assert pc.pdftotext(torture).strip() != ""
+    assert pc.pdftotext(str(out)).strip() == ""
+
+
+def test_f3_preserves_the_visible_page(torture, tmp_path):
+    """Hard constraint #1 still applies: what the reader *sees* must survive. The gate
+    is perceptual, not bit-exact — F3 is a lossy tier and the page is now a JPEG."""
+    _need_poppler()
+    from PIL import Image
+    out = tmp_path / "f3.pdf"
+    cli.scrub_file(torture, str(out), "F3")
+
+    before = Image.open(io.BytesIO(_render(torture, tmp_path))).convert("RGB")
+    after = Image.open(io.BytesIO(_render(str(out), tmp_path))).convert("RGB")
+    assert before.size == after.size, "the page changed dimensions"
+    diff = [abs(a - b)
+            for pa, pb in zip(before.getdata(), after.getdata(), strict=True)
+            for a, b in zip(pa, pb, strict=True)]
+    assert sum(diff) / len(diff) < 2.0, "the rendered page changed materially"
+
+
+def test_f3_leaves_no_font_or_text_operator(torture, tmp_path):
+    _need_poppler()
+    out = tmp_path / "f3.pdf"
+    cli.scrub_file(torture, str(out), "F3")
+    assert f3.residuals(out.read_bytes()) == []
+    with pikepdf.open(str(out)) as pdf:
+        for page in pdf.pages:
+            assert "/Font" not in (page.obj.get("/Resources") or {})
+            assert b"BT" not in page.obj.Contents.read_bytes()
+
+
+def test_f3_page_count_and_geometry_survive(tmp_path):
+    """Page count is content; page size is content. A tier that silently dropped a
+    page would still pass every "is the metadata gone" check."""
+    _need_poppler()
+    src = pc.incremental_pdf(str(tmp_path / "multi.pdf"))
+    out = tmp_path / "f3.pdf"
+    cli.scrub_file(src, str(out), "F3")
+    with pikepdf.open(src) as a, pikepdf.open(str(out)) as b:
+        assert len(a.pages) == len(b.pages)
+        wa = float(a.pages[0].obj.MediaBox[2]) - float(a.pages[0].obj.MediaBox[0])
+        wb = float(b.pages[0].obj.MediaBox[2]) - float(b.pages[0].obj.MediaBox[0])
+        # Rounded up to the render pixel grid, so within one pixel at the render DPI.
+        assert abs(wa - wb) <= 72.0 / f3.DEFAULT_DPI
+
+
+def test_f3_is_deterministic(torture):
+    _need_poppler()
+    raw = pathlib.Path(torture).read_bytes()
+    assert len({f3.scrub(raw) for _ in range(3)}) == 1
+
+
+def test_f3_refuses_a_nonsensical_resolution(torture):
+    with pytest.raises(ParseError):
+        f3.scrub(pathlib.Path(torture).read_bytes(), dpi=0)
+
+
+# --------------------------------------------------------------------------- #
+# W7: the redaction advisory
+# --------------------------------------------------------------------------- #
+def _one_page(body: bytes, tmp_path) -> bytes:
+    with pikepdf.new() as pdf:
+        page = pdf.add_blank_page(page_size=(612, 792))
+        page.obj.Contents = pikepdf.Stream(pdf, body)
+        page.obj.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(
+            F1=pdf.make_indirect(pikepdf.Dictionary(
+                Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+                BaseFont=pikepdf.Name.Helvetica))))
+        buf = io.BytesIO()
+        pdf.save(buf)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("body,expected", [
+    (b"BT /F1 12 Tf 72 700 Td (nothing to hide) Tj ET", []),
+    (b"BT /F1 12 Tf 100 700 Td (Agent Smith) Tj ET 0 g 90 690 200 30 re f",
+     ["text_under_fill"]),
+    (b"BT /F1 12 Tf 3 Tr 72 700 Td (hidden identifier) Tj ET", ["invisible_text"]),
+    (b"BT /F1 12 Tf 72 -400 Td (off the page) Tj ET", ["text_outside_crop"]),
+])
+def test_redaction_detector_finds_the_three_patterns(body, expected, tmp_path):
+    risks = redaction.detect(_one_page(body, tmp_path))
+    assert [r.kind for r in risks] == expected
+
+
+@pytest.mark.parametrize("body", [
+    # Stroked, not filled: an outline does not hide anything underneath it.
+    b"BT /F1 12 Tf 100 700 Td (Agent Smith) Tj ET 90 690 200 30 re S",
+    # Filled, but nowhere near the text.
+    b"BT /F1 12 Tf 100 700 Td (Agent Smith) Tj ET 0 g 90 100 200 30 re f",
+    # Filled over the text, but drawn BEFORE it — that is a highlight, not a cover.
+    b"0 g 90 690 200 30 re f BT /F1 12 Tf 100 700 Td (Agent Smith) Tj ET",
+])
+def test_redaction_detector_stays_quiet_when_it_should(body, tmp_path):
+    """A warning that fires on ordinary drawing gets ignored, and then it protects
+    nobody. Under-reporting is the chosen failure direction, so these must be silent."""
+    assert redaction.detect(_one_page(body, tmp_path)) == []
+
+
+def test_redaction_warning_does_not_fail_the_scrub(tmp_path):
+    """The advisory is about the *input*; the scrub still did what it promised. A
+    redaction risk must never cost the user a working scrub."""
+    src = pc.redacted_pdf(str(tmp_path / "redacted.pdf"))
+    out = tmp_path / "out.pdf"
+    advisories = cli.scrub_file(src, str(out), "F1")
+    assert out.exists()
+    assert any("redaction" in a for a in advisories)
+
+
+def test_the_scrub_really_does_preserve_the_hidden_text(tmp_path):
+    """The uncomfortable fact the advisory exists to state, asserted so it cannot
+    quietly stop being true: every tier preserves content, so the words under the box
+    survive the scrub. If this ever fails, the tier started destroying content."""
+    src = pc.redacted_pdf(str(tmp_path / "redacted.pdf"))
+    out = tmp_path / "out.pdf"
+    cli.scrub_file(src, str(out), "F1")
+    assert "SECRET" in pc.pdftotext(str(out))

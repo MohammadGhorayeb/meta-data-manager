@@ -53,16 +53,6 @@ def test_a2_at_f1_names_the_channel_that_leaked(doc):
     assert not (leaked & set(SERIALIZER_KEYS)), f"serializer keys leaked: {leaked}"
 
 
-def test_unbuilt_tiers_are_untested_not_passed(doc):
-    """F3 does not exist. `not_tested`, never `not_applicable`: it is planned, and a
-    reader must be able to tell "we have not measured this" from "this cell can never
-    apply"."""
-    for adversary in ("A1", "A2"):
-        cell = _cell(doc, adversary, "F3")
-        assert cell["verdict"] == "not_tested"
-        assert "M5" in cell["reason"]
-
-
 def test_a1_at_f2_passes(doc):
     assert _cell(doc, "A1", "F2")["verdict"] == "pass"
 
@@ -119,3 +109,35 @@ def test_the_declared_skeleton_hides_nothing_that_matters():
     assert len(skeleton) < 1024, (
         f"the declared skeleton is {len(skeleton)} bytes; a skeleton that grows past "
         "an empty document's structure is no longer just structure")
+
+
+def test_a1_at_f3_passes(doc):
+    assert _cell(doc, "A1", "F3")["verdict"] == "pass"
+
+
+def test_a2_at_f3_is_judged_on_pixels_not_structure(doc):
+    """The cell that would have been easiest to get wrong.
+
+    Structurally F3 passes almost trivially — the file is entirely our own output, so
+    a structural comparison has nearly nothing left to separate producers with. If
+    this cell ever reads `pass`, the most likely cause is not that F3 got better but
+    that it stopped being judged on the rendered page, so the locus is asserted too.
+    """
+    cell = _cell(doc, "A2", "F3")
+    assert cell["verdict"] == "fail", (
+        "rasterising relocates the typesetter's geometry into pixel space; it does "
+        "not remove it, and E-PDF-RASTER measures exactly that")
+    spaces = {leak["locus"]["space"] for leak in cell["leaks"]}
+    assert spaces == {"pixel"}, (
+        f"the F3 residual is pixel-domain, not structural — got {spaces}")
+    assert "chance" in cell["reason"] and "n=" in cell["reason"], (
+        "the cell must carry the statistic it was decided on, not just a verdict")
+
+
+def test_every_a2_cell_names_its_peer_set(doc):
+    """Which producers were actually available is part of the claim — a cell measured
+    against two synthetics is a weaker statement than one measured against five."""
+    for fidelity in ("F1", "F2", "F3"):
+        reason = _cell(doc, "A2", fidelity)["reason"]
+        assert "synth_td_int" in reason and "synth_tm_real" in reason, (
+            f"A2@{fidelity} does not say what it was measured against")

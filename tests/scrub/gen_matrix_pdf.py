@@ -3,20 +3,27 @@
 Honesty rule (CLAUDE.md): a cell is only pass/fail if we measured it.
 
 Measured here:
-  - A1@F1   differential leak oracle over same-page / different-metadata PDFs.
-  - A2@F1   producer peer set (experiment E-PDF), reported **per channel**: F1
-            closes the serializer channel outright — our own writer decides the
-            header, `/ID`, xref style, object streams and `/Length` — while the
-            layout channel (operators, number precision, font subsets, glyph
-            geometry) is untouched, because F1 never rewrites a content stream.
-  - F2, F3  not_tested: the tiers do not exist yet (M4/M5). Recorded as untested
-            rather than as not_applicable — they are planned, not inapplicable, and
-            the difference matters to anyone reading the matrix.
+  - A1@F1/F2/F3  differential leak oracle over same-page / different-metadata PDFs.
+  - A2@F1/F2     producer peer set (experiment E-PDF), reported **per channel**. F1
+                 closes the serializer channel outright — our own writer decides the
+                 header, `/ID`, xref style, object streams and `/Length` — while the
+                 layout channel is untouched, because F1 never rewrites a content
+                 stream. F2 rewrites every content stream through one writer, which
+                 closes the text machine's *spelling* but not its geometry.
+  - A2@F3        comes from **E-PDF-RASTER, not E-PDF**, and that choice is the whole
+                 point of the cell. Structurally F3 passes almost trivially: the file
+                 is entirely our own output, so there is barely anything left for a
+                 structural comparison to separate producers with. Publishing that as
+                 the verdict would be exactly the overclaim this project exists not to
+                 make — the page is an image now, and the typesetter's geometry is
+                 painted into it. So the cell is decided by attacking the rendered
+                 pixels, and it fails.
 
-The A2@F1 cell is the point of running this before F2 is designed. "A2 fails" on its
-own would tell M4 nothing; "A2 fails on the layout channel only, with the serializer
-channel already closed" tells it exactly what remains — and W5's warning is that only
-*part* of what remains can be normalised without re-typesetting the page.
+The per-channel reporting is why running E-PDF before F2 was designed was worth it.
+"A2 fails" on its own would have told M4 nothing; "A2 fails on the layout channel
+only, with the serializer channel already closed" told it exactly what remained — and
+W5's warning, since confirmed, is that only *part* of what remains can be normalised
+without re-typesetting the page.
 
 Run:  ./.venv/bin/python -m tests.scrub.gen_matrix_pdf
 """
@@ -26,11 +33,10 @@ import os
 import tempfile
 
 from tests.harness import config
-from tests.harness.contract import Cell, V
 from tests.harness.oracle import fingerprint_guard, leak
 from tests.harness.plugins.pdf import PdfPlugin
 from tests.harness.runner import matrix
-from tests.scrub import e_pdf
+from tests.scrub import e_pdf, e_pdf_raster
 from tests.scrub import pdf_corpus as pc
 
 TOOL = {
@@ -39,8 +45,11 @@ TOOL = {
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}",
 }
 
-_UNBUILT = ("F3 is Phase 3 M5 (rasterise). It does not exist, so this cell is "
-            "untested rather than inapplicable.")
+# The number of distinct documents E-PDF-RASTER classifies over. Six per producer is
+# 30 samples across five producers, enough that a one-sided binomial test against a
+# 0.20 chance rate can reach significance, and small enough that generating the corpus
+# (Chrome, LibreOffice and cupsfilter, six times each) stays inside a matrix build.
+_RASTER_DOCS = 6
 
 
 def _scrubber():
@@ -55,18 +64,30 @@ def build_doc(tmpdir: str) -> dict:
 
     # --- A1: same page, metadata differing only by a sentinel ---
     variants = pc.a1_variants(tmpdir, n_variants=3, n_repeats=5)
-    for fid in ("F1", "F2"):
+    for fid in ("F1", "F2", "F3"):
         cells.append(leak.evaluate_a1(scrubber, plugin, variants, fid, n=5,
                                       sentinel_field="metadata_variant",
                                       modality="bytes"))
-    cells.append(Cell("A1", "F3", V.NOT_TESTED, reason=_UNBUILT))
 
     # --- A2: producer peer set, per channel ---
     sources = e_pdf.build_sources(tmpdir, repeats=3)
     raw = e_pdf.run_condition("raw", sources, tmpdir)
     for fid in ("F1", "F2"):
         cells.append(e_pdf.evaluate_cell(fid, sources, tmpdir, raw=raw))
-    cells.append(Cell("A2", "F3", V.NOT_TESTED, reason=_UNBUILT))
+
+    # --- A2 at F3: decided on the PIXELS, not on the structure ---
+    # Structurally F3 passes trivially — the file is entirely our own output, so
+    # E-PDF finds almost nothing left to separate producers with. Publishing that as
+    # the A2@F3 verdict would be the overclaim this project exists not to make: the
+    # page is now an image, and the typesetter's geometry is painted into it. So the
+    # cell comes from E-PDF-RASTER, which attacks the rendered page directly.
+    raster_dir = os.path.join(tmpdir, "raster")
+    os.makedirs(raster_dir, exist_ok=True)
+    docs = pc.documents(raster_dir, n_docs=_RASTER_DOCS)
+    control = e_pdf_raster.run_condition(docs, raster_dir, dpi=None)
+    scrubbed = e_pdf_raster.run_condition(docs, raster_dir,
+                                          dpi=e_pdf_raster.f3.DEFAULT_DPI)
+    cells.append(e_pdf_raster.evaluate_cell(control, scrubbed))
 
     # --- fingerprint guard over small, diverse inputs ---
     diverse = pc.diverse_inputs(tmpdir, n=4)

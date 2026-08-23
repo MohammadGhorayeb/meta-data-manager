@@ -339,7 +339,7 @@ def _run_quiet(cmd, **kw) -> bool:
     return p.returncode == 0
 
 
-def _synthetic(path: str, style: str) -> str:
+def _synthetic(path: str, style: str, text: str | None = None) -> str:
     """A PDF built directly with pikepdf, in one of two deliberate house styles.
 
     These are **not padding**. `cupsfilter` is macOS-only and Chrome is unlikely on
@@ -360,7 +360,7 @@ def _synthetic(path: str, style: str) -> str:
     """
     import pikepdf
 
-    lines = SOURCE_TEXT.strip().split("\n")
+    lines = (text if text is not None else SOURCE_TEXT).strip().split("\n")
     body = [b"BT /F1 11 Tf"]
     for i, line in enumerate(lines):
         text = line.replace("\\", "").replace("(", "").replace(")", "").encode("latin-1")
@@ -477,6 +477,113 @@ def diverse_inputs(tmpdir: str, n: int = 4) -> list[str]:
         pdf.save(p, deterministic_id=True, compress_streams=bool(i % 2))
         out.append(p)
     return out
+
+
+# Distinct documents, for an attack that has to generalise across content.
+#
+# `producers()` above holds the document constant and varies the producer, which is
+# what a *structural* A2 comparison needs. A pixel-space classifier cannot be fed that
+# corpus: with one document, "which producer made this page" collapses into "which of
+# these five images have I seen before", and leave-one-out would score 100% on memory
+# rather than on any producer trait. So E-PDF-RASTER needs several documents per
+# producer and a classifier that is never shown the held-out page's own document.
+#
+# The paragraphs differ in line count, line length and digit content, so glyph
+# positions genuinely differ between documents rather than being the same page with a
+# word changed.
+_DOC_BODIES = [
+    """Field teams in the northern and coastal districts reported no material
+delays this period. Budget variance stood at 2.4% under plan, and the
+largest single line was equipment leasing at 118,400.""",
+    """Maintenance windows were consolidated into a single monthly cycle
+beginning in the second period. Three of the eleven depots have not yet
+migrated, and their schedules remain provisional pending the audit.
+Transport costs fell to 61,250 from 68,900 in the prior comparison.""",
+    """The legacy fleet is scheduled for retirement before the next audit
+window opens.""",
+    """Headcount closed at 214 against an approved establishment of 230.
+Vacancy concentration remains highest in the coastal region, where six
+of the fourteen open roles have been unfilled for more than two quarters.
+Recruitment spend was 41,700 for the period, against 38,000 planned,
+and the variance is attributed entirely to agency fees.""",
+    """Inventory turns improved to 6.1 from 5.4. Shrinkage was 0.9% of
+throughput, within tolerance but above the 0.6% recorded a year earlier.""",
+    """A revised escalation path was agreed with the regional office and
+takes effect immediately. Incidents at severity two or above now route
+to the duty manager within fifteen minutes rather than one hour.""",
+    """Capital projects: the coastal contract extension was approved for two
+further quarters at 240,000. The depot consolidation study was deferred.
+No other commitments were entered into during the period under review.""",
+    """Compliance testing covered 38 of 40 required controls. The two
+outstanding items are scheduled for the following cycle and neither is
+rated as a material weakness by the external reviewer.""",
+]
+
+
+def _document_text(index: int) -> str:
+    """One source document: a stable heading, a varying body, a stable footer."""
+    body = _DOC_BODIES[index % len(_DOC_BODIES)]
+    return (f"Quarterly Review - Section {index + 1}\n\n{body}\n\n"
+            "Prepared for internal circulation only. Figures are provisional\n"
+            "until the external audit concludes in the following period.\n")
+
+
+def _produce_one(tmpdir: str, source: str, tag: str) -> dict[str, str]:
+    """Render one source text through every producer this machine has.
+
+    Returns producer -> path, omitting any producer that failed or is absent — the
+    caller reports the gap rather than quietly shrinking the peer set.
+    """
+    out: dict[str, str] = {}
+    for name, style in (("synth_td_int", "td_int"), ("synth_tm_real", "tm_real")):
+        out[name] = _synthetic(os.path.join(tmpdir, f"{name}__{tag}.pdf"), style,
+                               text=open(source, encoding="utf-8").read())
+
+    if HAVE_CHROME:
+        p = os.path.join(tmpdir, f"chrome_skia__{tag}.pdf")
+        if _run_quiet([CHROME, "--headless", "--disable-gpu", "--no-first-run",
+                       "--no-default-browser-check", "--no-pdf-header-footer",
+                       f"--print-to-pdf={p}", source]):
+            out["chrome_skia"] = p
+
+    if HAVE_SOFFICE:
+        sub = os.path.join(tmpdir, f"lo__{tag}")
+        os.makedirs(sub, exist_ok=True)
+        if _run_quiet(["soffice", "--headless", "--convert-to", "pdf",
+                       "--outdir", sub, source]):
+            p = os.path.join(sub, os.path.basename(source).replace(".txt", ".pdf"))
+            if os.path.exists(p):
+                out["libreoffice"] = p
+
+    if HAVE_CUPSFILTER:
+        p = os.path.join(tmpdir, f"quartz_cups__{tag}.pdf")
+        with open(p, "wb") as fh:
+            try:
+                done = subprocess.run(["cupsfilter", source], stdout=fh,
+                                      stderr=subprocess.DEVNULL, timeout=120)
+            except (OSError, subprocess.TimeoutExpired):
+                done = None
+        if done is not None and done.returncode == 0 and os.path.getsize(p):
+            out["quartz_cups"] = p
+    return out
+
+
+def documents(tmpdir: str, n_docs: int = 6) -> dict[str, list[str]]:
+    """producer -> one path per distinct document, aligned by index across producers.
+
+    A producer that could not render every document is dropped entirely rather than
+    contributing a short row, so the classifier never sees an unbalanced peer set —
+    an absent producer must make the cell say *not measured*, never *clean*.
+    """
+    per_doc: list[dict[str, str]] = []
+    for i in range(n_docs):
+        source = os.path.join(tmpdir, f"doc{i}.txt")
+        with open(source, "w", encoding="utf-8") as f:
+            f.write(_document_text(i))
+        per_doc.append(_produce_one(tmpdir, source, f"d{i}"))
+
+    complete = set.intersection(*(set(d) for d in per_doc)) if per_doc else set()
+    return {name: [d[name] for d in per_doc] for name in sorted(complete)}
 
 
 def available_producers() -> dict[str, bool]:

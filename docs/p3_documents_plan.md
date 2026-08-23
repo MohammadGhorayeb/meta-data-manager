@@ -647,6 +647,89 @@ be normalised instead.
 
 ---
 
+### 2.5 M5 as built — F3, the DPI knob that isn't, and the redaction advisory
+
+`src/scrub/formats/pdf/f3.py`, `src/scrub/formats/pdf/redaction.py`,
+`tests/scrub/e_pdf_raster.py`.
+
+**F3.** Every page rendered by one poppler build at one pinned resolution (150 DPI),
+re-encoded through one JPEG setting, rebuilt around the images by our own serializer.
+The technique is MAT2's and Dangerzone's and the plan says so; the contribution of
+this phase is F1 and F2.
+
+**Structurally it works, and that is the least interesting thing about it.** E-PDF at
+F3 shows the serializer channel closed and the layout channel down to a single key —
+`number_style` — which leaks for one reason only: LibreOffice sets A4 where every
+other producer sets Letter. Page size is *content*, so that residual is correct rather
+than a normalisation we failed to make.
+
+**Publishing that as "A2@F3 passes" would have been the overclaim this project exists
+to avoid.** The page is an image now; the typesetter's geometry is painted into it.
+So the A2@F3 cell is decided by **E-PDF-RASTER**, which attacks the rendered pixels.
+
+| condition | accuracy | chance | p | legibility |
+|---|---|---|---|---|
+| unscrubbed (control) | 1.00 | 0.20 | <0.0001 | — |
+| F3 @ 300 DPI | 1.00 | 0.20 | <0.0001 | print quality |
+| F3 @ 150 DPI | 1.00 | 0.20 | <0.0001 | legible in print |
+| F3 @ 72 DPI | 1.00 | 0.20 | <0.0001 | legible on screen |
+| F3 @ 36 DPI | 1.00 | 0.20 | <0.0001 | barely legible |
+| F3 @ 18 DPI | 1.00 | 0.20 | <0.0001 | **body text unreadable** |
+
+Leave-one-**document**-out nearest neighbour over ink geometry, five producers × six
+distinct documents, attacker rendering at a fixed 150 DPI in every condition. The
+held-out page's own document is excluded from the reference set entirely, so the
+classifier has to generalise across content rather than recognise a page it has seen.
+
+**The DPI knob does not exist, and finding that out corrected our own reasoning.** W6
+predicted a possible Pareto trade on the assumption that *sub-pixel* glyph placement
+carried the signal, in which case coarser rendering would blur it. The ablation says
+otherwise:
+
+| feature subset | accuracy |
+|---|---|
+| full vector | 1.00 |
+| column profile alone (margins, text extent) | 1.00 |
+| row profile alone (line spacing, baselines) | 0.83 |
+| **ink density alone** | **0.17 — chance** |
+| full vector, page size held constant | 1.00 |
+
+The signal is **coarse-scale layout geometry**, not sub-pixel detail, and downsampling
+leaves it completely intact. The ablation is not decoration: a classifier at 100%
+proves the producer is identifiable, not *what from*, and "glyph geometry survives"
+would otherwise have been an interpretation laid over a number that could equally have
+come from page size — LibreOffice's A4 alone would separate it. Ink density at chance
+rules that out, and restricting the peer set to the Letter-size producers rules it out
+again.
+
+So the residual is confirmed as the PRNU/Sorell species the plan predicted:
+**irreducible without re-typesetting**, and F3 relocates it rather than removing it.
+That is a stronger statement than W6 expected to be able to make, and it is stated as
+a measurement rather than an assertion.
+
+**A new locus space.** The matrix schema allowed `byte`, `field` and `structural`, and
+recording a pixel-domain residual under `structural` would have filed it under the
+very space the tier closes. `pixel` and `signal` were added — the second so the audio
+experiments have somewhere honest to point when their residuals are next written up.
+
+**W7, the redaction advisory.** Three checks — invisible text (rendering mode 3 or 7),
+text outside the crop box, and text drawn under an opaque fill that covers it — each
+cheap and unambiguous. It **warns and never fixes**, it is advisory so it never fails
+a scrub, and it deliberately under-reports: a rotated fill, a fill in another stream,
+or any page that has touched a named graphics state is not reported, because "text
+under an opaque fill" in full generality needs blend modes, transparency groups and
+z-order, which is a small renderer and would eat the phase. A warning that fires on
+ordinary drawing gets ignored and then protects nobody, so three negative-control
+tests assert it stays quiet on a stroked box, a fill elsewhere on the page, and a fill
+drawn *before* the text (a highlight, not a cover).
+
+The uncomfortable fact behind it is asserted rather than left implicit: a test checks
+that the words under a black box **still come out of `pdftotext` after a successful
+scrub**. Every tier preserves content, so they must — and if that test ever fails, a
+tier has started destroying content.
+
+---
+
 ---
 
 ## 3. Milestones
@@ -658,7 +741,7 @@ be normalised instead.
 | **M2** | PDF walker + serializer + tokenizer; **recursive** F1 + plugin + dispatch; `/Info`, XMP, `/ID[0]`, `/Thumb`, inline images and embedded-JPEG EXIF all cleared | ✅ (§2.2) |
 | **M3** | E-PDF at `raw` and `F1` — which channel leaks, measured before F2 is designed | ✅ (§2.3) |
 | **M4** | PDF F2 (canonical serialise + content-stream canonicalisation) + matrix — the honest A2-at-F2 answer, whatever it is | ✅ (§2.4) — A2@F2 fails; text-operator spelling closed, glyph geometry is the residual |
-| **M5** | PDF F3 + E-PDF-RASTER incl. the DPI knob; redaction detector | 🔜 |
+| **M5** | PDF F3 + E-PDF-RASTER incl. the DPI knob; redaction detector | ✅ (§2.5) — A2@F3 fails in pixel space at every DPI down to illegibility; the knob is not a trade |
 | **M6** | DOCX walker + F1 + plugin + matrix, ZIP timestamps consistent | 🔜 |
 | **M7** | E-RSID: RSIDs cleared where MAT2 leaves them; benchmark row written | 🔜 |
 

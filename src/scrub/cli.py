@@ -7,6 +7,14 @@ Fail-closed contract:
   - Any failure exits non-zero and writes NO output file. The output is written
     atomically (temp + rename) so a crash mid-write can't leave a partial file.
 
+Advisories are the one thing that is *not* fail-closed, and deliberately so. A
+handler may report risks about the **input** — today only PDF, which warns when a
+document looks like someone tried to redact it by drawing a box. Those are printed to
+stderr and never change the exit code: the scrub did what it promised, and refusing to
+scrub a file because it also has a redaction problem would help nobody. The warning
+exists because a user who reads "scrubbed" as "redacted" is the one this tool could
+most easily mislead.
+
 Exit codes (stable, so the harness/tests can assert on them):
   0 ok · 2 usage · 3 unsupported format · 4 parse error · 5 fidelity error
   6 content/residual error · 1 unexpected
@@ -46,15 +54,20 @@ def _write_atomic(path: str, data: bytes) -> None:
 
 
 def scrub_file(in_path: str, out_path: str, fidelity: str,
-               dispatcher=None) -> None:
+               dispatcher=None) -> list[str]:
     """Scrub in_path -> out_path at the given fidelity. Raises ScrubError
-    (fail-closed) on any problem; writes output only on full success."""
+    (fail-closed) on any problem; writes output only on full success.
+
+    Returns any **advisories about the input** — things the caller should be told
+    that are not failures of the scrub. See the module docstring.
+    """
     fid.validate(fidelity)
     with open(in_path, "rb") as f:
         data = f.read()
 
     dispatcher = dispatcher or default_dispatcher()
     handler = dispatcher.resolve(data)          # raises UnsupportedFormatError
+    advisories = _advise(handler, data)
     scrubbed = handler.scrub(data, fidelity)    # raises ParseError/FidelityError
 
     verify = getattr(handler, "verify", None)
@@ -66,6 +79,23 @@ def scrub_file(in_path: str, out_path: str, fidelity: str,
                 + "; ".join(residuals))
 
     _write_atomic(out_path, scrubbed)
+    return advisories
+
+
+def _advise(handler, data: bytes) -> list[str]:
+    """Handler advisories about the input, never fatal.
+
+    An advisory that crashed the scrub would be worse than no advisory at all — the
+    user would lose a working scrub over an optional warning — so a failure here is
+    swallowed rather than raised.
+    """
+    advise = getattr(handler, "advise", None)
+    if advise is None:
+        return []
+    try:
+        return list(advise(data))
+    except Exception:
+        return []
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     try:
-        scrub_file(args.input, args.output, args.fidelity)
+        advisories = scrub_file(args.input, args.output, args.fidelity)
     except ScrubError as e:
         print(f"scrub: {type(e).__name__}: {e}", file=sys.stderr)
         return _EXIT.get(type(e), 1)
@@ -89,6 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:  # unexpected: still fail closed, no output written
         print(f"scrub: unexpected {type(e).__name__}: {e}", file=sys.stderr)
         return 1
+    for note in advisories:
+        print(f"scrub: warning: {note}", file=sys.stderr)
     return 0
 
 

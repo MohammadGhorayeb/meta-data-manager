@@ -64,6 +64,10 @@ not yet fixed) · ⚪ out of scope (impossible, or outside the threat model) ·
 - **PDF filters we deliberately do not normalise:** `/DCTDecode` and `/JPXDecode` are lossy, so re-encoding them would be an F3 operation wearing an F2 label; `/JBIG2Decode` and `/CCITTFaxDecode` are lossless but re-encoding a scanned page to Flate multiplies its size. Filter choice therefore survives on those streams.
 - **PDF embedded font programs keep their internal subset name.** F2 reassigns the six-letter tag on `/BaseFont` and `/FontName`, but a CFF `FontFile3` carries its own name index and rewriting that means re-emitting the font. Readers use the PDF dictionary, so rendering is unaffected — the original tag survives inside the font program.
 - **Our PDF deflate level is 6, and that is measured rather than picked.** The zlib header gives the level away (`78 9C` = 6, `78 DA` = 9). Level 9 was the first choice, copied from PNG F2, and the fingerprint guard failed immediately with ` >>\nstream\nx\xda` as our signature: across the peer corpus four of five producers emit level 6 and one emits level 1, and **none** emits 9 — so level 9 did not normalise our output, it labelled it. Level 6 joins the largest crowd that actually exists.
+- **PDF F3 destroys the text layer, and that is the tier's real cost.** Rasterising preserves what the reader *sees* — the page is a picture of itself — but a scrubbed file can no longer be searched, selected, copied from, or read by a screen reader. That is an accessibility regression, not a compression artefact, and it is stated before the tier is offered rather than after it is used. F3 also rounds page dimensions up to the render pixel grid (at most 0.48 pt at 150 DPI).
+- **PDF F3 does NOT defeat A2, measured (E-PDF-RASTER).** Structurally F3 passes almost trivially — the file is entirely our own output — and publishing *that* as the verdict would have been the overclaim this project exists to avoid. Attacking the **rendered pixels** instead: a leave-one-document-out nearest-neighbour classifier over ink geometry identifies the producer on **100% of pages (n=30, five producers, chance 0.20, p<0.0001)** after F3, against a valid control of 100% on unscrubbed pages. The typesetter's geometry is painted into the image; rasterising relocates the residual, it does not remove it.
+- **The DPI knob is not a Pareto trade, and the reason corrected our own prediction.** The plan expected lower resolution might blur the signal, on the assumption it lived in *sub-pixel* glyph placement. It does not. Swept from 300 DPI down to **18 DPI — where the body text is unreadable — the classifier stays at 100%**. An ablation says why: the **ink-density scalar alone sits at chance** (0.17), so the attack is not reading page size or darkness, while the **column profile alone reaches 100%** — left margin, right edge and horizontal extent of the text block. That is coarse-scale layout geometry, which downsampling leaves entirely intact. Holding page size constant (Letter-only producers) changes nothing. There is no resolution at which the document is still useful and the typesetter is anonymous.
+- **Redaction is not metadata scrubbing, and we do not do it.** Text hidden under a black rectangle is a drawing operation with the words still underneath; every tier preserves content, so the scrub preserves the hidden text exactly as faithfully as the visible text — a test asserts this stays true. The tool **warns and never fixes**: it reports invisible text (rendering mode 3/7), text outside the crop box, and text drawn under an opaque fill that covers it. The warning is advisory and never fails the scrub. It deliberately **under-reports**: "text under an opaque fill" in full generality needs blend modes, transparency groups and z-order — a small renderer — so a rotated fill, a fill in a different stream, or any page using a named graphics state is not reported. An empty warning list means "none of these three patterns", never "safely redacted".
 - **Scrubber-fingerprint guard:** confirms our *own* tool leaves no producer/creator string, no odd padding, deterministic ordering, and no modification-time stamping.
 <!-- RESIDUALS:END -->
 
@@ -77,11 +81,16 @@ and residuals behind it. The experiments that produced them:
 | **E-LAME** | Do MP3 *headers* still identify the encoder after scrubbing? | `tests/scrub/e_lame.py` |
 | **E-ENGINE** | Does the *sound itself* still identify the encoder after scrubbing? | `tests/scrub/e_engine.py` |
 | **E-PDF-HISTORY** | Do a PDF's earlier drafts survive — ours, and the standard tools'? | `tests/scrub/e_pdf_history.py` |
-| **E-PDF** | Which half of a PDF still names the program that made it — how the file was built, or how the page was typeset? Run at `raw`, F1 and F2. | `tests/scrub/e_pdf.py` |
+| **E-PDF** | Which half of a PDF still names the program that made it — how the file was built, or how the page was typeset? Run at `raw`, F1, F2 and F3. | `tests/scrub/e_pdf.py` |
+| **E-PDF-RASTER** | After a PDF is flattened to pictures, do the *pixels* still name the typesetter — and does rendering it coarser help? | `tests/scrub/e_pdf_raster.py` |
 
-E-ENGINE asserts its own controls: if the classifier cannot identify the encoder on
-untouched files, the result on scrubbed files is reported as **inconclusive** rather
-than as a pass. A test that cannot detect the thing it is looking for proves nothing.
+E-ENGINE and E-PDF-RASTER assert their own controls: if the classifier cannot
+identify the producer on untouched files, the result on scrubbed files is reported as
+**inconclusive** rather than as a pass. A test that cannot detect the thing it is
+looking for proves nothing. E-PDF-RASTER additionally **ablates** its own feature
+vector, because a classifier at 100% shows the producer is identifiable without
+showing what from — and "glyph geometry survives" would have been an interpretation
+laid over a number that could equally have come from page size.
 
 ## Adding a limit
 

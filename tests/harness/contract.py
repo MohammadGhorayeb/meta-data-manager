@@ -63,7 +63,14 @@ class FormatPlugin(Protocol):
 # --- feature & verdict structures used by the engine ---
 @dataclass
 class Locus:
-    space: str                 # "byte" | "field" | "structural"
+    # "byte" | "field" | "structural" | "pixel" | "signal"
+    #
+    # The last two are content-domain: the leak is in the decoded artifact rather
+    # than anywhere in the file's construction. PDF F3 is the case that forced the
+    # distinction — rasterising closes every structural channel and the typesetter is
+    # still identifiable from the rendered page, so recording that as "structural"
+    # would have filed a pixel-domain residual under the very space the tier closed.
+    space: str
     offset: int | None = None
     length: int | None = None
     feature_id: str | None = None

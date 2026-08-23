@@ -146,7 +146,7 @@ def main() -> None:
     print()
 
     raw = run_condition("raw", sources, tmpdir)
-    for fid in ("raw", "F1", "F2"):
+    for fid in ("raw", "F1", "F2", "F3"):
         r = raw if fid == "raw" else run_condition(fid, sources, tmpdir)
         print(f"[{fid:3}] A2 {'FAIL' if r['a2_fail'] else 'PASS'}")
         for name in ("serializer", "layout", "size", "unclassified"):

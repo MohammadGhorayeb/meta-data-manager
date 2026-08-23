@@ -78,7 +78,7 @@
       "type": "object",
       "required": ["space"],
       "properties": {
-        "space": {"enum": ["byte", "field", "structural"]},
+        "space": {"enum": ["byte", "field", "structural", "pixel", "signal"]},
         "offset": {"type": ["integer", "null"]},
         "length": {"type": ["integer", "null"]},
         "feature_id": {"type": ["string", "null"]},
