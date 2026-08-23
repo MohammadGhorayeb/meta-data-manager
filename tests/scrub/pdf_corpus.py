@@ -28,10 +28,37 @@ HAVE_PDFTOTEXT = shutil.which("pdftotext") is not None
 
 # Producers for the A2 peer set (M3). Named here so a caller can report *which*
 # were unavailable rather than silently shrinking the peer set — limit #12.
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-HAVE_CHROME = os.path.exists(CHROME)
+def _find_chrome() -> str | None:
+    """Chrome, on either platform.
+
+    The macOS bundle path was the only thing checked here until the CI audit, which
+    meant `chrome_skia` was silently absent on every Linux run — so the peer set the
+    published PDF verdicts were re-measured against was two synthetics plus whatever
+    LibreOffice the runner happened to have. That is exactly the failure limit #12
+    exists for, and it was hiding in a path constant.
+    """
+    mac = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    if os.path.exists(mac):
+        return mac
+    for name in ("google-chrome", "google-chrome-stable", "chromium-browser",
+                 "chromium"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
+CHROME = _find_chrome()
+HAVE_CHROME = CHROME is not None
 HAVE_SOFFICE = shutil.which("soffice") is not None
 HAVE_CUPSFILTER = shutil.which("cupsfilter") is not None
+
+# poppler is not optional decoration for PDF: `pdftotext` is how the harness checks
+# that a scrub preserved the document's content, and `pdftoppm` is the whole of F3.
+# Without it the honest report is "not measured" — never a pass, and never a crash
+# that takes the other formats' matrices down with it.
+HAVE_POPPLER = (shutil.which("pdftotext") is not None
+                and shutil.which("pdftoppm") is not None)
 
 # The document ID a producer writes. Fixed so the corpus is reproducible; the
 # point of the experiment is that this SURVIVES a scrub (W0), not that it varies.
@@ -661,6 +688,17 @@ def producers(tmpdir: str, repeats: int = 3) -> dict[str, list[str]]:
 # know what "the truth" was before a scrub.
 # --------------------------------------------------------------------------- #
 def pdftotext(path: str) -> str:
-    """Extract text the way an investigator would. Empty string if it will not open."""
+    """Extract text the way an investigator would. Empty string if it will not open.
+
+    Raises if poppler is missing rather than returning "" — a silent empty string
+    would make every content-identity assertion in the suite pass vacuously, which is
+    strictly worse than a red build. Callers that can legitimately continue without it
+    check `HAVE_POPPLER` and skip.
+    """
+    if not HAVE_POPPLER:
+        raise RuntimeError(
+            "poppler (pdftotext) is required to read a PDF's content back. "
+            "Install poppler-utils; refusing to report an empty document as a "
+            "successful content check.")
     p = subprocess.run(["pdftotext", "-q", path, "-"], capture_output=True)
     return p.stdout.decode("utf-8", "replace") if p.returncode == 0 else ""

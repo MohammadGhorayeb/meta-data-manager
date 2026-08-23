@@ -95,6 +95,26 @@ def _covers(box: tuple, point: tuple) -> bool:
     return box[0] <= point[0] <= box[2] and box[1] <= point[1] <= box[3]
 
 
+def _to_page_space(tlm: tuple, ctm: tuple) -> tuple:
+    """Where a text origin actually lands on the page.
+
+    Text is positioned by the text matrix *and* the current transformation matrix, so
+    `Tm`'s own translation is not a page coordinate. Real documents lean on this
+    heavily — a Chrome-printed page opens with
+    `.23999999 0 0 -.23999999 0 841.91998 cm`, a scale-and-flip, and then works in
+    the transformed space throughout.
+
+    Comparing the raw `Tm` translation against a page-space box was the first version
+    here, and every synthetic test passed because every one of them used an identity
+    CTM. On the first real document it reported that all the text on two pages sat
+    outside the crop box — a warning that fires on ordinary output, which is exactly
+    the failure the module docstring says it must not have.
+    """
+    a, b, c, d, e, f = ctm
+    x, y = tlm[4], tlm[5]
+    return (x * a + y * c + e, x * b + y * d + f)
+
+
 def _page_risks(page_index: int, body: bytes, crop: tuple | None) -> list[Risk]:
     risks: list[Risk] = []
     state = canon._State()
@@ -159,7 +179,7 @@ def _page_risks(page_index: int, body: bytes, crop: tuple | None) -> list[Risk]:
             pending = []
         elif name in canon.SHOW_OPS and state.tlm is not None:
             text = _shown_text(item)
-            position = (state.tlm[4], state.tlm[5])
+            position = _to_page_space(state.tlm, ctm)
             if text.strip():
                 if mode in _INVISIBLE_MODES:
                     invisible += text + b" "

@@ -165,7 +165,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -197,6 +197,7 @@ jobs:
             echo "| ExifTool | $(exiftool -ver) |"
             echo "| ffmpeg | $(ffmpeg -version | head -1 | cut -d' ' -f3) |"
             echo "| LAME | $(lame --version | head -1 | sed 's/.*version //; s/ .*//') |"
+            echo "| poppler | $(pdftoppm -v 2>&1 | head -1 | sed 's/.*version //') |"
             echo
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -354,7 +355,10 @@ jobs:
   evidence:
     name: Published results still true
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Raised from 20 when Phase 3 landed: rebuilding the PDF matrix now renders a
+    # multi-document peer corpus through every available producer and runs
+    # E-PDF-RASTER over it, which is minutes of work this job did not have before.
+    timeout-minutes: 35
     steps:
       - name: Start the clock
         run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
@@ -374,7 +378,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -429,7 +433,8 @@ jobs:
   report:
     name: QA report
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # See the evidence job: the same PDF matrix rebuild happens here.
+    timeout-minutes: 30
     needs: [lint, test, coverage, evidence]
     if: always()
     permissions:
@@ -451,7 +456,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

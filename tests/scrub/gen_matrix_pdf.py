@@ -33,6 +33,7 @@ import os
 import tempfile
 
 from tests.harness import config
+from tests.harness.contract import Cell, V
 from tests.harness.oracle import fingerprint_guard, leak
 from tests.harness.plugins.pdf import PdfPlugin
 from tests.harness.runner import matrix
@@ -51,6 +52,17 @@ TOOL = {
 # (Chrome, LibreOffice and cupsfilter, six times each) stays inside a matrix build.
 _RASTER_DOCS = 6
 
+# Without poppler, **no** PDF cell may claim anything — not just the F3 ones.
+# `pdftotext` is how this format checks that a scrub preserved the document's
+# content, which is hard constraint #1; a cell that passed its leak test while
+# content preservation went unverified would be claiming the wrong thing entirely.
+# So the whole matrix reports untested rather than partially measured, and an absent
+# tool is never reported as a clean result (limit #12).
+_NO_POPPLER = ("poppler (pdftotext/pdftoppm) is not installed on this machine. "
+               "pdftotext is how a PDF scrub's content preservation is verified and "
+               "pdftoppm is the whole of F3, so nothing here can be measured. "
+               "Untested, never clean.")
+
 
 def _scrubber():
     from tests.scrub.test_harness_a1 import InProcessScrubber
@@ -61,6 +73,14 @@ def build_doc(tmpdir: str) -> dict:
     plugin = PdfPlugin()
     scrubber = _scrubber()
     cells = []
+
+    if not pc.HAVE_POPPLER:
+        return matrix.assemble(
+            "pdf", TOOL,
+            [Cell(a, f, V.NOT_TESTED, reason=_NO_POPPLER)
+             for a in ("A1", "A2") for f in ("F1", "F2", "F3")],
+            matrix.fingerprint_block(V.NOT_TESTED.value, None, [],
+                                     checked=False))
 
     # --- A1: same page, metadata differing only by a sentinel ---
     variants = pc.a1_variants(tmpdir, n_variants=3, n_repeats=5)

@@ -29,6 +29,17 @@ def torture(tmp_path_factory):
     return pc.torture_pdf(str(tmp_path_factory.mktemp("pdf") / "torture.pdf"))
 
 
+def _need_poppler() -> None:
+    """Skip when poppler is absent.
+
+    Locally this is a convenience. In CI it must never fire: `tests/test_ci_contract.py`
+    asserts the workflow installs poppler, precisely so that a missing tool cannot
+    turn PDF content verification into a silent skip while the build stays green.
+    """
+    if not pc.HAVE_POPPLER:
+        pytest.skip("poppler not installed (pdftotext/pdftoppm)")
+
+
 def _all_bytes(path: str) -> list[bytes]:
     """The file plus every decoded stream — where a surviving secret could hide."""
     with open(path, "rb") as f:
@@ -166,6 +177,7 @@ def test_f1_clears_every_locus(torture, tmp_path):
 
 
 def test_f1_preserves_the_visible_document(torture, tmp_path):
+    _need_poppler()
     out = tmp_path / "scrubbed.pdf"
     cli.scrub_file(torture, str(out), "F1")
     assert pc.pdftotext(str(out)) == pc.pdftotext(torture)
@@ -197,6 +209,7 @@ def test_f1_clears_the_inline_image_that_no_object_walk_can_see(torture, tmp_pat
 
 
 def test_f1_collapses_history_and_leaves_nothing_recoverable(tmp_path):
+    _need_poppler()
     src = pc.incremental_pdf(str(tmp_path / "h.pdf"), n_revisions=4)
     out = tmp_path / "scrubbed.pdf"
     cli.scrub_file(src, str(out), "F1")
@@ -324,10 +337,7 @@ def test_f2_renders_the_same_page(torture, tmp_path):
     """The content promise, checked in pixel space rather than through our own
     invariant. `painted()` and the rewriter share a state machine, so agreeing with
     each other proves less than agreeing with poppler."""
-    pytest.importorskip("shutil")
-    import shutil
-    if not shutil.which("pdftoppm"):
-        pytest.skip("poppler not installed")
+    _need_poppler()
     out = tmp_path / "f2.pdf"
     cli.scrub_file(torture, str(out), "F2")
 
@@ -458,6 +468,7 @@ def test_content_change_fails_closed(torture, monkeypatch, tmp_path):
 # Real-world producers
 # --------------------------------------------------------------------------- #
 def test_scrubs_a_real_multipage_report(tmp_path):
+    _need_poppler()
     """`docs/p1_report.pdf` is a real 295 KB Skia-produced document with 800+ objects,
     embedded fonts and a structure tree — the case a synthetic corpus cannot stand in
     for."""
@@ -471,12 +482,6 @@ def test_scrubs_a_real_multipage_report(tmp_path):
 # --------------------------------------------------------------------------- #
 # F3: rasterise
 # --------------------------------------------------------------------------- #
-def _need_poppler():
-    import shutil
-    if not shutil.which("pdftoppm"):
-        pytest.skip("poppler not installed")
-
-
 def _render(path: str, out_dir, dpi: int = 150) -> bytes:
     stem = str(out_dir / ("r_" + pathlib.Path(path).stem))
     subprocess.run(["pdftoppm", "-r", str(dpi), "-png", "-singlefile", path, stem],
@@ -590,6 +595,28 @@ def test_redaction_detector_stays_quiet_when_it_should(body, tmp_path):
     assert redaction.detect(_one_page(body, tmp_path)) == []
 
 
+@pytest.mark.parametrize("body", [
+    # A Chrome-printed page opens exactly like this: scale down, flip the y axis,
+    # then work in the transformed space. The text is on the page; only its *raw* Tm
+    # translation looks off-page.
+    b".24 0 0 -.24 0 792 cm q 3.125 0 0 3.125 187 212 cm "
+    b"BT /F1 12 Tf 0 88 Td (ordinary body text) Tj ET Q",
+    # A simple translation, same principle.
+    b"1 0 0 1 100 400 cm BT /F1 12 Tf 0 0 Td (also on the page) Tj ET",
+])
+def test_redaction_detector_respects_the_transformation_matrix(body, tmp_path):
+    """Text is placed by the text matrix *and* the CTM, so `Tm`'s own translation is
+    not a page coordinate.
+
+    This is a regression test for a real false positive, and for why it survived:
+    every synthetic case above uses an identity CTM, so none of them exercised the
+    composition. The first run against a real Chrome-printed document reported that
+    all the text on two pages sat outside the crop box — a warning firing on ordinary
+    output, which is the one failure mode this detector must not have.
+    """
+    assert redaction.detect(_one_page(body, tmp_path)) == []
+
+
 def test_redaction_warning_does_not_fail_the_scrub(tmp_path):
     """The advisory is about the *input*; the scrub still did what it promised. A
     redaction risk must never cost the user a working scrub."""
@@ -601,6 +628,7 @@ def test_redaction_warning_does_not_fail_the_scrub(tmp_path):
 
 
 def test_the_scrub_really_does_preserve_the_hidden_text(tmp_path):
+    _need_poppler()
     """The uncomfortable fact the advisory exists to state, asserted so it cannot
     quietly stop being true: every tier preserves content, so the words under the box
     survive the scrub. If this ever fails, the tier started destroying content."""

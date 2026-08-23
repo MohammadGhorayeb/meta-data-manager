@@ -14,6 +14,18 @@ import pytest
 
 from tests.harness.plugins.pdf import LAYOUT_KEYS, SERIALIZER_KEYS, empty_document_skeleton
 from tests.scrub import gen_matrix_pdf
+from tests.scrub import pdf_corpus as pc
+
+# Without poppler the generator publishes nothing but `not_tested` — pdftotext is how
+# a PDF scrub's content preservation is verified, so no cell may claim a result. Every
+# assertion below is about a measured cell, so the whole module skips.
+#
+# That skip cannot quietly cost CI its coverage: `tests/test_ci_contract.py` asserts
+# the workflow installs poppler, so if this ever skips on a runner the contract test
+# fails first and says why.
+pytestmark = pytest.mark.skipif(
+    not pc.HAVE_POPPLER,
+    reason="poppler not installed — the PDF matrix reports not_tested throughout")
 
 
 @pytest.fixture(scope="module")
