@@ -1,6 +1,6 @@
 # Irreversible Metadata Scrubber — Client Progress Report
 
-**Status:** Phases 0, 1 and 2 complete · Phase 3 open
+**Status:** Phases 0, 1 and 2 complete · Phase 3 documents — **PDF complete at all three levels**, Word next
 **Scope of this report:** what has been built, what has been tested and proven, and what comes next
 
 ---
@@ -15,10 +15,11 @@ recovered again** — not merely deleted from view, but gone from the file even 
 someone examines it byte-by-byte with forensic software.
 
 **Where we are today.** The tool works, ships as a command-line program, and handles
-five file formats end to end: **JPEG, PNG, MP3, FLAC and M4A**. It is backed by
-**243 automated tests** that run on every code change across four versions of Python,
-and by a measurement system that re-proves every published claim from scratch on each
-run — if a result stops being true, the build fails.
+**six file formats end to end: JPEG, PNG, MP3, FLAC, M4A and PDF** — PDF now at all
+three cleaning levels, which is the whole of the hard half of the documents phase. It
+is backed by **345 automated tests** that run on every code change, and by a
+measurement system that re-proves every published claim from scratch on each run — if
+a result stops being true, the build fails.
 
 **What makes this different from existing tools.** Mature tools already delete tags
 well; we are at parity there and say so. Our contribution is three things nobody else
@@ -36,12 +37,22 @@ offers together:
    publishes it alongside the successes. There is no claim in this project that is
    not backed by an experiment.
 
-**What is next.** Phase 3 — **documents (PDF, then Word/OOXML)**. This is the hardest
-and most valuable phase: it targets the single most famous document-leak in existence
-(a PDF's deleted earlier drafts remaining inside the published file) and a known
-failure that every surveyed competing tool shares (Word revision IDs that survive
-every scrubber on the market). Groundwork is already measured and the design decision
-that governs the phase has been taken.
+**What has happened since the last report.** Phase 3 opened on documents, and **PDF
+is now finished across all three levels**. The single most famous document leak in
+existence — a PDF's supposedly deleted earlier drafts still sitting inside the
+published file — is closed by construction, and measured closed with three independent
+attacks. Two further results came out of it, and both are *negative* results we chose
+to publish rather than round away: after every tag is gone, **a PDF still reveals
+which program typeset it**, and **flattening the document to pictures does not fix
+that** — we proved it against our own output rather than claiming the win. Those are
+now published limits, with the reason each one is a floor rather than an unfinished
+job.
+
+**What is next.** The rest of Phase 3 — **Word (.docx)**, whose target is a known
+failure every surveyed competing tool shares: revision-save IDs that survive every
+scrubber on the market. A new capability has also been specified and scheduled: an
+optional mode that gives a cleaned file a **plausible cover story** instead of leaving
+it conspicuously blank (§7).
 
 ---
 
@@ -136,11 +147,36 @@ formats land quickly and consistently rather than each being a bespoke effort:
   refuses to process at all.** A user who hands MAT2 an `.m4a` gets nothing back; ours
   handles it at all three levels.
 
-### 4.4 The engineering around it
+### 4.4 Documents — Phase 3, PDF complete
 
-- **13,800 lines** of Python across the tool, harness, experiments and reporting.
-- **Continuous integration** on every change: code quality, the full test suite on
-  Python 3.11 / 3.12 / 3.13 / 3.14, a coverage gate, and — most importantly — a job
+PDF is the hardest format handled so far, and the only one where the tool writes every
+byte of the output itself rather than letting a library save the file.
+
+- **F1** — a rebuild from the document's own object graph, with **our own serializer**.
+  Every earlier draft dies by construction, because only what the finished document
+  actually reaches is written out; there is no deletion step that could miss one. It
+  clears the document information block, XMP metadata *wherever it is attached*
+  (including hanging off an image), the document identifier, page thumbnails, private
+  application data, layer creator info and annotation authors — and it **recurses**:
+  an embedded photo goes through the Phase 1 JPEG handler and comes back with its GPS
+  and camera data gone and its pixels bit-identical. It also reaches images painted
+  directly into the page, which no scan of the file's object list can even see.
+- **F2** — a canonicaliser that rewrites every page-painting instruction through one
+  single writer, so five different programs stop speaking five different dialects.
+- **F3** — rasterise and rebuild: each page rendered by one renderer at one resolution
+  and reassembled, offered with its real cost stated first (the text stops being
+  selectable, searchable and screen-reader-readable).
+- **A redaction-risk advisory** that warns when a document looks like someone tried to
+  black out text by drawing a box over it. It **warns and never repairs**, never fails
+  a scrub, and deliberately under-reports rather than implying safety.
+- **Files we refuse outright** rather than half-clean: encrypted, digitally signed,
+  attachment-bearing, XFA-form and internally inconsistent documents.
+
+### 4.5 The engineering around it
+
+- **19,700 lines** of Python across the tool, harness, experiments and reporting.
+- **Continuous integration** on every change: code quality, the full test suite on both
+  ends of the supported Python range, a coverage gate, and — most importantly — a job
   called *"Published results still true"* that re-measures every published claim from
   scratch and **fails the build if a result has drifted**. Honesty is enforced by
   machine, not by memory.
@@ -162,6 +198,7 @@ formats land quickly and consistently rather than each being a bespoke effort:
 | **MP3** | pass / n-a / pass | fail / n-a / **pass** |
 | **FLAC** | pass / pass / n-a | fail / **pass** / n-a |
 | **M4A** | pass / pass / pass | fail / narrowed to one channel |
+| **PDF** | pass / pass / pass | fail at every level — and *why* is the finding |
 
 **Reading this table:** the tag snoop (A1) is defeated everywhere, at every level. The
 fingerprint snoop (A2) is defeated by rebuilding — and **twice now at no quality cost
@@ -174,6 +211,14 @@ quantization tables, MP3's encoder header and bitrate contour), removing it cost
 generation of quality. That distinction is a genuine contribution and it is what the
 Pareto matrices exist to express.
 
+**PDF is the case where the answer is "no", and that is the result.** Every tag comes
+off at all three levels, and the document's edit history is gone. But *which program
+typeset the page* survives, because it is written in the geometry of the page itself —
+where each letter sits, where the lines break, which letters were embedded at all.
+Changing that means re-typesetting the document, which changes what the reader sees, so
+it is a **floor** in the same sense that camera sensor noise is a floor. We publish the
+failing cell with the reason, rather than choosing a weaker test that would pass.
+
 ### 5.2 The experiments behind the table
 
 Each A2 claim comes from a named experiment with a stated method, not from reasoning:
@@ -185,6 +230,9 @@ Each A2 claim comes from a named experiment with a stated method, not from reaso
 | **E-ENGINE** | Harder: with headers normalised, can the encoder be recovered from **the sound itself**? | 0.89 → 0.53 at 44.1 kHz, 0.94 → 0.58 at 22.05 kHz (chance = 0.50) |
 | **E-FLAC** | Can FLAC be made untraceable **without** touching the audio? | Yes — bit-identical audio, verified by checksum |
 | **E-M4A-AUDIO** | Does the original recording's quality setting survive in the sound? | 0.88 on untouched files → chance (0.50) after cleaning |
+| **E-PDF-HISTORY** | Do a PDF's earlier drafts survive — ours, and the standard tools'? | Ours: nothing recoverable, under three separate attacks. The most widely used tool: **removes nothing** |
+| **E-PDF** | Which half of a PDF still names the program that made it — how the file was built, or how the page was typeset? | The build half is closed at F1. The typesetting half is half-closed at F2 and named as a floor |
+| **E-PDF-RASTER** | After a PDF is flattened to pictures, do the pixels still name the typesetter? | **Yes — every page, at every resolution we tried, down to unreadable text** |
 
 Two methodological commitments run through all of them, and both were adopted after
 they caught us:
@@ -227,9 +275,9 @@ with mature tools, not ahead. That is reported as parity.
 
 ### 5.4 The limits we publish
 
-We maintain a register of twelve known limits in plain language, and the automated
-report renders it verbatim on every run — a limit recorded there reaches every reader
-automatically. The headline ones:
+We maintain a register of **eighteen** known limits in plain language, and the
+automated report renders it verbatim on every run — a limit recorded there reaches every
+reader automatically. The headline ones:
 
 - **A cleaned file is recognisably cleaned.** Everything we produce comes out in the
   same standard shape, so an observer can tell a scrubber was used. They cannot tell
@@ -244,95 +292,210 @@ automatically. The headline ones:
   audio attack studies the frequency profile; published research also studies the
   encoder's internal arithmetic, which we have **not** tested against. We name the gap
   rather than implying it away.
-- **Some unusual audio files we refuse outright** rather than half-clean them. Nothing
-  leaks, but the user gets no output — broader support is planned.
+- **Some unusual audio files, and several classes of PDF, we refuse outright** rather
+  than half-clean them. Nothing leaks, but the user gets no output — broader support is
+  planned. A signed document is the clearest case: any rewrite destroys the signature,
+  and handing back a silently broken one is worse than saying so.
+- **A PDF still names the program that typeset it, at every level**, and flattening it
+  to pictures does not change that — measured, published as a failing result, with the
+  reason it is a floor rather than a gap.
+- **Blacking out text in a PDF is not removing it.** The words stay in the file
+  underneath the box. This is a different problem from the one this tool solves; we
+  **warn and never silently repair**, and a test makes sure the warning stays necessary.
 
 ---
 
-## 6. Near future — Phase 3: documents (PDF, then Word)
+## 6. Phase 3 — documents: what PDF now does, and what it proved
 
-This phase is open and is the most valuable one in the plan. Documents are where the
-real-world disclosures happen.
+This is the most valuable phase in the plan, because documents are where the real-world
+disclosures happen. The PDF half is complete; the Word half is next.
 
-### 6.1 The two named targets
+### 6.1 The leak this phase exists to close, and the proof it is closed
 
-**PDF incremental-update history.** A PDF is edited by *appending* — the old version
-stays in the file underneath the new one. Text "deleted" three revisions ago is still
-there in full. This is the mechanism behind the famous redaction failures where
-published documents were read straight through the black boxes. Our answer is that a
-clean must **rewrite** the document to a single revision, never append, and then prove
-by carving the output that no earlier revision survived.
+**A PDF is edited by appending.** The old version stays in the file underneath the new
+one — text "deleted" three revisions ago is still there in full, and cutting the file at
+an earlier stopping point opens the earlier draft as a normal document. This is the
+mechanism behind the famous cases where published, "redacted" documents were read
+straight through the black boxes.
 
-**Word revision-save IDs (RSIDs).** Word stamps identifiers throughout a document that
-link individual edits to editing sessions. Published research shows they **survive every
-surveyed scrubber, MAT2 included**. Clearing them is a capability row we win outright,
-exactly as M4A was.
+**Our answer is not to delete the history but to never copy it.** The clean rebuilds the
+document from what the finished version actually references, so a superseded draft is
+never written out in the first place. There is no deletion pass that could miss one.
 
-And the open research question the phase exists to answer: **no published tool achieves
-fingerprint-resistance for PDF without destroying the document's text layer.** We intend
-to characterise that frontier honestly — measure where the boundary actually sits, and
-publish it as a trade-off, rather than assert a win.
+We then measured it three separate ways rather than trusting the argument: rolling the
+file back to an earlier stopping point, carving the raw bytes for text that was deleted
+in an earlier draft, and auditing every object in the file to separate *replaced*
+content from *abandoned* content. Nothing recoverable, under all three.
 
-### 6.2 What is already measured
+**What the standard tools do on the same document**, measured rather than repeated from
+their documentation:
 
-The phase opened with a groundwork spike, and it has already produced results that
-changed the design:
+| Tool | Result |
+|---|---|
+| The most widely used metadata tool | **Removes nothing.** It also edits by appending, so it adds a *fourth* revision and leaves all three earlier drafts intact — it warns about this itself |
+| The leading open-source privacy tool | Destroys the history, but then clears the metadata by appending an update of its own — leaving **its own name and a wall-clock timestamp including the operator's timezone** one layer down |
 
-- **We ran our own fingerprint guard against the industry-standard PDF library (qpdf)
-  and it failed.** The library stamps a constant signature into every file it writes,
-  spanning both the file header and the object layout — so a document cleaned through
-  it announces which library cleaned it.
-- **A sharper finding that was not on our original list:** a PDF's *document identifier*
-  is **inherited from the input and survives** a standard rewrite. A file cleaned that
-  way still carries the identifier linking it to every other revision of the same
-  document — a straightforward leak that a tags-only clean leaves completely intact.
-- **We measured what MAT2 actually does to a PDF**, rather than repeating what is
-  commonly said. The widely-repeated claim that "MAT2 destroys PDF text" is true only
-  of its default path, which renders every page to an image and quadruples the file
-  size; its lightweight path preserves text fine. So we narrowed our own benchmark
-  claim to what we can defend: **MAT2 offers no bit-preserving and no lossless tier for
-  PDF at all — both of its paths are re-renders.** Narrowing our own claim before
-  publishing it is the standard this project holds itself to.
+Reproduced on both of that tool's paths and on a real 295 KB document.
 
-**The resulting decision: we write the PDF serializer ourselves.** We keep the standard
-library as the reader and semantic layer, but we emit the bytes. This is more work, and
-it is the only way to reach the same standard of claim for PDF that PNG and FLAC already
-meet — otherwise we would be publishing a materially weaker promise and arguing past our
-own guard.
+### 6.2 The second finding: what a cleaned PDF still gives away
 
-### 6.3 Phase 3 milestones
+With every tag gone, we asked the harder question — can you still tell which program
+made the document? We measured it across **five real producers printing the same
+document** (Chrome, LibreOffice, macOS Preview, and two synthetic producers built to
+differ deliberately), and deliberately measured it in *two halves* rather than as one
+verdict, because the two halves have completely different prospects:
+
+- **How the file was built** — object ordering, the index format, the identifier, the
+  binary marker in the opening line. **Closed outright at F1.** After our clean, none of
+  the five producers can be told apart on any of it.
+- **How the page was typeset** — the instructions that paint the text. **Half-closed at
+  F2**: rewriting every instruction through one writer makes four of the five speak an
+  identical language, and two producers that differed only in *how* they wrote the same
+  page become indistinguishable. The pages still render **byte-identical** to the
+  originals — verified by rendering both to images, not by trusting our own rule.
+- **Where the letters physically sit** — line breaks, spacing, which letters were
+  embedded. **Not closable.** It cannot change without re-typesetting the page, which
+  would change what the reader sees.
+
+Measuring *before* designing the fix is the point of this ordering: it is what separates
+a genuine floor from unfinished work.
+
+### 6.3 The third finding: we disproved our own escape route
+
+The obvious way out is to flatten the document to pictures — the technique the leading
+privacy tools use. Structurally it passes almost trivially, since the file is then
+entirely our own output, and **publishing that as a win would have been exactly the
+overclaim this project exists to avoid**.
+
+So we attacked the pictures instead. A classifier reading only the shape of the ink
+identifies which of the five producers made a page **100% of the time** (30 pages, five
+producers, one-in-five by chance), against a valid control on unscrubbed pages.
+
+We then tried the obvious mitigation, and **the measurement corrected our own
+prediction**. We expected coarser rendering to blur the signal, on the assumption it
+lived in fine sub-pixel detail. It does not: swept from 300 DPI down to **18 DPI, where
+the body text is unreadable, the classifier stays at 100%**. Taking the feature vector
+apart says why — overall ink density alone is at chance, while the **column profile
+alone reaches 100%**: the margins and the width of the text block, which downsampling
+leaves completely intact. **There is no resolution at which the document is still useful
+and the typesetter is anonymous.**
+
+### 6.4 What else came out of it
+
+- **The fingerprint guard failed the moment F2 landed, and was right to.** We were
+  compressing every stream at maximum effort, which no real producer does — four of the
+  five use the middle setting. Maximum effort did not normalise our output, it *labelled*
+  it. We now use the setting the largest real crowd uses.
+- **Three bugs were caught before publication**, each of which would have silently moved
+  text on the page while still painting every letter — the kind of fault that renders
+  fine on the test document and wrong on someone's contract.
+- **A real 10-page report was run end to end** and immediately exposed a false positive
+  the synthetic tests could not: the redaction detector was reading letter positions
+  without accounting for the page's own transformation, and flagged two entire pages.
+  Fixed, with a regression test built from the exact transformation a Chrome-printed page
+  opens with.
+- **The deep clean grows files by about a third** (448 KB → 590 KB on that report). Since
+  file size is itself one of the clues we report as leaking, that is a real cost and it
+  is now a published limit rather than a footnote.
+
+### 6.5 Phase 3 milestones
 
 | | Deliverable | Status |
 |---|---|---|
 | **M0** | Groundwork spike; serializer decision taken and recorded | ✅ Done |
-| **M1** | PDF corpus + proof that incremental-update history is provably gone | 🔜 Next |
-| **M2** | PDF structure walker, serializer, content tokenizer; **recursive** F1 — clearing the document's own metadata *and* the metadata inside every image it embeds | 🔜 |
-| **M3** | Measure which channel actually leaks, **before** designing the fix | 🔜 |
-| **M4** | PDF F2 + the honest fingerprint answer, whatever it turns out to be | 🔜 |
-| **M5** | PDF F3 (rasterise) + a **redaction-risk detector** that warns users when text is still hiding under a black box | 🔜 |
-| **M6** | Word/DOCX walker + F1, with correct ZIP timestamp handling | 🔜 |
-| **M7** | RSIDs measurably cleared where MAT2 leaves them | 🔜 |
+| **M1** | PDF corpus + proof that incremental-update history is provably gone | ✅ Done |
+| **M2** | PDF structure walker, serializer, content tokenizer; **recursive** F1 | ✅ Done |
+| **M3** | Measure which channel actually leaks, **before** designing the fix | ✅ Done |
+| **M4** | PDF F2 + the honest fingerprint answer, whatever it turned out to be | ✅ Done — answer published as a failure, with the floor named |
+| **M5** | PDF F3 (rasterise) + redaction-risk advisory | ✅ Done — including the measurement that disproved the escape route |
+| **M6** | Word/DOCX walker + F1, with correct ZIP timestamp handling | 🔜 Next |
+| **M7** | Revision-save IDs measurably cleared where the leading tool leaves them | 🔜 |
 
-Note the ordering: **M3 comes before M4** deliberately. Designing the fix before
-measuring what leaks is normalising by guesswork, and we would then have no way to
-tell a real limit from unfinished work.
+### 6.6 What remains in this phase
 
-### 6.4 Limits we already expect to publish from this phase
+**Word revision-save IDs (RSIDs).** Word stamps identifiers throughout a document that
+link individual edits to editing sessions. Published research shows they **survive every
+surveyed scrubber, the leading open-source one included**. Clearing them is a capability
+row we win outright, exactly as M4A was.
 
-Recorded now as predictions to be tested, not as conclusions:
-
-- **Redaction is not scrubbing.** Text hidden under a black rectangle stays in the
-  document. We will detect and warn; we will not silently repair, and users must be
-  told plainly because they assume otherwise.
-- **Rasterising a PDF destroys selectable text** — it can no longer be searched, copied
-  from, or read aloud by a screen reader. A real cost to a real user, and it goes in
-  the limits register *before* the feature is built.
-- **A signed PDF cannot be cleaned and stay signed.** Any rewrite invalidates the
-  signature. Unavoidable, and better said up front.
+One design decision is already settled and is worth stating, because it is the same
+principle as everything above: a Word file is a ZIP archive, and **a ZIP entry carries a
+mandatory timestamp that cannot be left out**. Inventing a value there would make our
+files unique. So we will use the ZIP epoch — `1980-01-01`, the same constant every
+reproducible-build tool uses — because joining a large existing crowd is what anonymity
+means, and a value nobody else writes is a signature.
 
 ---
 
-## 7. Far future — the road to the finished tool
+## 7. A new capability on the table: decoy metadata
+
+This came out of a question asked during Phase 3, and it is worth reporting because it
+identifies a real gap in the threat model rather than a missing feature.
+
+**The question.** Since we rebuild a PDF from scratch, could we run the tool inside a
+**virtual machine with the clock set back**, so the cleaned document comes out with a
+creation date in the past instead of today's?
+
+**The technical half of the answer: no VM is needed.** We own every byte of the output —
+a creation date is simply a string our own serializer writes, so it can be given any
+value directly. A rolled-back clock would only help if something in the pipeline were
+stamping the real time behind our back, and the tool is deliberately built so that
+nothing does: there is **no wall-clock call anywhere in the scrubber**, which is why our
+outputs currently carry no date at all. If anything ever did stamp one, that is a bug to
+fix in the serializer, not something to work around with a virtual machine.
+
+**The half that is a genuine finding: this is a different operation from scrubbing, and
+we do not currently offer it.**
+
+| | What it gives you |
+|---|---|
+| **Removing** a date (what we do today) | You look like everyone who cleaned a file |
+| **Spoofing** a date (the proposal) | You look like an ordinary file nobody ever cleaned |
+
+Our published adversary ladder asks *"which program made this file"*, and for that
+question removal is the correct answer. But the proposal identifies a case the ladder
+does not model: **where the fact of having been cleaned is itself the leak.** A document
+leaked from a pool of three people, where only one person's files are conspicuously
+blank, is not protected by being anonymous — it is identified by being anonymous. That is
+a real scenario and a legitimate reason to want a cover story.
+
+**Why a *random* date would be worse than none.** A spoofed date has to be consistent
+with everything else in the file, and Phase 3 has just finished cataloguing exactly what
+those things are. A PDF's version number, its use of certain internal structures, its
+font technology and its embedded photos' own encoder traits each establish an **earliest
+possible date**. A file claiming 2004 while using structures introduced in 2005 is
+falsified by reading its first line — and that upgrades "this file was cleaned" (true,
+harmless) into "this file was cleaned *and* somebody forged its provenance", which reads
+far worse.
+
+**And the generator itself would become a fingerprint.** If every file we produce uses
+the same timezone offset, the same precision, or a uniform spread across a decade while
+real documents cluster in weekday working hours, then across several files from one user
+*that distribution is the signature*. This is precisely the class of self-inflicted leak
+our own fingerprint guard has already caught three times — an empty comment block in
+FLAC, a fixed padding run, and a compression setting no real producer uses.
+
+**So the specification is: constrained, not random.** Compute the earliest date the file's
+own technology allows, then draw from a distribution shaped like genuine human document
+timestamps above that floor. And it does not ship until an experiment (**E-DECOY**) has
+measured whether a classifier can separate our synthetic dates from real ones — an
+unmeasured claim is not something this project publishes.
+
+**Where it sits in the plan.** This is cross-format by nature: a PDF creation date, a
+photo's "date taken", an audio track's recording year and a video's creation time all
+pose the identical question, so it is one shared module rather than a feature per format.
+It is scheduled as a **Phase 6 integration item, off by default**, on an axis at right
+angles to the three cleaning levels: those trade *content*, this one trades
+*truthfulness*.
+
+**One flag, stated once and recorded in the limits register when the mode lands.**
+Convincing false provenance on a document has an obvious second use in forgery. Privacy
+anonymisation is the legitimate use, and that belongs written down as a stated property
+of the mode rather than left implicit.
+
+---
+
+## 8. Far future — the road to the finished tool
 
 The end goal is one tool that irreversibly scrubs files of **arbitrary type**. The
 remaining phases, in dependency order:
@@ -352,7 +515,8 @@ still run identically afterwards.
 and similar, most of which reuse the standards modules already written. Then final
 integration: one dispatcher across every handler, batch processing, and **recursive
 container cleaning** — a document inside an archive inside an email attachment, cleaned
-all the way down.
+all the way down. **Decoy metadata (§7)** is scheduled here, off by default, once its
+own experiment has been run.
 
 **The parallel deliverable: a professional funding proposal** — technical content backed
 by the measured guarantee matrices, plus a cost plan. Every phase feeds it directly:
@@ -366,7 +530,7 @@ quietly omitted.
 
 ---
 
-## 8. How this project works, and why it is ordered this way
+## 9. How this project works, and why it is ordered this way
 
 Three principles explain most of the decisions above, and they are worth stating because
 they are what makes the results trustworthy.
@@ -386,19 +550,22 @@ becomes a leak in one format and not another.
 what is reachable at which cost — never a binary "yes it's clean". Every cell carries the
 verdict *and* the reason and residuals behind it. The build re-measures all of it and
 fails if a published claim has drifted. When we have found our own claims to be broader
-than our evidence — twice so far — we have narrowed them in writing rather than leaving
-them standing.
+than our evidence — three times so far, most recently on PDF — we have narrowed them in
+writing rather than leaving them standing. The Phase 3 flattening result is the clearest
+example: it would have passed as a win on the obvious test, and we published it as a
+failure because the harder test says so.
 
 ---
 
-## 9. Status at a glance
+## 10. Status at a glance
 
 | | |
 |---|---|
 | **Phases complete** | 0 (foundation), 1 (images), 2 (audio) |
-| **Phase in progress** | 3 (documents) — groundwork measured, design decision taken |
-| **Formats shipping** | JPEG, PNG, MP3, FLAC, M4A |
-| **Automated tests** | 243, on four Python versions, on every change |
+| **Phase in progress** | 3 (documents) — **PDF complete at all three levels**; Word next |
+| **Formats shipping** | JPEG, PNG, MP3, FLAC, M4A, PDF |
+| **Automated tests** | 345, run on every change |
 | **Published claims** | Re-measured from scratch by machine on every build |
-| **Known limits** | 12, published in plain language and rendered into every report |
-| **Capabilities no surveyed competitor has** | M4A support at all · lossless-and-untraceable (PNG, FLAC) · user-chosen fidelity · a measured guarantee matrix |
+| **Known limits** | 18, published in plain language and rendered into every report |
+| **Newly specified** | Decoy metadata — a plausible cover story instead of a blank file, off by default, pending its own experiment (§7) |
+| **Capabilities no surveyed competitor has** | M4A support at all · a PDF clean that is neither a re-render nor an append · lossless-and-untraceable (PNG, FLAC) · user-chosen fidelity · a measured guarantee matrix |

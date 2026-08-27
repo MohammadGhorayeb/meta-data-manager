@@ -49,33 +49,36 @@ CATEGORIES = [
      "are stripped so they are gone for good.",
      ["removes_every_metadata", "removes_metadata", "removes_text", "no_secret",
       "residual", "no_leak", "_a1_", "leak", "strip", "canonicaliz",
-      "present_before", "comment_leak"]),
+      "present_before", "comment_leak", "locus"]),
     ("content", "🖼️", "Picture and sound preserved",
      "The file still looks and sounds identical after cleaning — pixel-for-pixel "
      "in the lossless modes.",
      ["preserves_pixel", "content_preserved", "lossless", "preserves_alpha",
       "preserves_palette", "preserves_quantization", "phash", "pixel",
       "preserved", "bit_exact", "entropy_bytes", "dimensions", "perceptual",
-      "audio"]),
+      "audio", "renders_the_same", "visible", "paint", "geometry_survive"]),
     ("fingerprint", "🕵️", "Made untraceable",
      "You cannot tell which app, camera or phone produced the file — the "
      "invisible compression fingerprint is erased.",
      ["e3_dqt", "e_engine", "e_lame", "fingerprint_guard", "peerset_a2",
       "png_a2", "fingerprint", "normalizes_dqt", "normalizes_deflate", "dqt",
-      "deflate", "a2", "engine", "encoder"]),
+      "deflate", "a2", "engine", "encoder", "normalis", "subset_tags"]),
     ("irreversibility", "🔒", "Cannot be recovered",
      "Forensic recovery tools cannot bring back anything that was removed.",
-     ["forensic_recovery", "recover", "carv"]),
+     ["forensic_recovery", "recover", "carv", "history", "superseded",
+      "orphan", "revision"]),
     ("format", "🧩", "File stays valid",
      "The internal structure and checksums stay correct, so the file still "
      "opens everywhere it did before.",
      ["segment", "chunk", "crc", "walk", "assemble", "standard", "toy_format",
-      "diff", "variance", "floor", "exit_gate"]),
+      "diff", "variance", "floor", "exit_gate", "serializer", "tokenizer",
+      "token", "inline_image"]),
     ("tooling", "⚙️", "The tool behaves",
      "The command line, automatic file-type detection, fail-safe behaviour and "
      "the reporting all work correctly.",
      ["cli", "dispatch", "matrix", "exit", "integration_exiftool", "determinist",
-      "subprocess_scrubber", "qa_report", "report"]),
+      "subprocess_scrubber", "qa_report", "report", "refus", "fails_closed",
+      "redaction", "ci_contract"]),
     ("other", "✅", "Other checks", "Additional internal quality checks.", []),
 ]
 
@@ -98,6 +101,9 @@ GLOSSARY = {
     "mpo": "multi-picture JPEG", "jpeg": "JPEG", "png": "PNG", "mp3": "MP3",
     "cli": "command line", "gps": "GPS location", "utf": "text encoding",
     "e3": "experiment E3", "toyf": "the test format",
+    "pdf": "PDF", "xref": "the PDF index", "raster": "rendered to pictures",
+    "ocg": "PDF layer", "locus": "hiding place", "glyph": "letter shape",
+    "redaction": "blacked-out text", "docx": "Word document",
 }
 
 # The roadmap, in build order. A format with a Pareto matrix on disk is reported
@@ -159,7 +165,8 @@ STAGES = [
      "Checks the code itself is tidy and consistent, and that the automation "
      "script has no mistakes."),
     ("test", "🧪", "Test suite",
-     "Runs every automated check against real files, on four versions of Python."),
+     "Runs every automated check against real files, on each version of Python "
+     "the tool supports."),
     ("coverage", "📊", "Coverage",
      "Measures how much of the tool's code the tests actually exercise."),
     ("evidence", "🔬", "Published results still true",
@@ -382,6 +389,11 @@ FORMAT_TEST_PATTERNS = [
     ("mp3", ["mp3", "e_lame", "e_engine"]),
     ("flac", ["flac"]),
     ("m4a", ["m4a", "isobmff"]),
+    # PDF must be matched BEFORE JPEG. Its tests are named after the fidelity
+    # tiers too (test_f1_clears_every_locus lives in tests/scrub/test_pdf.py),
+    # so without this row every PDF check was counted against JPEG and the PDF
+    # section reported "all 0 checks passed" for a format with a full suite.
+    ("pdf", ["pdf"]),
     ("jpeg", ["jpeg", "test_f1", "test_f2", "test_f3", "segment", "dqt", "e3"]),
 ]
 
@@ -884,8 +896,12 @@ def _verdict_lines(cap: dict) -> tuple[list[str], list[str], str]:
                      f"place — which is exactly why **{FIDELITY_PLAIN[solved_at]}** "
                      "exists.")
     elif a2_fail:
+        # Deliberately points at the story rather than ending on "yet": for PDF
+        # what survives is a measured floor (the page's own geometry), not an
+        # unfinished job, and "yet" alone would read as work in progress.
         open_.append("The maker's fingerprint **survives every mode** — this "
-                     "file type is not untraceable yet.")
+                     "file type is not untraceable yet. What exactly survives, "
+                     "and whether it can ever be removed, is spelled out below.")
     return works, open_, solved_at or ""
 
 

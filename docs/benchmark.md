@@ -22,6 +22,9 @@ _Comparison against the tools the field already uses (W9). Findings were reprodu
 | Removes the FLAC vendor string (names the encoder) | ✅ | ⚠️ manual | ❌ leaves it | n/a |
 | **Lossless *and* untraceable (FLAC)** | ✅ F2 | ❌ | ❌ | n/a |
 | Erases the audio encoder fingerprint, measured cross-engine | ✅ MP3 F3 | ❌ | ❌ | n/a |
+| **A PDF clean that is neither an append nor a re-render** | ✅ F1/F2 | ❌ appends | ❌ both paths re-render | n/a |
+| Collapses a PDF's revision history with the text intact | ✅ | ❌ **adds a revision** | ⚠️ default path destroys the text | n/a |
+| Warns that text is still hiding under a black box | ✅ advisory | ❌ | ❌ | n/a |
 
 **The one-line takeaway:** every tool deletes tags. Only ours lets you keep the picture *pixel-perfect* when you want fidelity, become *untraceable* when you want anonymity, and backs both with a measured, verified matrix.
 
@@ -130,17 +133,22 @@ _Corpus: a 3-revision document. Revision 1 is confidential, revision 3 is the pu
 
 | Tool | Revisions left | Stale objects | Text kept | Recoverable by rollback |
 |---|:--:|:--:|:--:|---|
-| _(untouched — the control)_ | 3 | 4 | ✅ | `CONFIDENTIAL-REV1-SECRET`; `CONFIDENTIAL-REV2-SECRET`; `Author-REV1-SECRET`; `Draft-REV1-SECRET`; `/Author=Author-REV2-SECRET`; `/Title=Draft-REV2-SECRET` |
+| _(untouched — the control)_ | 3 | 4 | ✅ | `Author-REV1-SECRET`; `CONFIDENTIAL-REV1-SECRET`; `CONFIDENTIAL-REV2-SECRET`; `Draft-REV1-SECRET`; `/Author=Author-REV1-SECRET`; `/Author=Author-REV2-SECRET`; `/Title=Draft-REV1-SECRET`; `/Title=Draft-REV2-SECRET` |
 | qpdf/pikepdf rewrite | 1 | 0 | ✅ | ✅ nothing |
 | MAT2 (default) | 2 | 9 | ❌ destroyed | `/CreationDate=D:2026…+03'00`; `/Producer=cairo 1.18.4 (https://cairographics.org)` |
 | MAT2 `--lightweight` | 2 | 9 | ✅ | `/CreationDate=D:2026…+03'00`; `/Producer=cairo 1.18.4 (https://cairographics.org)` |
-| ExifTool `-all=` | 4 | 5 | ✅ | every planted secret, plus the whole `/Info` it "cleared" |
+| ExifTool `-all=` | 4 | 5 | ✅ | `Author-REV1-SECRET`; `CONFIDENTIAL-REV1-SECRET`; `CONFIDENTIAL-REV2-SECRET`; `Draft-REV1-SECRET`; `/Author=Author-FINAL-SECRET`; `/Author=Author-REV1-SECRET`; `/Author=Author-REV2-SECRET`; `/CreationDate=D:20240101120000Z`; `/Creator=CorpusWriter 1.0`; `/ModDate=D:20240101120000Z`; `/Producer=CorpusWriter 1.0`; `/Title=Draft-FINAL-SECRET`; `/Title=Draft-REV1-SECRET`; `/Title=Draft-REV2-SECRET` |
+| **Ours — F1 (bit-preserving)** | 1 | 0 | ✅ | ✅ nothing |
+| **Ours — F2 (lossless rebuild)** | 1 | 0 | ✅ | ✅ nothing |
+| **Ours — F3 (rasterise)** | 1 | 0 | ❌ destroyed | ✅ nothing |
 
 **ExifTool edits a PDF by appending an incremental update**, so `-all=` *adds* a revision and removes nothing — it says so itself: "PDF edits are reversible. Deleted tags may be recovered!" Every original value is still there.
 
-**MAT2 re-renders**, so the document's own history genuinely goes — a real result, and the reason it beats ExifTool on this axis. But it then clears `/Info` by appending an incremental update of its own, leaving its producer string (`cairo …`) and a **wall-clock creation date with the operator's UTC offset** one revision down. Rolling back names the tool that made the file and the second it was made. Reproduced on a real 295 KB report as well as on the synthetic corpus, on **both** MAT2 paths.
+**MAT2 re-renders**, so the document's own history genuinely goes — a real result, and the reason it beats ExifTool on this axis. But it then clears `/Info` by appending an incremental update of its own, leaving its producer string (`cairo …`) and a **wall-clock creation date with the operator's UTC offset** one revision down. Rolling back names the tool that made the file and the second it was made. Reproduced on a real 295 KB report as well as on the synthetic corpus, on both MAT2 paths.
 
-_Our own PDF tier is under construction (Phase 3 M2). The row it has to beat is therefore: collapse to a single revision, keep the text, and leave no producer string or timestamp behind — which no tool measured here does._
+**Ours collapses the document to a single revision with the text intact and nothing left behind** — no producer string, no timestamp, no stale objects — which is the row no other tool measured here fills. The rewrite alone is not what earns it: the `qpdf/pikepdf rewrite` row is in this table precisely to separate *the rewrite collapsed the revisions* from *the scrub removed the metadata*, so neither takes credit for the other. F3 destroys the text layer by design (it renders each page to an image), and that cost is stated wherever the tier is offered.
+
+_The one thing this table does **not** show is the harder question: with every tag gone, does the file still say which program made it? For PDF the answer is yes at all three tiers, and it is published as a failing cell with the reason — see `docs/limits.md` #16 and #17._
 
 _Regenerate this section with `./.venv/bin/python -m tests.scrub.e_pdf_history`; the assertions behind it are in `tests/scrub/test_e_pdf_history.py`._
 

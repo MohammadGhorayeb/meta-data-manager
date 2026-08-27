@@ -135,8 +135,9 @@ everything above is capability it does not have at all.
 <!-- FORMAT:m4a:END -->
 
 <!-- FORMAT:pdf:BEGIN -->
-Only the **light clean** exists so far; the other two modes are being built, and
-the table says *not measured* for them rather than guessing.
+**All three modes now exist**, and every tick and cross beside them was measured
+on five real programs printing the same document — Chrome, LibreOffice, macOS
+Preview and two synthetic producers built to differ on purpose.
 
 PDFs have a problem the other formats don't. **A PDF is edited by adding to the
 end of it, not by rewriting it** — so every earlier draft of a document is still
@@ -144,13 +145,14 @@ inside the file. Open it and you see the latest version; cut the file at an
 earlier stopping point and the old draft opens like a normal document. This is
 the leak behind most published "redaction" disasters.
 
-**What we solved:** we don't edit the file, we **rebuild it from scratch**, so
-old drafts are never copied across. There is no deletion step that could miss
-one. We also write every byte of the new file ourselves rather than letting a
-library save it, because every PDF library stamps its own signature into the
-file's opening line — we measured five different ones. The clean reaches inside
-embedded photos too, removing their GPS and camera data while leaving the actual
-image untouched, bit for bit.
+**What we solved.** We don't edit the file, we **rebuild it from scratch**, so
+old drafts are never copied across — there is no deletion step that could miss
+one. We write every byte of the new file ourselves rather than letting a library
+save it, because every PDF library stamps its own signature into the file's
+opening line — we measured five of them. The clean reaches inside embedded photos
+too, removing their GPS and camera data while leaving the actual image untouched,
+bit for bit, and it reaches images that are painted directly into the page and
+that no ordinary scan of the file can even see.
 
 Measured against the standard tools on a document with three hidden drafts: the
 most widely used one **removes nothing at all** — it also edits by adding to the
@@ -158,17 +160,38 @@ end, so it leaves a *fourth* version and every earlier draft intact. The other
 one does destroy the history, but leaves its own name and a **clock timestamp
 with the operator's timezone** one layer down.
 
-**What is still open:** with the metadata gone, the *way the page was typeset*
-still identifies which program made it — where each letter sits, how much decimal
-precision the coordinates carry, which fonts were embedded. We measured this
-rather than assuming it, and measured it in two halves: everything about **how
-the file is built** is now identical across five different producers, and
-everything about **how the page was laid out** is untouched. That split is the
-point — it says exactly what the next mode has to fix, and part of it (the letter
-positions themselves) cannot be changed without re-typesetting the page, which
-would change how it looks.
+**What the deep clean added.** With the tags gone, what still gives a document
+away is the *way the page was typeset*. That splits in two, and we normalised the
+half that can be normalised: every instruction that paints the page is now
+rewritten through one single writer, so **four of the five programs come out
+speaking an identical language**, and two that differed only in *how* they wrote
+the same page become indistinguishable. The pages still render **byte-identical**
+to the originals — we checked by rendering both to pictures, not just by trusting
+our own rule.
 
-Two things we do **not** fix, and say so plainly: text hidden under a black box
-is still in the file (a different problem — see the limits), and embedded fonts
-keep their own small print about who made the font.
+**What is still open, and why it is not a bug.** The other half is **where each
+letter physically sits on the page** — the line breaks, the spacing, which
+letters were embedded at all. That cannot be changed without re-typesetting the
+document, which would change what the reader sees. So it is a floor, not an
+unfinished job, and we say so rather than rounding the result up.
+
+**The full rebuild does not fix it either — and we proved that against ourselves.**
+Flattening every page to a picture makes the file entirely our own output, so it
+*looks* like a clean win on paper. Publishing that would have been an overclaim,
+so we attacked the resulting pictures instead: a program that studies only the
+shape of the ink identifies which of the five produced the page **every single
+time**. We then tried the obvious escape — rendering coarser — down to a
+resolution where the body text is **unreadable**, and it still identified the
+producer every time, because the signal is in the *margins and the width of the
+text block*, not in fine detail. There is no setting at which the document is
+still useful and the typesetter is anonymous. The full rebuild also **destroys
+selectable text**: the page can no longer be searched, copied from, or read by a
+screen reader — a real cost, stated before the mode is offered.
+
+Three things we do **not** fix, and say so plainly: text hidden under a black box
+is still in the file — we **warn about it and never silently repair it**, and a
+test makes sure the warning stays necessary; embedded fonts keep their own small
+print about who made the font; and the deep clean makes files about a **third
+larger**, which matters because file size is itself one of the clues we report as
+leaking.
 <!-- FORMAT:pdf:END -->

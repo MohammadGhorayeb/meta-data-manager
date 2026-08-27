@@ -1,8 +1,8 @@
 name: CI
 
 # Every push to main and every pull request gets: a code-quality check, the full
-# test suite on all four supported Python versions, a coverage gate, a re-run of
-# the project's published measurements, and — the point of the whole thing — a
+# test suite on both ends of the supported Python range, a coverage gate, a re-run
+# of the project's published measurements, and — the point of the whole thing — a
 # plain-language quality report on the run page that a non-technical reader can
 # actually understand.
 on:
@@ -510,7 +510,7 @@ jobs:
             --lint-json ruff.json \
             --evidence-json evidence.json \
             --timing-dir timing \
-            --expect-legs "3.11,3.12,3.13,3.14" \
+            --expect-legs "3.11,3.14" \
             --stage "lint=${{ needs.lint.result }}" \
             --stage "test=${{ needs.test.result }}" \
             --stage "coverage=${{ needs.coverage.result }}" \

@@ -147,7 +147,10 @@ def pdf_history_section():
     P("|---|:--:|:--:|:--:|---|")
     labels = {"raw": "_(untouched — the control)_", "pikepdf_rewrite": "qpdf/pikepdf rewrite",
               "mat2": "MAT2 (default)", "mat2_lightweight": "MAT2 `--lightweight`",
-              "exiftool_all": "ExifTool `-all=`"}
+              "exiftool_all": "ExifTool `-all=`",
+              "scrubber_F1": "**Ours — F1 (bit-preserving)**",
+              "scrubber_F2": "**Ours — F2 (lossless rebuild)**",
+              "scrubber_F3": "**Ours — F3 (rasterise)**"}
     for key, r in results.items():
         lbl = labels.get(key, key)
         if "error" in r:
@@ -167,9 +170,63 @@ def pdf_history_section():
       "offset** one revision down. Rolling back names the tool that made the file and "
       "the second it was made. Reproduced on a real 295 KB report as well as on the "
       "synthetic corpus, on both MAT2 paths.\n")
-    P("_Our own PDF tier is under construction (Phase 3 M2). The row it has to beat is "
-      "therefore: collapse to a single revision, keep the text, and leave no producer "
-      "string or timestamp behind — which no tool measured here does._")
+    P("**Ours collapses the document to a single revision with the text intact and "
+      "nothing left behind** — no producer string, no timestamp, no stale objects — "
+      "which is the row no other tool measured here fills. The rewrite alone is not "
+      "what earns it: the `qpdf/pikepdf rewrite` row is in this table precisely to "
+      "separate *the rewrite collapsed the revisions* from *the scrub removed the "
+      "metadata*, so neither takes credit for the other. F3 destroys the text layer "
+      "by design (it renders each page to an image), and that cost is stated wherever "
+      "the tier is offered.\n")
+    P("_The one thing this table does **not** show is the harder question: with every "
+      "tag gone, does the file still say which program made it? For PDF the answer is "
+      "yes at all three tiers, and it is published as a failing cell with the reason — "
+      "see `docs/limits.md` #16 and #17._\n")
+    P("_Regenerate this section with `./.venv/bin/python -m tests.scrub.e_pdf_history`; "
+      "the assertions behind it are in `tests/scrub/test_e_pdf_history.py`._")
+
+
+def audio_gap():
+    """Audio: the measured gap against the other tools.
+
+    Static prose, measured by hand with MAT2 0.14.0 on this project's corpora
+    (tests/scrub/m4a_corpus.py, tests/scrub/flac_corpus.py) and reproduced with
+    `mat2 --inplace <file>`. It lives here rather than only in the rendered
+    document because a regeneration silently deleted it once.
+    """
+    P("\n### Audio: where the other tools stop\n")
+    P("Measured with **MAT2 0.14.0** on this project's own torture corpus\n"
+      "(`tests/scrub/m4a_corpus.py`, `tests/scrub/flac_corpus.py`), reproduced with\n"
+      "`mat2 --inplace <file>`.\n")
+    P("**M4A — MAT2 refuses it outright**: `bm.m4a's format (audio/mp4a-latm) is not\n"
+      "supported`. Not a weaker clean — no clean at all, so a user handed an `.m4a` gets\n"
+      "nothing back.\n")
+    P("ExifTool does accept it and removes every planted tag — but running\n"
+      "`exiftool -all= ` on the same file leaves, measured with our own residual check:\n")
+    P("| Survivor | What it is |")
+    P("|---|---|")
+    P("| `mvhd` / `tkhd` / `mdhd` creation + modification times | **when the file was "
+      "made** — structural fields, not tags, so a tag-oriented pass does not touch them |")
+    P("| a `free` box | dead space that can hold arbitrary bytes, and whose size is a "
+      "muxer tell |")
+    P("\nOurs removes both, patches the sample tables so the audio still decodes once the\n"
+      "metadata is cut out, and normalises the muxer layout losslessly at F2.\n")
+    P("**FLAC — MAT2 accepts it but leaves two things behind.** On a file carrying an\n"
+      "`APPLICATION` block, cover art, Vorbis tags and an ID3v2 prefix, MAT2's output still\n"
+      "contained:\n")
+    P("| Survivor | What it is |")
+    P("|---|---|")
+    P("| `MOEX` + `app-hidden-SECRET` | the **APPLICATION block payload** — arbitrary "
+      "third-party data, passed straight through |")
+    P("| `Lavf62.12.101` | the **vendor string**, which names the encoder that made the "
+      "file |")
+    P("\nOur F1 and F2 outputs contained none of the planted secrets. The APPLICATION "
+      "block is\nthe more serious of the two: it is a general-purpose container that any "
+      "application\nmay write anything into, so leaving it intact means a privacy tool has "
+      "forwarded\ndata it never inspected.\n")
+    P("FLAC is also the audio headline for fidelity: **A2 with bit-identical audio**, the\n"
+      "only lossless route to untraceability in the phase, matching what PNG does for\n"
+      "images.\n")
 
 
 def main():
@@ -198,6 +255,25 @@ def main():
         ("Measured (adversary × fidelity) guarantee matrix", "✅", "❌", "❌", "❌"),
         ("Differential-test verified · fails closed", "✅", "❌", "❌", "❌"),
         ("Documents impossible residuals honestly (PRNU)", "✅", "❌", "❌", "❌"),
+        # Audio and documents. Measured by hand against MAT2 0.14.0 and ExifTool on
+        # this project's own corpora, then written here rather than left only in the
+        # rendered document -- a regeneration used to delete them, which is exactly
+        # the drift this generator exists to prevent.
+        ("**Handles M4A audio at all**", "✅ F1/F2/F3", "⚠️ tags only",
+         "❌ **refuses the format**", "n/a"),
+        ("**Clears a FLAC APPLICATION block** (arbitrary third-party payload)", "✅",
+         "⚠️ not by default", "❌ **leaves it intact**", "n/a"),
+        ("Removes the FLAC vendor string (names the encoder)", "✅", "⚠️ manual",
+         "❌ leaves it", "n/a"),
+        ("**Lossless *and* untraceable (FLAC)**", "✅ F2", "❌", "❌", "n/a"),
+        ("Erases the audio encoder fingerprint, measured cross-engine", "✅ MP3 F3",
+         "❌", "❌", "n/a"),
+        ("**A PDF clean that is neither an append nor a re-render**", "✅ F1/F2",
+         "❌ appends", "❌ both paths re-render", "n/a"),
+        ("Collapses a PDF's revision history with the text intact", "✅",
+         "❌ **adds a revision**", "⚠️ default path destroys the text", "n/a"),
+        ("Warns that text is still hiding under a black box", "✅ advisory", "❌",
+         "❌", "n/a"),
     ]
     for r in rows:
         P("| " + " | ".join(r) + " |")
@@ -205,6 +281,8 @@ def main():
     P("\n**The one-line takeaway:** every tool deletes tags. Only ours lets you "
       "keep the picture *pixel-perfect* when you want fidelity, become *untraceable* "
       "when you want anonymity, and backs both with a measured, verified matrix.\n")
+
+    audio_gap()
 
     tools = available_tools()
 
