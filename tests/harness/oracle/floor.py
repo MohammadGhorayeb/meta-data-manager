@@ -16,12 +16,32 @@ from ..contract import FloorReport
 from . import diff
 
 
+def _require_scrub(result, in_path: str, fidelity: str) -> None:
+    """Turn a failed scrub into a clear error instead of a mystery further down.
+
+    `InProcessScrubber.run` deliberately catches exceptions and returns
+    `ScrubResult(ok=False, ...)` so a broken scrub cannot crash the oracle. Both
+    call sites then opened the output path regardless, so a scrub that never wrote a
+    file surfaced as `FileNotFoundError` inside the harness with no mention of which
+    format, which tier, or why.
+
+    That was found when a DOCX F3 run collided with another LibreOffice process — F3
+    re-typesets through an engine that serialises on its own profile lock, so it is
+    the first tier in this project that can fail for a purely environmental reason.
+    The bug was older than that tier; the tier is only what made it happen.
+    """
+    if result is not None and getattr(result, "ok", True) is False:
+        raise RuntimeError(
+            f"scrub failed for {in_path} at {fidelity}: "
+            f"{getattr(result, 'stderr', '') or 'no reason given'}")
+
+
 def _scrub_n(scrubber, input_path: str, fidelity: str, n: int) -> tuple[list[str], list[bytes]]:
     tmpdir = tempfile.mkdtemp(prefix="floor_")
     out_paths, blobs = [], []
     for r in range(n):
         op = os.path.join(tmpdir, f"out_{r}")
-        scrubber.run(input_path, op, fidelity)
+        _require_scrub(scrubber.run(input_path, op, fidelity), input_path, fidelity)
         out_paths.append(op)
         with open(op, "rb") as f:
             blobs.append(f.read())

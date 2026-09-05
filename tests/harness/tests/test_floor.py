@@ -40,3 +40,28 @@ def test_noisy_clean_stub_floor_has_nonce_locus(noisy_clean_stub, toy_plugin, to
     )
     # nonce really does vary across repeats.
     assert len(set(repeats)) > 1
+
+
+def test_a_failed_scrub_is_named_rather_than_surfacing_as_a_missing_file():
+    """`InProcessScrubber` catches exceptions and returns `ok=False` so a broken
+    scrub cannot crash the oracle — but both call sites used to open the output path
+    regardless, so a scrub that never wrote a file surfaced as `FileNotFoundError`
+    inside the harness, naming neither the format, the tier, nor the reason.
+
+    Found when a DOCX F3 run collided with another LibreOffice process: F3
+    re-typesets through an engine that serialises on its own profile lock, making it
+    the first tier here that can fail for a purely environmental reason. The bug was
+    older than the tier; the tier is only what made it happen.
+    """
+    import pytest
+
+    from tests.harness.contract import ScrubResult
+    from tests.harness.oracle import floor
+
+    class Failing:
+        def run(self, in_path, out_path, fidelity):
+            return ScrubResult(ok=False, out_path=out_path, fidelity=fidelity,
+                               returncode=1, stderr="engine busy")
+
+    with pytest.raises(RuntimeError, match="scrub failed.*engine busy"):
+        floor.measure(Failing(), None, "/nonexistent/in", "F3", n=1)

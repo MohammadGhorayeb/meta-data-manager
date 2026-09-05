@@ -22,6 +22,14 @@ _Comparison against the tools the field already uses (W9). Findings were reprodu
 | Removes the FLAC vendor string (names the encoder) | ✅ | ⚠️ manual | ❌ leaves it | n/a |
 | **Lossless *and* untraceable (FLAC)** | ✅ F2 | ❌ | ❌ | n/a |
 | Erases the audio encoder fingerprint, measured cross-engine | ✅ MP3 F3 | ❌ | ❌ | n/a |
+| **Writes a Word .docx at all** | ✅ F1/F2/F3 | ❌ **cannot write DOCX** | ✅ | n/a |
+| Offers a Word clean that preserves the page exactly | ✅ F1/F2 | ❌ cannot write | ❌ re-renders | n/a |
+| Erases the Word producer's markup *spelling* | ✅ F2 | ❌ cannot write | ⚠️ its own spelling instead | n/a |
+| Rebuilds the Word document model through one engine | ✅ F3 | ❌ cannot write | ❌ | n/a |
+| **Clears the per-paragraph editing ids** (`w14:paraId`/`textId`) | ✅ | ❌ cannot write | ❌ **leaves them** | n/a |
+| **Clears the per-document GUID** (`w14`/`w15:docId`) | ✅ | ❌ cannot write | ❌ **leaves it** | n/a |
+| Clears OOXML RSIDs | ✅ | ❌ cannot write | ✅ | n/a |
+| Removes `docProps/thumbnail.jpeg` (a possibly-stale page render) | ✅ | ❌ cannot write | ⚠️ strips its EXIF, keeps the picture | n/a |
 | **A PDF clean that is neither an append nor a re-render** | ✅ F1/F2 | ❌ appends | ❌ both paths re-render | n/a |
 | Collapses a PDF's revision history with the text intact | ✅ | ❌ **adds a revision** | ⚠️ default path destroys the text | n/a |
 | Warns that text is still hiding under a black box | ✅ advisory | ❌ | ❌ | n/a |
@@ -67,6 +75,25 @@ data it never inspected.
 FLAC is also the audio headline for fidelity: **A2 with bit-identical audio**, the
 only lossless route to untraceability in the phase, matching what PNG does for
 images.
+
+
+### Word documents: the editing-session ids
+
+This project inherited the claim that **OOXML RSIDs survive every scrubber including MAT2** (Müller). Measured on our own corpus, that is **no longer true** — and what MAT2 does leave is a family the literature does not name.
+
+Source: **a real Word document**. Counts are occurrences remaining after each tool.
+
+| Tool | `rsid_attrs` | `rsids_pool` | `rsid_in_style` | `paraId` | `textId` | `docId` |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| _(input)_ | 7 | 1 | 36 | 2 | 2 | 2 |
+| **ours_F1** | **0** | **0** | **0** | **0** | **0** | **0** |
+| **mat2** | **0** | **0** | **0** | 2 | 2 | 2 |
+| exiftool | — | — | — | — | — | — | <!-- Can't write DOCX files -->
+|   ↳ _Can't write DOCX files_ | | | | | | |
+
+**ExifTool cannot write DOCX at all** — it answers `Can't write DOCX files`. That is a capability gap rather than a failure, and the difference matters: a tool that declines leaves the file untouched, while a tool that writes an output still carrying the ids has told the user their document is clean when it is not.
+
+**`w14:paraId`/`w14:textId` are the sharp ones.** They are *per paragraph*, and they travel with a paragraph pasted into another document — so they link **files to each other**, which is not an A1, A2 or A3 question at all.
 
 ## Evidence 1 — content preservation (a normal JPEG)
 
@@ -135,8 +162,8 @@ _Corpus: a 3-revision document. Revision 1 is confidential, revision 3 is the pu
 |---|:--:|:--:|:--:|---|
 | _(untouched — the control)_ | 3 | 4 | ✅ | `Author-REV1-SECRET`; `CONFIDENTIAL-REV1-SECRET`; `CONFIDENTIAL-REV2-SECRET`; `Draft-REV1-SECRET`; `/Author=Author-REV1-SECRET`; `/Author=Author-REV2-SECRET`; `/Title=Draft-REV1-SECRET`; `/Title=Draft-REV2-SECRET` |
 | qpdf/pikepdf rewrite | 1 | 0 | ✅ | ✅ nothing |
-| MAT2 (default) | 2 | 9 | ❌ destroyed | `/CreationDate=D:2026…+03'00`; `/Producer=cairo 1.18.4 (https://cairographics.org)` |
-| MAT2 `--lightweight` | 2 | 9 | ✅ | `/CreationDate=D:2026…+03'00`; `/Producer=cairo 1.18.4 (https://cairographics.org)` |
+| MAT2 (default) | 2 | 9 | ❌ destroyed | `/CreationDate=D:20260903141443+03'00`; `/Producer=cairo 1.18.4 (https://cairographics.org)` |
+| MAT2 `--lightweight` | 2 | 9 | ✅ | `/CreationDate=D:20260903141443+03'00`; `/Producer=cairo 1.18.4 (https://cairographics.org)` |
 | ExifTool `-all=` | 4 | 5 | ✅ | `Author-REV1-SECRET`; `CONFIDENTIAL-REV1-SECRET`; `CONFIDENTIAL-REV2-SECRET`; `Draft-REV1-SECRET`; `/Author=Author-FINAL-SECRET`; `/Author=Author-REV1-SECRET`; `/Author=Author-REV2-SECRET`; `/CreationDate=D:20240101120000Z`; `/Creator=CorpusWriter 1.0`; `/ModDate=D:20240101120000Z`; `/Producer=CorpusWriter 1.0`; `/Title=Draft-FINAL-SECRET`; `/Title=Draft-REV1-SECRET`; `/Title=Draft-REV2-SECRET` |
 | **Ours — F1 (bit-preserving)** | 1 | 0 | ✅ | ✅ nothing |
 | **Ours — F2 (lossless rebuild)** | 1 | 0 | ✅ | ✅ nothing |

@@ -47,4 +47,9 @@ def default_dispatcher() -> Dispatcher:
     d.register(Mp3Handler())
     from .formats.pdf.handler import PdfHandler
     d.register(PdfHandler())
+    # DOCX last: its magic (`PK\x03\x04`) is the weakest of any handler here -- it
+    # is shared with every ZIP ever made -- so it gets asked only after every format
+    # with a distinctive prefix has declined.
+    from .formats.docx.handler import DocxHandler
+    d.register(DocxHandler())
     return d

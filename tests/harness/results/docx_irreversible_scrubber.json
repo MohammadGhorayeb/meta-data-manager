@@ -1,0 +1,412 @@
+{
+  "format": "docx",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p3",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-09-03T11:10:39.079758+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 5,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "producer still identifiable. Leaking by channel \u2014 model: struct:entry_set, struct:has_theme, struct:namespaces, struct:paragraph_idiom, struct:part_types, struct:sectpr, struct:selfclose_style, struct:settings_keys, struct:style_ids, struct:xml_decl; size: struct:size. Peer set = synth_zipfile, libreoffice, cocoa_textutil, mat2_out. Not in the peer set (cannot render our document): msword.",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:entry_set",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:entry_set constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:has_theme",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:has_theme constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:namespaces",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:namespaces constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:paragraph_idiom",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:paragraph_idiom constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:part_types",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:part_types constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:sectpr",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:sectpr constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:selfclose_style",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:selfclose_style constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:settings_keys",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:settings_keys constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:size constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:style_ids",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:style_ids constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:xml_decl",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:xml_decl constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "fail",
+      "reason": "producer still identifiable. Leaking by channel \u2014 model: struct:entry_set, struct:has_theme, struct:paragraph_idiom, struct:part_types, struct:sectpr, struct:settings_keys, struct:style_ids; size: struct:size. Peer set = synth_zipfile, libreoffice, cocoa_textutil, mat2_out. Not in the peer set (cannot render our document): msword.",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:entry_set",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:entry_set constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:has_theme",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:has_theme constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:paragraph_idiom",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:paragraph_idiom constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:part_types",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:part_types constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:sectpr",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:sectpr constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:settings_keys",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:settings_keys constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:size constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:style_ids",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:style_ids constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "fail",
+      "reason": "producer still identifiable. Leaking by channel \u2014 model: struct:style_ids; size: struct:size. Peer set = synth_zipfile, libreoffice, cocoa_textutil, mat2_out. Not in the peer set (cannot render our document): msword.",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:size constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:style_ids",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 4)",
+          "evidence": "struct:style_ids constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "504b030414000000080000002100",
+        "decoded": "PK\u0003\u0004\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000"
+      },
+      {
+        "bytes_hex": "504b0102140014000000080000002100",
+        "decoded": "PK\u0001\u0002\u0014\u0000\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000"
+      },
+      {
+        "bytes_hex": "504b0506",
+        "decoded": "PK\u0005\u0006"
+      },
+      {
+        "bytes_hex": "5b436f6e74656e745f54797065735d2e786d6c",
+        "decoded": "[Content_Types].xml"
+      },
+      {
+        "bytes_hex": "5f72656c732f2e72656c73",
+        "decoded": "_rels/.rels"
+      },
+      {
+        "bytes_hex": "776f72642f646f63756d656e742e786d6c",
+        "decoded": "word/document.xml"
+      },
+      {
+        "bytes_hex": "687474703a2f2f736368656d61732e6f70656e786d6c666f726d6174732e6f72672f7061636b6167652f323030362f636f6e74656e742d7479706573",
+        "decoded": "http://schemas.openxmlformats.org/package/2006/content-types"
+      },
+      {
+        "bytes_hex": "687474703a2f2f736368656d61732e6f70656e786d6c666f726d6174732e6f72672f7061636b6167652f323030362f72656c6174696f6e7368697073",
+        "decoded": "http://schemas.openxmlformats.org/package/2006/relationships"
+      },
+      {
+        "bytes_hex": "687474703a2f2f736368656d61732e6f70656e786d6c666f726d6174732e6f72672f776f726470726f63657373696e676d6c2f323030362f6d61696e",
+        "decoded": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+      },
+      {
+        "bytes_hex": "687474703a2f2f736368656d61732e6f70656e786d6c666f726d6174732e6f72672f6f6666696365446f63756d656e742f323030362f72656c6174696f6e7368697073",
+        "decoded": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+      },
+      {
+        "bytes_hex": "504b030414000000080000002100c94f1ab0eb000000ae010000130000005b436f6e74656e745f54797065735d2e786d6c7d50bd4ec33010de790acb2b8a1d181042493af03302437980937d492cecb3e5734bfbf6386de9800ae3ddf7abaf5bed82175bccec22f5f246b5522099681d4dbdfc58bf34f7527001b2e023612ff7c872355c75eb7d4216554cdccbb994f4a0359b1903b08a09a92263cc014a3df3a413984f9850dfb6ed9d36910a5269cae22187ee0947d8f8229e77f57d2c92d1b3148f47e292d54b48c93b03a5e27a4bf6574a734a505579e0f0ec125f5782d4171316e4ef8093eead2e939d45f10eb9bc42a82cfd15b3d5369a4da84af5bfcd859e711c9dc1b37e714b391a64ae9307afce4800473ffdf561eee11b504b030414000000080000002100b9814471b00000002a0100000b0000005f72656c732f2e72656c738dcf3b0ec2300c06e09d5344de695a068450932e08a92b2a078812378d681e4ac2a3b7270303200646dbbf3fcb6df7b033b9614cc63b064d55034127bd324e33380fc7f50e48cac229317b870c164cd0f1557bc259e4b29326131229884b0ca69cc39ed22427b422553ea02b93d1472b7229a3a641c88bd0483775bda5f1dd00fe61925e3188bd6a800c4bc07f6c3f8e46e2c1cbab45977f9cf84a1459448d99c1dd4745d5ab5d1516286fe9c78bfc09504b030414000000080000002100044298078a000000a900000011000000776f72642f646f63756d656e742e786d6c4d8d410e82301045f79ea299bd145d184368d971023d406d4720a1334da78adcde6e4cdcfd979fbcd70f9fb8aa376659980c9c9a161492e7b0d064e07e1b8f5750521c05b732a1811d05067be8b72eb07f45a4a2aa81a4db0ccca5a44e6bf13346270d27a4fa3d3947572ae6496f9c43caec51a406e2aacf6d7bd1d12d04b62a1f1c76dbebbff18bd82f504b0102140014000000080000002100c94f1ab0eb000000ae0100001300000000000000000000000000000000005b436f6e74656e745f54797065735d2e786d6c504b0102140014000000080000002100b9814471b00000002a0100000b000000000000000000000000001c0100005f72656c732f2e72656c73504b0102140014000000080000002100044298078a000000a90000001100000000000000000000000000f5010000776f72642f646f63756d656e742e786d6c504b05060000000003000300b9000000ae0200000000",
+        "decoded": "PK\u0003\u0004\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u00c9O\u001a\u00b0\u00eb\u0000\u0000\u0000\u00ae\u0001\u0000\u0000\u0013\u0000\u0000\u0000[Content_Types].xml}P\u00bdN\u00c30\u0010\u00dey\n\u00cb+\u008a\u001d\u0018\u0010BI:\u00f03\u0002Cy\u0080\u0093}I,\u00ec\u00b3\u00e5sK\u00fb\u00f68m\u00e9\u0080\n\u00e3\u00dd\u00f7\u00ab\u00af[\u00ed\u0082\u0017[\u00cc\u00ec\"\u00f5\u00f2F\u00b5R \u0099h\u001dM\u00bd\u00fcX\u00bf4\u00f7Rp\u0001\u00b2\u00e0#a/\u00f7\u00c8r5\\u\u00eb}B\u0016UL\u00dc\u00cb\u00b9\u0094\u00f4\u00a05\u009b\u0019\u0003\u00b0\u008a\t\u00a9\"c\u00cc\u0001J=\u00f3\u00a4\u0013\u0098O\u0098P\u00df\u00b6\u00ed\u009d6\u0091\nRi\u00ca\u00e2!\u0087\u00ee\tG\u00d8\u00f8\"\u009ew\u00f5},\u0092\u00d1\u00b3\u0014\u008fG\u00e2\u0092\u00d5KH\u00c9;\u0003\u00a5\u00e2zK\u00f6WJsJPUy\u00e0\u00f0\u00ec\u0012_W\u0082\u00d4\u0017\u0013\u0016\u00e4\u00ef\u0080\u0093\u00ee\u00ad.\u0093\u009dE\u00f1\u000e\u00b9\u00bcB\u00a8,\u00fd\u0015\u00b3\u00d56\u009aM\u00a8J\u00f5\u00bf\u00cd\u0085\u009eq\u001c\u009d\u00c1\u00b3~qK9\u001ad\u00ae\u0093\u0007\u00af\u00ceH\u0000G?\u00fd\u00f5a\u00ee\u00e1\u001bPK\u0003\u0004\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u00b9\u0081Dq\u00b0\u0000\u0000\u0000*\u0001\u0000\u0000\u000b\u0000\u0000\u0000_rels/.rels\u008d\u00cf;\u000e\u00c20\f\u0006\u00e0\u009dSD\u00deiZ\u0006\u0084P\u0093.\b\u00a9+*\u0007\u0088\u00127\u008dh\u001eJ\u00c2\u00a3\u00b7'\u0003\u0003 \u0006F\u00db\u00bf?\u00cbm\u00f7\u00b03\u00b9aL\u00c6;\u0006MU\u0003A'\u00bd2N38\u000f\u00c7\u00f5\u000eH\u00ca\u00c2)1{\u0087\f\u0016L\u00d0\u00f1U{\u00c2Y\u00e4\u00b2\u0093&\u0013\u0012)\u0088K\f\u00a6\u009c\u00c3\u009e\u00d2$'\u00b4\"U>\u00a0+\u0093\u00d1G+r)\u00a3\u00a6A\u00c8\u008b\u00d0H7u\u00bd\u00a5\u00f1\u00dd\u0000\u00fea\u0092^1\u0088\u00bdj\u0080\fK\u00c0\u007fl?\u008eF\u00e2\u00c1\u00cb\u00abE\u0097\u007f\u009c\u00f8J\u0014YD\u008d\u0099\u00c1\u00ddGE\u00d5\u00ab]\u0015\u0016(o\u00e9\u00c7\u008b\u00fc\tPK\u0003\u0004\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u0004B\u0098\u0007\u008a\u0000\u0000\u0000\u00a9\u0000\u0000\u0000\u0011\u0000\u0000\u0000word/document.xmlM\u008dA\u000e\u00820\u0010E\u00f7\u009e\u00a2\u0099\u00bd\u0014]\u0018Ch\u00d9q\u0002=@mG \u00a13M\u00a7\u008a\u00dc\u00denL\u00dc\u00fd\u0097\u009f\u00bc\u00d7\u000f\u009f\u00b8\u00aa7fY\u0098\f\u009c\u009a\u0016\u0014\u0092\u00e7\u00b0\u00d0d\u00e0~\u001b\u008fWPR\u001c\u0005\u00b72\u00a1\u0081\u001d\u0005\u0006{\u00e8\u00b7.\u00b0\u007fE\u00a4\u00a2\u00aa\u0081\u00a4\u00db\f\u00cc\u00a5\u00a4Nk\u00f13F'\r'\u00a4\u00fa=9GW*\u00e6Io\u009cC\u00ca\u00ecQ\u00a4\u0006\u00e2\u00aa\u00cfm{\u00d1\u00d1-\u0004\u00b6*\u001f\u001cv\u00db\u00eb\u00bf\u00f1\u008b\u00d8/PK\u0001\u0002\u0014\u0000\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u00c9O\u001a\u00b0\u00eb\u0000\u0000\u0000\u00ae\u0001\u0000\u0000\u0013\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000[Content_Types].xmlPK\u0001\u0002\u0014\u0000\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u00b9\u0081Dq\u00b0\u0000\u0000\u0000*\u0001\u0000\u0000\u000b\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u001c\u0001\u0000\u0000_rels/.relsPK\u0001\u0002\u0014\u0000\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u0004B\u0098\u0007\u008a\u0000\u0000\u0000\u00a9\u0000\u0000\u0000\u0011\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u00f5\u0001\u0000\u0000word/document.xmlPK\u0005\u0006\u0000\u0000\u0000\u0000\u0003\u0000\u0003\u0000\u00b9\u0000\u0000\u0000\u00ae\u0002\u0000\u0000\u0000\u0000"
+      },
+      {
+        "bytes_hex": "504b030414000000080000002100e1789a5aef000000af010000130000005b436f6e74656e745f54797065735d2e786d6c9590cd4ec3301084ef48bc83e52b4a9c72400825e901ca1138940758d99bc4aaffe4754bfbf66c9aaa879ee0b8de99cfb3d3ae8fde890366b231747255375260d0d1d83076f27bfb5e3d4b41058201170376f28424d7fdfd5dbb3d2524c1ee409d9c4a492f4a919ed003d53161e0cd10b387c2631e5502bd8311d563d33c291d43c150aa323364dfbee1007b57c4ebf23ea33b092939aba170307508e6065a5d80754677d6d064133db0408acd9129cb41bc25a9fef0c3ad719ed9f7c9d5646bf05fd1e230588d26eabd674bfd13b349396a24e256bdabaf1b0f362c91bf20970ff0cc56b35c5d25971cea5c77ff0b504b030414000000080000002100c3a0364db20000002b0100000b0000005f72656c732f2e72656c738d8f3d0bc230188477c1ff10dedda6751091265d44e82af50784e46d5a6c3e48e247ffbd191cac38381e77f71c57374f33913b86383acba02a4a2068a553a3d50c2edd69b3071293b04a4cce22831923347cbdaacf3889944b71187d249962238321257fa034ca018d8885f368b3d3bb6044ca3268ea85bc0a8d745b963b1a3e19c0174cd22a06a15515904e048d89c1c30545959337833615199cadd9e33fb3aeef4789c777f7c7fa570228afe9e2227f01504b030414000000080000002100632e4fa78a000000a200000011000000776f72642f646f63756d656e742e786d6c45cd310ec2300c85e11d893b44dea90b034255936e9c000e1012532a357615074a6f4f36c6a75ffa5e3f7cd36c3e947512b6706c5a30c441e2c4a385fbed7ab880d1e239fa59982c6ca430b8fdae5fbb28e19d888ba9046bb75a7895b274881a5e94bc36b210d7f6949c7ca9338fb84a8e4b9640aaf521cd786adb33263f31b84a3e246ee87afce3ee07504b0102140014000000080000002100e1789a5aef000000af0100001300000000000000000000000000000000005b436f6e74656e745f54797065735d2e786d6c504b0102140014000000080000002100c3a0364db20000002b0100000b00000000000000000000000000200100005f72656c732f2e72656c73504b0102140014000000080000002100632e4fa78a000000a20000001100000000000000000000000000fb010000776f72642f646f63756d656e742e786d6c504b05060000000003000300b9000000b40200000000",
+        "decoded": "PK\u0003\u0004\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u00e1x\u009aZ\u00ef\u0000\u0000\u0000\u00af\u0001\u0000\u0000\u0013\u0000\u0000\u0000[Content_Types].xml\u0095\u0090\u00cdN\u00c30\u0010\u0084\u00efH\u00bc\u0083\u00e5+J\u009cr@\b%\u00e9\u0001\u00ca\u00118\u0094\u0007X\u00d9\u009b\u00c4\u00aa\u00ff\u00e4uK\u00fb\u00f6l\u009a\u00aa\u0087\u009e\u00e0\u00b8\u00de\u0099\u00cf\u00b3\u00d3\u00ae\u008f\u00de\u0089\u0003f\u00b21trU7R`\u00d0\u00d1\u00d80v\u00f2{\u00fb^=KA\u0005\u0082\u0001\u0017\u0003v\u00f2\u0084$\u00d7\u00fd\u00fd]\u00bb=%$\u00c1\u00ee@\u009d\u009cJI/J\u0091\u009e\u00d0\u0003\u00d51a\u00e0\u00cd\u0010\u00b3\u0087\u00c2c\u001eU\u0002\u00bd\u0083\u0011\u00d5c\u00d3<)\u001dC\u00c1P\u00aa23d\u00df\u00be\u00e1\u0000{W\u00c4\u00eb\u00f2>\u00a3;\t)9\u00ab\u00a1p0u\b\u00e6\u0006Z]\u0080uFw\u00d6\u00d0d\u0013=\u00b0@\u008a\u00cd\u0091)\u00cbA\u00bc%\u00a9\u00fe\u00f0\u00c3\u00adq\u009e\u00d9\u00f7\u00c9\u00d5dk\u00f0_\u00d1\u00e20X\u008d&\u00ea\u00bdgK\u00fd\u0013\u00b3I9j$\u00e2V\u00bd\u00ab\u00af\u001b\u000f6,\u0091\u00bf \u0097\u000f\u00f0\u00ccV\u00b3\\]%\u0097\u001c\u00ea\\w\u00ff\u000bPK\u0003\u0004\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u00c3\u00a06M\u00b2\u0000\u0000\u0000+\u0001\u0000\u0000\u000b\u0000\u0000\u0000_rels/.rels\u008d\u008f=\u000b\u00c20\u0018\u0084w\u00c1\u00ff\u0010\u00de\u00dd\u00a6u\u0010\u0091&]D\u00e8*\u00f5\u0007\u0084\u00e4mZl>H\u00e2G\u00ff\u00bd\u0019\u001c\u00ac88\u001ew\u00f7\u001cW7O3\u0091;\u00868:\u00cb\u00a0*J h\u00a5S\u00a3\u00d5\f.\u00ddi\u00b3\u0007\u0012\u0093\u00b0JL\u00ce\"\u0083\u0019#4|\u00bd\u00aa\u00cf8\u0089\u0094Kq\u0018}$\u0099b#\u0083!%\u007f\u00a04\u00ca\u0001\u008d\u0088\u0085\u00f3h\u00b3\u00d3\u00bb`D\u00ca2h\u00ea\u0085\u00bc\n\u008dt[\u0096;\u001a>\u0019\u00c0\u0017L\u00d2*\u0006\u00a1U\u0015\u0090N\u0004\u008d\u0089\u00c1\u00c3\u0005E\u0095\u00937\u00836\u0015\u0019\u009c\u00ad\u00d9\u00e3?\u00b3\u00ae\u00efG\u0089\u00c7w\u00f7\u00c7\u00faW\u0002(\u00af\u00e9\u00e2\"\u007f\u0001PK\u0003\u0004\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000c.O\u00a7\u008a\u0000\u0000\u0000\u00a2\u0000\u0000\u0000\u0011\u0000\u0000\u0000word/document.xmlE\u00cd1\u000e\u00c20\f\u0085\u00e1\u001d\u0089;D\u00de\u00a9\u000b\u0003BU\u0093n\u009c\u0000\u000e\u0010\u0012S*5v\u0015\u0007JoO6\u00c6\u00a7_\u00fa^?|\u00d3l>\u0094u\u0012\u00b6plZ0\u00c4A\u00e2\u00c4\u00a3\u0085\u00fb\u00edz\u00b8\u0080\u00d1\u00e29\u00faY\u0098,l\u00a40\u00b8\u00fd\u00ae_\u00bb(\u00e1\u009d\u0088\u008b\u00a9\u0004k\u00b7Zx\u0095\u00b2t\u0088\u001a^\u0094\u00bc6\u00b2\u0010\u00d7\u00f6\u0094\u009c|\u00a93\u008f\u00b8J\u008eK\u0096@\u00aa\u00f5!\u00cdxj\u00db3&?1\u00b8J>$n\u00e8z\u00fc\u00e3\u00ee\u0007PK\u0001\u0002\u0014\u0000\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u00e1x\u009aZ\u00ef\u0000\u0000\u0000\u00af\u0001\u0000\u0000\u0013\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000[Content_Types].xmlPK\u0001\u0002\u0014\u0000\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000\u00c3\u00a06M\u00b2\u0000\u0000\u0000+\u0001\u0000\u0000\u000b\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000 \u0001\u0000\u0000_rels/.relsPK\u0001\u0002\u0014\u0000\u0014\u0000\u0000\u0000\b\u0000\u0000\u0000!\u0000c.O\u00a7\u008a\u0000\u0000\u0000\u00a2\u0000\u0000\u0000\u0011\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u00fb\u0001\u0000\u0000word/document.xmlPK\u0005\u0006\u0000\u0000\u0000\u0000\u0003\u0000\u0003\u0000\u00b9\u0000\u0000\u0000\u00b4\u0002\u0000\u0000\u0000\u0000"
+      }
+    ],
+    "signatures": []
+  }
+}

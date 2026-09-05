@@ -18,7 +18,8 @@ from . import floor as floor_mod
 
 
 def _scrub(scrubber, in_path, out_path, fidelity):
-    scrubber.run(in_path, out_path, fidelity)
+    floor_mod._require_scrub(scrubber.run(in_path, out_path, fidelity),
+                             in_path, fidelity)
     with open(out_path, "rb") as f:
         return f.read()
 

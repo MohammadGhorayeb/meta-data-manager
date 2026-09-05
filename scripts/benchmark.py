@@ -186,6 +186,62 @@ def pdf_history_section():
       "the assertions behind it are in `tests/scrub/test_e_pdf_history.py`._")
 
 
+def docx_session_id_section():
+    """DOCX: the session-id family, measured live rather than transcribed.
+
+    Unlike `audio_gap()`, this runs the experiment: E-SESSION-ID is cheap, and a
+    benchmark row that re-measures itself cannot drift away from the code the way a
+    hand-written one can. If MAT2 changes behaviour, this table changes with it.
+    """
+    import tempfile
+
+    from tests.scrub import docx_corpus as dc
+    from tests.scrub import e_session_id as es
+
+    P("\n### Word documents: the editing-session ids\n")
+    P("This project inherited the claim that **OOXML RSIDs survive every scrubber "
+      "including MAT2** (Müller). Measured on our own corpus, that is **no longer "
+      "true** — and what MAT2 does leave is a family the literature does not name.\n")
+
+    tmpdir = tempfile.mkdtemp(prefix="bench_docx_")
+    sources = es.build_sources(tmpdir)
+    results = es.run(sources, tmpdir)
+    # Prefer a real Word document when the machine has one; the synthetic package
+    # measures what a tool DOES, but only a real file shows Word writes these at all.
+    key = next((k for k in results if k.startswith("msword")), "synthetic")
+    row = results[key]
+    origin = ("a real Word document" if key.startswith("msword")
+              else "a synthetic Word-alike package (no Word samples on this machine)")
+    P(f"Source: **{origin}**. Counts are occurrences remaining after each tool.\n")
+
+    fams = list(es.FAMILIES)
+    P("| Tool | " + " | ".join(f"`{f}`" for f in fams) + " |")
+    P("|---|" + ":-:|" * len(fams))
+    P("| _(input)_ | " + " | ".join(str(row["_before"][f]) for f in fams) + " |")
+    for tname, _fn in es.TOOLS:
+        got = row[tname]
+        if got is None:
+            why = row.get(f"{tname}__why") or "no output"
+            P(f"| {tname} | " + " | ".join("—" for _ in fams) + f" | <!-- {why} -->")
+            P(f"|   ↳ _{why}_ |" + " |" * len(fams))
+        else:
+            P(f"| **{tname}** | "
+              + " | ".join(f"**{got[f]}**" if got[f] == 0 else str(got[f])
+                           for f in fams) + " |")
+    P("\n**ExifTool cannot write DOCX at all** — it answers `Can't write DOCX files`. "
+      "That is a capability gap rather than a failure, and the difference matters: a "
+      "tool that declines leaves the file untouched, while a tool that writes an "
+      "output still carrying the ids has told the user their document is clean when "
+      "it is not.\n")
+    P("**`w14:paraId`/`w14:textId` are the sharp ones.** They are *per paragraph*, "
+      "and they travel with a paragraph pasted into another document — so they link "
+      "**files to each other**, which is not an A1, A2 or A3 question at all.\n")
+    if not dc.HAVE_WORD:
+        P("> Measured here on the synthetic corpus only. The real-Word half is "
+          "reported as measured locally rather than dropped — see "
+          "`tests/corpus/docx/README.md`.\n")
+
+
 def audio_gap():
     """Audio: the measured gap against the other tools.
 
@@ -268,6 +324,21 @@ def main():
         ("**Lossless *and* untraceable (FLAC)**", "✅ F2", "❌", "❌", "n/a"),
         ("Erases the audio encoder fingerprint, measured cross-engine", "✅ MP3 F3",
          "❌", "❌", "n/a"),
+        ("**Writes a Word .docx at all**", "✅ F1/F2/F3",
+         "❌ **cannot write DOCX**", "✅", "n/a"),
+        ("Offers a Word clean that preserves the page exactly", "✅ F1/F2",
+         "❌ cannot write", "❌ re-renders", "n/a"),
+        ("Erases the Word producer's markup *spelling*", "✅ F2", "❌ cannot write",
+         "⚠️ its own spelling instead", "n/a"),
+        ("Rebuilds the Word document model through one engine", "✅ F3",
+         "❌ cannot write", "❌", "n/a"),
+        ("**Clears the per-paragraph editing ids** (`w14:paraId`/`textId`)", "✅",
+         "❌ cannot write", "❌ **leaves them**", "n/a"),
+        ("**Clears the per-document GUID** (`w14`/`w15:docId`)", "✅",
+         "❌ cannot write", "❌ **leaves it**", "n/a"),
+        ("Clears OOXML RSIDs", "✅", "❌ cannot write", "✅", "n/a"),
+        ("Removes `docProps/thumbnail.jpeg` (a possibly-stale page render)", "✅",
+         "❌ cannot write", "⚠️ strips its EXIF, keeps the picture", "n/a"),
         ("**A PDF clean that is neither an append nor a re-render**", "✅ F1/F2",
          "❌ appends", "❌ both paths re-render", "n/a"),
         ("Collapses a PDF's revision history with the text intact", "✅",
@@ -283,6 +354,7 @@ def main():
       "when you want anonymity, and backs both with a measured, verified matrix.\n")
 
     audio_gap()
+    docx_session_id_section()
 
     tools = available_tools()
 
