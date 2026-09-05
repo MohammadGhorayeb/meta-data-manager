@@ -165,7 +165,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
+            libreoffice-writer
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -378,7 +379,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
+            libreoffice-writer
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -456,7 +458,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
+            libreoffice-writer
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

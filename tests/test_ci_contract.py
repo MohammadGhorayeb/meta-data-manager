@@ -41,6 +41,11 @@ _PACKAGE_FOR = {
     "lame": "lame",
     "pdftotext": "poppler-utils",
     "pdftoppm": "poppler-utils",
+    "soffice": "libreoffice-writer",
+    # Info-ZIP, the independent implementation that validates our own ZIP writer.
+    # `zipfile` accepting our output proves only that two Python views of the format
+    # agree, so this is the cross-check -- installed rather than declared optional.
+    "unzip": "unzip",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.
@@ -49,8 +54,10 @@ _PACKAGE_FOR = {
 _OPTIONAL = {
     "shineenc": "built from source in a dedicated workflow step, not an apt package",
     "mat2": "a benchmark competitor, not a dependency of our own scrubber",
-    "soffice": "one A2 peer producer; absent means a smaller peer set, never a pass",
+
     "cupsfilter": "macOS-only A2 peer producer; absent means a smaller peer set",
+    "textutil": "macOS-only DOCX peer producer (the Cocoa text engine); absent "
+                "means a smaller peer set, never a pass",
     "google-chrome": "one A2 peer producer; absent means a smaller peer set",
     "google-chrome-stable": "alias of google-chrome",
     "chromium-browser": "alias of google-chrome",
@@ -71,6 +78,13 @@ _REQUIRED_FOR_PUBLISHED_CLAIMS = {
     "pdftotext": "how a PDF scrub's content preservation is verified — without it no "
                  "PDF cell can claim anything",
     "pdftoppm": "the whole of PDF F3, and the renderer E-PDF-RASTER attacks",
+    # DOCX F3 re-typesets through LibreOffice, so without it that tier cannot run at
+    # all and its published A2 verdict goes un-re-measured. It is also a DOCX and PDF
+    # peer producer, and the engine behind the pixel-space content check. Large to
+    # install, and installed anyway: the project already builds shineenc from source
+    # rather than let a headline claim go unverified.
+    "soffice": "DOCX F3 re-typesets through it; also an A2 peer producer for DOCX "
+               "and PDF, and the renderer behind the pixel-space content check",
 }
 
 
