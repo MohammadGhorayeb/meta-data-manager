@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from ..base import BaseHandler
 from . import f1, f2, f3
+from . import inspect as _inspect
 
 # Brands that mean "audio in an MP4 container". `mp42`/`isom` are generic, so they
 # are accepted only when claims() finds an audio track and no video track.
@@ -70,3 +71,12 @@ class M4aHandler(BaseHandler):
         if fidelity == "F3":
             return f3.residuals(data)
         return []
+
+    def describe(self, data: bytes) -> dict[str, str]:
+        """What this file's metadata says — for the scrub report, never for a tier.
+
+        Coverage is exactly this handler's coverage, which is the point: a locus we
+        cannot model is absent from the report *and* from the scrub, so the report
+        must never be read as "nothing else was in the file".
+        """
+        return _inspect.describe(data)

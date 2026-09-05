@@ -332,9 +332,15 @@ def advisories(data: bytes) -> list[str]:
         out.append("word/fontTable.xml: the font list is a weak machine-profile hint")
 
     # Microsoft's versioned namespaces are declared even when barely used, so the
-    # declaration set on the root element dates the producing Word. Removing a
-    # declaration means rewriting the part (and `mc:Ignorable` references it), which
-    # is an F2 canonicalisation -- so at F1 it is named, not removed.
+    # declaration set dates the producing Word. Removing a declaration means
+    # rewriting the part (and `mc:Ignorable` references it), which is an F2
+    # canonicalisation -- so at F1 it is named, not removed.
+    #
+    # Reported ONCE for the package rather than once per part: the same set appears
+    # in every part, and five near-identical lines buried every other advisory in
+    # the scrub report.
+    versioned: set[str] = set()
+    parts_with_ns: set[str] = set()
     for entry in pkg.archive.entries:
         if not entry.name.endswith(".xml"):
             continue
@@ -342,15 +348,17 @@ def advisories(data: bytes) -> list[str]:
             head = entry.content()[:4000]
         except ParseError:
             continue
-        found = sorted({m.decode() for m in
-                        re.findall(rb"xmlns:(w1[0-9][a-z]*)=", head)})
+        found = {m.decode() for m in
+                 re.findall(rb"xmlns:(w1[0-9][a-z]*)=", head)}
         if found:
-            # Reported as one line per part rather than one per namespace: it is the
-            # SET that dates the producer, and a real Word document declares nine of
-            # them, which would otherwise bury every other advisory.
-            out.append(f"{entry.name}: {len(found)} versioned namespaces declared "
-                       f"({', '.join(found)}) — the set dates the producing "
-                       f"application")
+            versioned |= found
+            parts_with_ns.add(entry.name)
+
+    if versioned:
+        out.append(
+            f"{len(versioned)} versioned namespaces declared across "
+            f"{len(parts_with_ns)} part(s) ({', '.join(sorted(versioned))}) — the "
+            f"set dates the producing application; F2 removes them")
 
     for entry in pkg.archive.entries:
         if not entry.name.endswith(".xml"):

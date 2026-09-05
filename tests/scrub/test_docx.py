@@ -366,11 +366,19 @@ def test_residuals_would_catch_a_locus_that_survived(tmp_path):
 
 def test_advisories_name_what_f1_knowingly_leaves(real):
     """Not failures: properties of the input the tier preserves on purpose. They are
-    limits #20 and #21, surfaced rather than hidden."""
+    limits #20 and #21, surfaced rather than hidden.
+
+    The check is that each advisory *explains itself*, not that it has a particular
+    punctuation mark. An earlier version asserted a colon, as a proxy for "names the
+    part it is about" — which broke correctly when the namespace advisory was
+    aggregated across parts and stopped naming any single one.
+    """
     for name, path in real.items():
         out = f1.scrub(open(path, "rb").read())
         for a in f1.advisories(out):
-            assert ":" in a, f"{name}: advisory without an explanation: {a}"
+            assert len(a) > 30, f"{name}: advisory too terse to act on: {a}"
+            assert any(mark in a for mark in (":", "—")), \
+                f"{name}: advisory states no reason: {a}"
 
 
 @pytest.mark.skipif(not C.HAVE_WORD, reason="Word samples absent")

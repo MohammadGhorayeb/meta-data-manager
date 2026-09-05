@@ -10,7 +10,7 @@
 A tool that **irreversibly strips metadata from files of arbitrary type**, for privacy and anonymization. "Irreversible" means *forensic unrecoverability from the scrubbed file itself* — not merely deleting visible fields — against a medium-tier adversary (a journalist or amateur investigator using off-the-shelf forensic tools).
 
 ## Status
-Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio complete** — MP3 (F1 + F3, cross-engine A2 evidence), FLAC (F1 + F2, lossless A2) and M4A (F1/F2/F3, the format MAT2 refuses). **Phase 3 documents is complete**. **PDF is complete across all three tiers** — our own walker, serializer, content tokenizer, content-stream canonicaliser and rasteriser, recursive into embedded images, plus a redaction-risk advisory — and the revision-history, producer-channel and pixel-space experiments are all measured (see below). **DOCX has now landed at F1 and F2** on the same footing: our own ZIP reader and writer, an OPC relationship graph, byte-level XML surgery that deletes without rewriting, a canonical XML re-serialiser, and recursion into embedded images. Its A2 result is measured per producer channel, with content preservation verified by rendering the document before and after. Fully implemented and measured, **489 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at [`docs/client_report.pdf`](docs/client_report.pdf) (itself scrubbed at F2 by this tool — same pixels, no Skia signature, no timestamp); a benchmark vs standard tools is at [`docs/benchmark.md`](docs/benchmark.md).
+Phase 0 (harness + spine), **Phase 1 images complete** (JPEG F1/F2/F3, PNG F1/F2), and **Phase 2 audio complete** — MP3 (F1 + F3, cross-engine A2 evidence), FLAC (F1 + F2, lossless A2) and M4A (F1/F2/F3, the format MAT2 refuses). **Phase 3 documents is complete**. **PDF is complete across all three tiers** — our own walker, serializer, content tokenizer, content-stream canonicaliser and rasteriser, recursive into embedded images, plus a redaction-risk advisory — and the revision-history, producer-channel and pixel-space experiments are all measured (see below). **DOCX has now landed at F1 and F2** on the same footing: our own ZIP reader and writer, an OPC relationship graph, byte-level XML surgery that deletes without rewriting, a canonical XML re-serialiser, and recursion into embedded images. Its A2 result is measured per producer channel, with content preservation verified by rendering the document before and after. Fully implemented and measured, **508 tests passing**. Per-format Pareto matrices are generated under `tests/harness/results/`, and the scrubber-fingerprint guard passes. University implementation project; a working tool is the deliverable. A plain-language progress report is at [`docs/client_report.pdf`](docs/client_report.pdf) (itself scrubbed at F2 by this tool — same pixels, no Skia signature, no timestamp); a benchmark vs standard tools is at [`docs/benchmark.md`](docs/benchmark.md).
 
 ### Results (measured, not assumed)
 | Format | A1 metadata (F1/F2/F3) | A2 fingerprint (F1/F2/F3) |
@@ -41,7 +41,24 @@ The claim is deliberately **per sample-rate group**, and is verified in each gro
 ```
 python -m src.scrub --fidelity F1|F2|F3 <input> <output>
 ```
-`F1` bit-preserving · `F2` lossless re-encode · `F3` lossy re-encode. The tool dispatches by magic number (not file extension) and is **fail-closed**: any case it cannot fully scrub raises and writes no output. Verify a result with `exiftool <output>`.
+`F1` bit-preserving · `F2` lossless re-encode · `F3` lossy re-encode. The tool dispatches by magic number (not file extension) and is **fail-closed**: any case it cannot fully scrub raises and writes no output.
+
+Every successful scrub prints a **before/after report** of what it found and what happened to each field:
+
+```
+JPEG · F1 · 2.8 KB → 1.5 KB
+  - EXIF:Make              TestCam
+  - EXIF:GPSLatitude       51° 30' 0.00"
+  - EXIF:DateTimeOriginal  2020:01:01 12:00:00
+  - EXIF:IFD1 thumbnail    (614 bytes)
+  - JPEG comment           secret comment leak
+  - Photoshop/IPTC         1 IPTC field(s), 1 embedded thumbnail(s)
+  - trailing bytes         (13 bytes after EOI)
+  = kept: JFIF header
+  17 removed, 1 kept
+```
+
+It shows what survived as well as what went — an MP3 at F1 reports its **LAME header** as kept, because that one cannot be removed without re-encoding ([limit #1](docs/limits.md)) — and it names each format's headline leak in the format's own terms: a PDF reports `3 revisions — earlier drafts are still in the file`, a Word document reports the editing-session id counts. Two honest limits are built into the wording. The report shows **what this tool can see**, so "nothing listed" never means "nothing was there" — `exiftool <output>` remains the independent check. And it necessarily **echoes the values it removed**, which is what makes it useful on a terminal and a disclosure in a log or a shared session, so `--no-report` turns it off.
 
 ## Approach in one paragraph
 Metadata hides in redundant copies across coexisting standards (EXIF, XMP, IPTC, ICC), in embedded thumbnails and previews, in stale history left in the bytes, and in structural side-channels (file size, encoder ordering, quantization tables) — so naive field-deletion leaks. Feasibility is expressed per format as a **Pareto matrix** over fidelity tiers (F1 bit-preserving, F2 lossless re-encode, F3 lossy re-encode) and adversary tiers (A1 no-reference, A2 peer-corpus fingerprinting, A3 original-copy differential), validated by **differential testing**: scrub two content-identical, metadata-different files and treat any non-noise diff as a leak.
@@ -114,6 +131,8 @@ tests/
                            E-PDF-HISTORY (PDF revision rollback)
 src/scrub/
   cli.py  dispatch.py      Entry point + magic-number routing
+  report.py                Before/after scrub report (display only, never a tier)
+  formats/*/inspect.py     Per-format "what does this metadata say" for the report
   standards/               Shared modules: TIFF-IFD, XMP, ICC, IPTC-IIM (written once, reused)
   formats/jpeg/            JPEG handler: segments walker + f1/f2/f3
   formats/png/             PNG handler: chunk walker (CRC) + f1/f2

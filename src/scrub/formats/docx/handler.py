@@ -16,6 +16,7 @@ from ...errors import ParseError
 from ..base import BaseHandler
 from ..ooxml import opc
 from . import f1, f2, f3
+from . import inspect as _inspect
 
 ZIP_MAGIC = (b"PK\x03\x04",)
 
@@ -67,9 +68,25 @@ class DocxHandler(BaseHandler):
             return f2.residuals(data)
         return []
 
-    def advisories(self, data: bytes, fidelity: str = "F1") -> list[str]:
+    def kept(self, data: bytes, fidelity: str = "F1") -> list[str]:
+        """What this tier knowingly leaves in the OUTPUT, reported not hidden.
+
+        Distinct from `advise()`, which reports a risk in the *input* (PDF's
+        redaction warning). This was originally called `advisories`, which matched
+        no protocol the CLI calls, so nothing it produced ever reached a user --
+        found while wiring the scrub report, which is the thing that surfaces it.
+        """
         if fidelity == "F3":
             return f3.advisories(data)
         if fidelity == "F2":
             return f2.advisories(data)
         return f1.advisories(data)
+
+    def describe(self, data: bytes) -> dict[str, str]:
+        """What this file's metadata says — for the scrub report, never for a tier.
+
+        Coverage is exactly this handler's coverage, which is the point: a locus we
+        cannot model is absent from the report *and* from the scrub, so the report
+        must never be read as "nothing else was in the file".
+        """
+        return _inspect.describe(data)

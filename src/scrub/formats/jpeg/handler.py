@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from ..base import BaseHandler
 from . import f1, f2, f3
+from . import inspect as _inspect
 
 # SOI + first marker byte. FF D8 FF starts every JPEG/JFIF/Exif file.
 JPEG_MAGIC = (b"\xff\xd8\xff",)
@@ -36,3 +37,12 @@ class JpegHandler(BaseHandler):
         if fidelity == "F3":
             return f3.residuals(data)
         return []
+
+    def describe(self, data: bytes) -> dict[str, str]:
+        """What this file's metadata says — for the scrub report, never for a tier.
+
+        Coverage is exactly this handler's coverage, which is the point: a locus we
+        cannot model is absent from the report *and* from the scrub, so the report
+        must never be read as "nothing else was in the file".
+        """
+        return _inspect.describe(data)
