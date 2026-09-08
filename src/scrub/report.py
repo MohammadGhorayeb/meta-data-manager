@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from . import crosscheck
+
 # Long values are truncated: a report is a summary, and an embedded XMP packet or a
 # base64 thumbnail would otherwise fill the terminal with the very data we removed.
 MAX_VALUE = 58
@@ -53,6 +55,13 @@ class Report:
     items: list[Item] = field(default_factory=list)
     advisories: list[str] = field(default_factory=list)
     described: bool = True        # False when the handler cannot describe itself
+    check: crosscheck.CrossCheck | None = None
+
+    @property
+    def removed_values(self) -> list[str]:
+        """The values this report claims are gone — what the cross-check looks for."""
+        return [i.before for i in self.items
+                if i.status == REMOVED and i.before]
 
     @property
     def removed(self) -> list[Item]:
@@ -182,4 +191,7 @@ def render(rep: Report) -> str:
 
 
 def _advisory_lines(rep: Report) -> list[str]:
-    return [f"  ! {clip(a, 96)}" for a in rep.advisories]
+    lines = [f"  ! {clip(a, 96)}" for a in rep.advisories]
+    if rep.check is not None:
+        lines.extend(crosscheck.render(rep.check))
+    return lines

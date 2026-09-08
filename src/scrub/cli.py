@@ -21,6 +21,11 @@ stderr), it never affects the exit code, and `--no-report` turns it off — beca
 report necessarily echoes the values it just removed, which is exactly what makes it
 useful on a terminal and a disclosure in a log. See `report.py`.
 
+The report ends with a check by **ExifTool rather than by us** — a different
+implementation reading the same file, since a handler bug that failed to remove a
+field would also fail to report it. It can disagree, and says so loudly when it does.
+`--no-verify` skips it. See `crosscheck.py`.
+
 Exit codes (stable, so the harness/tests can assert on them):
   0 ok · 2 usage · 3 unsupported format · 4 parse error · 5 fidelity error
   6 content/residual error · 1 unexpected
@@ -32,6 +37,7 @@ import os
 import sys
 import tempfile
 
+from . import crosscheck
 from . import fidelity as fid
 from . import report as rep
 from .dispatch import default_dispatcher
@@ -72,7 +78,8 @@ def scrub_file(in_path: str, out_path: str, fidelity: str,
 
 
 def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
-                        dispatcher=None) -> tuple[list[str], rep.Report]:
+                        dispatcher=None, verify_with_exiftool: bool = False
+                        ) -> tuple[list[str], rep.Report]:
     """The same scrub, also returning a before/after account of the metadata.
 
     Split from `scrub_file` rather than folded into it because the report is a
@@ -100,6 +107,14 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
     _write_atomic(out_path, scrubbed)
     report = rep.build(handler, data, scrubbed, fidelity, advisories)
     report.advisories.extend(_kept(handler, scrubbed, fidelity))
+    if verify_with_exiftool:
+        # After the write, and never able to raise: an independent check is worth
+        # having and is not worth failing a good scrub over.
+        try:
+            report.check = crosscheck.run(in_path, out_path,
+                                          report.removed_values)
+        except Exception:                                 # noqa: BLE001
+            report.check = None
     return advisories, report
 
 
@@ -143,11 +158,15 @@ def main(argv: list[str] | None = None) -> int:
                    help="do not print the before/after metadata report. The report "
                         "echoes the values it removed, which is useful on a terminal "
                         "and a disclosure in a log or a shared session")
+    p.add_argument("--no-verify", action="store_true",
+                   help="skip the independent exiftool check at the end of the "
+                        "report (it reads the file twice, which costs a moment)")
     args = p.parse_args(argv)
 
     try:
         advisories, report = scrub_file_reported(
-            args.input, args.output, args.fidelity)
+            args.input, args.output, args.fidelity,
+            verify_with_exiftool=not (args.no_report or args.no_verify))
     except ScrubError as e:
         print(f"scrub: {type(e).__name__}: {e}", file=sys.stderr)
         return _EXIT.get(type(e), 1)
