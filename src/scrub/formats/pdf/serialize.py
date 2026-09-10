@@ -55,7 +55,18 @@ _MAX_DEPTH = 256
 
 
 def _name(obj) -> bytes:
-    raw = str(obj).encode("latin-1", "replace")
+    """Render a PDF name object.
+
+    Everything a damaged file can put here has to come out as a `ParseError`, not as
+    whatever the underlying library happens to raise. A fuzzed document reached this
+    with a non-UTF-8 byte string, an empty name and a non-`str` dictionary key, and
+    each escaped as `UnicodeDecodeError` / `ValueError` / `TypeError` — which the CLI
+    then reports as *unexpected* (exit 1) instead of a parse failure (exit 4).
+    """
+    try:
+        raw = str(obj).encode("latin-1", "replace")
+    except (UnicodeDecodeError, ValueError, TypeError) as exc:
+        raise ParseError(f"PDF: unreadable name object ({exc})") from exc
     if not raw.startswith(b"/"):
         raise ParseError(f"PDF: malformed name object {raw!r}")
     out = bytearray(b"/")
@@ -186,7 +197,15 @@ class _Writer:
             items += sorted(extra.items())
         for key, val in items:
             rendered = val if isinstance(val, bytes) else self.value(val, depth + 1)
-            parts.append(b" " + _name(pikepdf.Name(key)) + b" " + rendered)
+            # `pikepdf.Name()` rejects a key that is empty or not a `str`, which a
+            # damaged dictionary can certainly hold. Its complaint is a ValueError or
+            # a TypeError; ours has to be a ParseError.
+            try:
+                name = pikepdf.Name(key)
+            except (ValueError, TypeError) as exc:
+                raise ParseError(
+                    f"PDF: unusable dictionary key {key!r} ({exc})") from exc
+            parts.append(b" " + _name(name) + b" " + rendered)
         parts.append(b" >>")
         return b"".join(parts)
 

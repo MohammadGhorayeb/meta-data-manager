@@ -44,12 +44,19 @@ def _open_rgb(data: bytes):
     """Decode to a BARE RGB image — no carried info dict. Critical: Pillow stashes
     a source JPEG's COM/EXIF/ICC in ``im.info`` and re-emits them on save (a COM
     leak F3 must not ship), so we rebuild from raw pixels to drop all of it."""
-    from PIL import Image
+    from PIL import Image, UnidentifiedImageError
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", ".*malformed MPO.*")
-        with Image.open(io.BytesIO(data)) as im:
-            rgb = im.convert("RGB")
-            return Image.frombytes("RGB", rgb.size, rgb.tobytes())
+        try:
+            with Image.open(io.BytesIO(data)) as im:
+                rgb = im.convert("RGB")
+                return Image.frombytes("RGB", rgb.size, rgb.tobytes())
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            # A JPEG whose entropy-coded scan is damaged parses far enough for the
+            # segment walker to accept it and then fails in the decoder. Pillow's
+            # own exception would reach the CLI as *unexpected* (exit 1); a file we
+            # cannot decode is a parse failure (exit 4). Found by fuzzing.
+            raise ParseError(f"JPEG: cannot decode the image ({exc})") from exc
 
 
 def scrub(data: bytes) -> bytes:
