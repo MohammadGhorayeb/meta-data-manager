@@ -91,11 +91,24 @@ def test_a2_at_f2_closes_the_spelling_and_names_the_substance(doc):
 
 def test_f2_closed_keys_that_f1_left_open(doc):
     """The tier has to buy something. Measured rather than assumed: the keys leaking
-    at F1 must be a strict superset of those leaking at F2."""
+    at F1 must be a strict superset of those leaking at F2.
+
+    The second assertion is deliberately phrased over *the spelling keys that
+    actually leaked at F1*, not over all three. Which keys separate producers is a
+    property of the **peer set**, not of the tier: CI has no macOS `textutil`, so
+    with three producers instead of four `xml_decl` and `selfclose_style` do not
+    separate anyone at F1 and F2 cannot be credited with closing them. The first
+    version of this test asserted all three and passed only on the machine it was
+    written on — encoding one laptop's corpus as if it were a fact about F2.
+    """
     f1_keys = {leak["locus"]["feature_id"] for leak in _cell(doc, "A2", "F1")["leaks"]}
     f2_keys = {leak["locus"]["feature_id"] for leak in _cell(doc, "A2", "F2")["leaks"]}
     assert f2_keys < f1_keys, (f1_keys, f2_keys)
-    assert SPELLING_KEYS <= (f1_keys - f2_keys)
+
+    leaked_spelling = SPELLING_KEYS & f1_keys
+    assert leaked_spelling, "no spelling key leaks at F1 — the peer set is too small"
+    assert leaked_spelling <= (f1_keys - f2_keys), (
+        f"F2 left a spelling key open: {leaked_spelling & f2_keys}")
 
 
 def test_the_cell_says_word_is_not_in_the_peer_set(doc):
