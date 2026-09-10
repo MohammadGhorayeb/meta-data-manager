@@ -41,9 +41,15 @@ REMOVED, CHANGED, KEPT, ADDED = "removed", "changed", "kept", "added"
 class Item:
     locus: str
     status: str
-    before: str | None = None
-    after: str | None = None
+    before: str | None = None      # clipped, for display
+    after: str | None = None       # clipped, for display
     note: str = ""
+    # The value as it actually appeared in the file. Kept alongside the clipped one
+    # because the cross-check searches ExifTool's output for it, and searching for a
+    # clipped string ending in "…" can never match: it silently disabled the leak
+    # check for every value over MAX_VALUE characters -- which is precisely the
+    # identifying ones, a full name with an affiliation or an absolute path.
+    raw_before: str | None = None
 
 
 @dataclass
@@ -59,9 +65,12 @@ class Report:
 
     @property
     def removed_values(self) -> list[str]:
-        """The values this report claims are gone — what the cross-check looks for."""
-        return [i.before for i in self.items
-                if i.status == REMOVED and i.before]
+        """The values this report claims are gone — what the cross-check looks for.
+
+        The **unclipped** values: see `Item.raw_before`.
+        """
+        return [i.raw_before or i.before for i in self.items
+                if i.status == REMOVED and (i.raw_before or i.before)]
 
     @property
     def removed(self) -> list[Item]:
@@ -126,12 +135,14 @@ def build(handler, before: bytes, after: bytes, fidelity: str,
     for locus, old in was.items():
         new = now.get(locus)
         if new is None:
-            rep.items.append(Item(locus, REMOVED, before=clip(old)))
+            rep.items.append(Item(locus, REMOVED, before=clip(old),
+                                  raw_before=str(old)))
         elif new != old:
             rep.items.append(Item(locus, CHANGED, before=clip(old),
-                                  after=clip(new)))
+                                  after=clip(new), raw_before=str(old)))
         else:
-            rep.items.append(Item(locus, KEPT, before=clip(old), after=clip(old)))
+            rep.items.append(Item(locus, KEPT, before=clip(old), after=clip(old),
+                                  raw_before=str(old)))
     for locus, new in now.items():
         if locus not in was:
             rep.items.append(Item(locus, ADDED, after=clip(new)))

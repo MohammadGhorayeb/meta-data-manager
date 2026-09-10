@@ -29,6 +29,7 @@ given the command to look for themselves, which is the point.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -88,6 +89,13 @@ def available() -> bool:
 
 
 def version() -> str:
+    """ExifTool's version, for the report's header.
+
+    Only used when a read has not already supplied it: `_read` lifts the version out
+    of the JSON it is already fetching, so the common path spends **no** extra
+    process on it. Asking `exiftool -ver` separately cost a third of the whole
+    check's runtime for a string we were already being handed.
+    """
     try:
         out = subprocess.run([TOOL, "-ver"], capture_output=True, text=True,
                              timeout=TIMEOUT)
@@ -96,22 +104,51 @@ def version() -> str:
         return ""
 
 
-def read_tags(path: str) -> dict[str, str]:
-    """`Group:Tag -> value` for the metadata ExifTool reads out of a file.
+def read_tags(path: str) -> tuple[dict[str, str], str]:
+    """`(tags, error)` — see `_read`, which also reports the version."""
+    tags, error, _ = _read(path)
+    return tags, error
+
+
+def _read(path: str) -> tuple[dict[str, str], str, str]:
+    """`(Group:Tag -> value, error)` for the metadata ExifTool reads out of a file.
+
+    The error string is what separates *"ExifTool read this file and it holds no
+    metadata"* from *"ExifTool did not read this file"*. Conflating them is the worst
+    failure this module could have: a read that silently returned nothing rendered as
+    `0 tags before → 0 after, none of the removed values appear`, which is exactly
+    what a clean scrub looks like. A check that reassures on its own failure is worse
+    than no check.
 
     Raises nothing: this is a reporting path, and a file ExifTool cannot read is a
     result to show, not an exception to propagate into a successful scrub.
     """
+    # Absolute, always. A relative path beginning with `-` is parsed by ExifTool as
+    # an OPTION rather than a filename, so `read_tags("-photo.jpg")` read nothing at
+    # all -- and an absolute path also makes the command we print work from any
+    # directory the reader happens to be in.
+    path = os.path.abspath(path)
     try:
         proc = subprocess.run([TOOL, "-json", *_READ_ARGS, path],
                               capture_output=True, timeout=TIMEOUT)
-        payload = json.loads(proc.stdout.decode("utf-8", "replace") or "[]")
-    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
-        return {}
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {}, f"exiftool could not be run ({exc})", ""
+
+    raw = proc.stdout.decode("utf-8", "replace").strip()
+    if not raw:
+        detail = proc.stderr.decode("utf-8", "replace").strip()
+        return {}, f"exiftool returned nothing ({detail or 'no output'})", ""
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return {}, f"exiftool output could not be parsed ({exc})", ""
     if not payload:
-        return {}
-    return {k: str(v) for k, v in payload[0].items()
-            if ":" in k and k.split(":", 1)[0] not in DERIVED_GROUPS}
+        return {}, "exiftool reported no file", ""
+
+    entry = payload[0]
+    ver = str(entry.get("ExifTool:ExifToolVersion", "")).strip()
+    return ({k: str(v) for k, v in entry.items()
+             if ":" in k and group_of(k) not in DERIVED_GROUPS}, "", ver)
 
 
 def group_of(key: str) -> str:
@@ -121,8 +158,12 @@ def group_of(key: str) -> str:
 
 
 def command_for(path: str) -> str:
-    """The exact command a user can paste to check the output themselves."""
-    return f"{TOOL} {' '.join(ARGS)} {shlex.quote(path)}"
+    """The exact command a user can paste to check the output themselves.
+
+    Absolute and shell-quoted, so it works from whatever directory they are in and
+    survives a filename with spaces or a leading dash.
+    """
+    return f"{TOOL} {' '.join(ARGS)} {shlex.quote(os.path.abspath(path))}"
 
 
 def run(in_path: str, out_path: str, removed_values=()) -> CrossCheck:
@@ -132,9 +173,15 @@ def run(in_path: str, out_path: str, removed_values=()) -> CrossCheck:
     if not available():
         return CrossCheck(available=False, command=cmd)
 
-    before, after = read_tags(in_path), read_tags(out_path)
-    check = CrossCheck(available=True, version=version(), before=before,
-                       after=after, command=cmd)
+    before, err_before, ver = _read(in_path)
+    after, err_after, ver_after = _read(out_path)
+    check = CrossCheck(available=True, version=ver or ver_after or version(),
+                       before=before, after=after, command=cmd,
+                       error="; ".join(e for e in (err_before, err_after) if e))
+    if check.error:
+        # Nothing below can be trusted if a read failed, so do not run the leak
+        # search and do not let the render imply a clean result.
+        return check
 
     # The part that can fail: is a value we said we removed still readable?
     haystack = "\n".join(f"{k} {v}" for k, v in after.items()).lower()
@@ -156,6 +203,15 @@ def render(check: CrossCheck) -> list[str]:
             "  Not independently checked: exiftool is not installed.",
             "  Check it yourself:",
             f"    brew install exiftool && {check.command}",
+        ]
+
+    if check.error:
+        return [
+            "",
+            f"  Not independently checked: {check.error}.",
+            "  This is a failure of the check, NOT a clean result.",
+            "  Check it yourself:",
+            f"    {check.command}",
         ]
 
     lines = ["", f"  Checked with exiftool {check.version} — a different "

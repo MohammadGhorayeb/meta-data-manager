@@ -72,8 +72,8 @@ def test_derived_tags_are_not_counted_as_metadata(photo):
     """ExifTool reports its own version, the filesystem's view of the file, values
     decoded from the image structure, and its computed composites. None is stored
     metadata; counting them would make every file look dirty forever."""
-    tags = crosscheck.read_tags(photo)
-    assert tags
+    tags, err = crosscheck.read_tags(photo)
+    assert tags and not err
     assert not [k for k in tags if crosscheck.group_of(k) in
                 crosscheck.DERIVED_GROUPS]
     assert not any("FileName" in k or "FileSize" in k for k in tags)
@@ -85,7 +85,7 @@ def test_duplicate_tags_are_not_collapsed(tmp_path):
     and a value hiding in a collapsed duplicate could escape the leak search."""
     from . import docx_corpus as dc
     src = dc.synthetic(str(tmp_path / "in.docx"))
-    tags = crosscheck.read_tags(src)
+    tags, _ = crosscheck.read_tags(src)
     names = [k for k in tags if k.endswith("ZipFileName")]
     assert len(names) > 1, "duplicate ZIP entries collapsed onto one key"
 
@@ -147,10 +147,53 @@ def test_a_missing_exiftool_still_tells_the_user_how_to_check(monkeypatch, tmp_p
     assert "exiftool" in text.split("Check it yourself:")[1]
 
 
-def test_an_unreadable_file_gives_an_empty_reading_not_an_exception(tmp_path):
+def test_a_file_with_no_metadata_reads_empty_without_an_error(tmp_path):
+    """ExifTool reads a junk file happily and finds nothing embedded in it. That is a
+    genuine empty result, not a failure, and must not be reported as one."""
     junk = tmp_path / "junk.bin"
     junk.write_bytes(b"\x00\x01\x02")
-    assert crosscheck.read_tags(str(junk)) == {}
+    tags, err = crosscheck.read_tags(str(junk))
+    assert tags == {} and err == ""
+
+
+def test_a_failed_read_is_not_rendered_as_a_clean_result(tmp_path):
+    """The worst failure this module could have.
+
+    A read that returned nothing used to render as `0 tags before → 0 after, none of
+    the removed values appear` — which is exactly what a clean scrub looks like. A
+    check that reassures on its own failure is worse than no check at all.
+    """
+    missing = str(tmp_path / "does-not-exist.jpg")
+    check = crosscheck.run(missing, missing, ["anything"])
+    text = "\n".join(crosscheck.render(check))
+    assert "NOT a clean result" in text
+    assert "none of the removed values" not in text
+    assert check.leaked == [], "no leak claim can be made from a failed read"
+
+
+def test_a_leading_dash_filename_is_still_read(tmp_path):
+    """A relative path beginning with `-` is parsed by ExifTool as an OPTION, so the
+    read silently returned nothing — and, before the previous test existed, rendered
+    as a clean result. Absolute paths fix it at the source."""
+    from . import corpus
+    src = tmp_path / "-photo.jpg"
+    src.write_bytes(corpus.build_torture_jpeg())
+
+    import os
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        tags, err = crosscheck.read_tags("-photo.jpg")
+    finally:
+        os.chdir(cwd)
+    assert tags and not err, err
+
+
+def test_the_printed_command_is_absolute(tmp_path):
+    """So it works from whatever directory the reader is in, not only the one the
+    scrub happened to run in."""
+    assert crosscheck.command_for("out.jpg").rstrip("'\"").endswith("out.jpg")
+    assert "/" in crosscheck.command_for("out.jpg")
 
 
 def test_the_check_runs_after_the_output_is_written(photo, tmp_path):
@@ -196,3 +239,40 @@ def test_every_supported_format_is_cross_checked(tmp_path):
             verify_with_exiftool=True)
         assert report.check is not None and report.check.available, ext
         assert report.check.leaked == [], (ext, report.check.leaked)
+
+
+def test_a_long_value_is_searched_for_in_full(tmp_path):
+    """The clipping bug, as a test.
+
+    The report shortens values for display. Feeding those shortened strings to the
+    leak search meant searching for something ending in `…`, which can never match —
+    so the check was silently disabled for every value over the clip limit. Those are
+    exactly the identifying ones: a full name with an affiliation, an absolute path.
+    """
+    from src.scrub import report as rep
+    from src.scrub.dispatch import default_dispatcher
+
+    long_value = ("Mohammad Ghorayeb, Department of Electrical and Computer "
+                  "Engineering, AUB")
+    assert len(long_value) > rep.MAX_VALUE, "the value must be long enough to clip"
+
+    import piexif
+    from PIL import Image
+    src = tmp_path / "long.jpg"
+    Image.new("RGB", (64, 48), (120, 90, 60)).save(
+        str(src), "JPEG",
+        exif=piexif.dump({"0th": {piexif.ImageIFD.Artist: long_value.encode()}}))
+
+    data = src.read_bytes()
+    handler = default_dispatcher().resolve(data)
+    # before == after stands in for a handler that removed nothing.
+    report = rep.build(handler, data, data, "F1")
+
+    item = next(i for i in report.items if "Artist" in i.locus)
+    assert item.before.endswith("…"), "display value should be clipped"
+    assert item.raw_before == long_value, "the raw value must survive for the search"
+
+    check = crosscheck.run(str(src), str(src),
+                           [i.raw_before or i.before for i in report.items])
+    assert any(long_value in leaked for leaked in check.leaked), \
+        "a long value that is still present must be caught"

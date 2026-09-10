@@ -81,7 +81,14 @@ def decode(tiff: bytes, order: str, entry) -> str | None:
                 return f"({length} bytes)"
             return text.decode("utf-8", "replace") or None
         if entry.type in (5, 10):                     # RATIONAL
-            vals = _rationals(tiff, order, entry.data_offset or 0, entry.count,
+            # A rational is 8 bytes, so it is never inline and always has an offset.
+            # `data_offset or 0` would fall back to reading the TIFF *header* on a
+            # malformed IFD and render the result as a GPS coordinate -- a report
+            # showing a location that is not in the file, which for a privacy tool is
+            # worse than showing nothing.
+            if entry.data_offset is None:
+                return None
+            vals = _rationals(tiff, order, entry.data_offset, entry.count,
                               entry.type == 10)
             if len(vals) == 3:                        # a GPS coordinate triple
                 return f"{vals[0]:.0f}° {vals[1]:.0f}' {vals[2]:.2f}\""
