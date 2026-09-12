@@ -156,7 +156,7 @@ to *verify* pixels, which is exactly where an independent implementation belongs
 | **M2** | Walker + `claims()` + refusal list (W1) | ✅ (§3) — brand-based identification; M4A and MP4 correctly declined |
 | **M3** | `iloc` rewriting (W2), with a **decode** test, not a parse test | ✅ (§3) |
 | **M4** | HEIC F1 (W3) + the auxiliary-image decision | ✅ (§3) — all six real photos scrub pixel-identically; auxiliary images dropped by default with the reasoning recorded |
-| **M5** | `HeicPlugin` + matrix + the A2 channel (W4) | 🔜 |
+| **M5** | A hand-built HEIC with a grid, an auxiliary image and a thumbnail (so CI covers the hard paths), then `HeicPlugin` + matrix + the A2 channel (W4) | 🔜 |
 | **M6** | `limits.md` rows | ✅ — #30 (the segmentation blob), #31 (the auxiliary-image trade), plus the residuals block |
 
 ---
@@ -193,6 +193,33 @@ thumbnail, the six auxiliary images and the 58 KB segmentation plist.
 
 What remains is container structure and the colour profiles, whose headers are
 sanitised and whose tag data is not — limit #14, in a third format.
+
+### What CI actually verifies, and what it does not
+
+`pillow-heif` installs on the Linux runner, so the synthetic half runs everywhere:
+identification against M4A and MP4, metadata-item removal, pixel survival through an
+independent decoder, truncation refusal, idempotence, and the report. **13 tests skip
+on CI**, and they are exactly the ones that need a real camera photo — which is to
+say they are the ones covering the findings that made this milestone interesting:
+
+- the 61-to-95-tile **grid** and `idat`-relative primary item,
+- the six **auxiliary images** and the `thmb` thumbnail,
+- Apple's **segmentation blob**,
+- the **`ipco` orphan-property pruning** that stopped a scrubbed photo advertising
+  `semanticskinmatte`.
+
+A synthetic file built by `pillow-heif` has none of those: one tile, no grid, no
+auxiliary images, no thumbnail. So the honest statement is that HEIC's *core* is
+regression-tested everywhere and its *hardest paths* are regression-tested only where
+real photos exist. That is the limit-#12 situation again, and it is a gap rather than
+a decision.
+
+Closing it means a hand-built HEIC carrying a grid, an auxiliary image, a thumbnail
+and a `uri ` item — the `pdf_corpus.py` pattern, where the corpus is written byte by
+byte and deliberately **shares no code with the scrubber**, so a shared
+misunderstanding of `iloc` cannot cancel out. That is M5's first task, before the
+plugin, because a matrix computed on a corpus that cannot express the format's hard
+cases would be measuring the easy half.
 
 Phase 4 continues to MP4 (cheap, reuses `stco` patching as-is) and then RAW, whose
 embedded full-size previews are the same "item with its own EXIF" shape HEIC
