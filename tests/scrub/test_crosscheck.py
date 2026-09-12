@@ -38,7 +38,10 @@ def test_it_catches_a_value_the_report_claimed_was_removed(photo):
     nothing: every value is still readable, and every one must be named.
     """
     check = crosscheck.run(photo, photo, ["TestCam", "secret-app 1.0"])
-    assert check.leaked == ["TestCam", "secret-app 1.0"]
+    # (value, where) pairs: where a value survives decides what it means, so the tag
+    # holding it is reported alongside it.
+    assert [value for value, _where in check.leaked] == ["TestCam", "secret-app 1.0"]
+    assert all(":" in where for _v, where in check.leaked), "each must name its tag"
     text = "\n".join(crosscheck.render(check))
     assert "still readable in the output" in text
     assert "incomplete" in text
@@ -274,5 +277,5 @@ def test_a_long_value_is_searched_for_in_full(tmp_path):
 
     check = crosscheck.run(str(src), str(src),
                            [i.raw_before or i.before for i in report.items])
-    assert any(long_value in leaked for leaked in check.leaked), \
+    assert any(long_value in value for value, _where in check.leaked), \
         "a long value that is still present must be caught"

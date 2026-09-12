@@ -47,6 +47,11 @@ def default_dispatcher() -> Dispatcher:
     d.register(Mp3Handler())
     from .formats.pdf.handler import PdfHandler
     d.register(PdfHandler())
+    # HEIC after M4A: both are ISOBMFF and both start `....ftyp`, so the brand is
+    # what separates them and the order makes the audio handler's narrower claim
+    # (brand `M4A `) run first.
+    from .formats.heic.handler import HeicHandler
+    d.register(HeicHandler())
     # DOCX last: its magic (`PK\x03\x04`) is the weakest of any handler here -- it
     # is shared with every ZIP ever made -- so it gets asked only after every format
     # with a distinctive prefix has declined.

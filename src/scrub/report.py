@@ -29,10 +29,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import crosscheck
+from .textfmt import MAX_VALUE, clip, human_size
 
-# Long values are truncated: a report is a summary, and an embedded XMP packet or a
-# base64 thumbnail would otherwise fill the terminal with the very data we removed.
-MAX_VALUE = 58
+# Re-exported. `clip`, `human_size` and `MAX_VALUE` lived here until the cross-check
+# needed them too and importing back created a cycle (see `textfmt`). Callers and
+# tests still reach them through this module, so the names stay part of its surface.
+__all__ = ["MAX_VALUE", "clip", "human_size", "Item", "Report", "build", "render",
+           "REMOVED", "CHANGED", "KEPT", "ADDED"]
 
 REMOVED, CHANGED, KEPT, ADDED = "removed", "changed", "kept", "added"
 
@@ -79,26 +82,6 @@ class Report:
     @property
     def kept(self) -> list[Item]:
         return [i for i in self.items if i.status == KEPT]
-
-
-def clip(value: object, limit: int = MAX_VALUE) -> str:
-    """One line, printable, bounded. Control characters would let a crafted file
-    write escape sequences to the user's terminal, so they do not survive."""
-    text = value if isinstance(value, str) else repr(value)
-    # Whitespace collapses FIRST. Doing it the other way round turns the newlines and
-    # tabs of a legitimate multi-line comment into dots before they can become
-    # spaces, so `two\nlines` renders as `two.lines` -- caught by its own test.
-    text = " ".join(text.split())
-    text = "".join(ch if ch.isprintable() else "." for ch in text)
-    return text if len(text) <= limit else text[:limit - 1] + "…"
-
-
-def human_size(n: int) -> str:
-    if n < 1024:
-        return f"{n} B"
-    if n < 1024 * 1024:
-        return f"{n / 1024:.1f} KB"
-    return f"{n / (1024 * 1024):.1f} MB"
 
 
 def _describe(handler, data: bytes) -> dict[str, str] | None:

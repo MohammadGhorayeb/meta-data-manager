@@ -35,5 +35,11 @@ ImageHash==4.3.2
 mutagen==1.47.0
 piexif==1.1.3
 pikepdf==10.8.0
+# HEIF/HEIC read+write for the Phase 4 corpus. Test-side only: the scrubber parses
+# ISOBMFF itself and depends on none of this. It earns its place twice -- it is the
+# only way CI can BUILD a HEIC (sips is macOS-only, ffmpeg has no HEIF muxer), and it
+# is an independent DECODER, which is what makes a pixel-identity check evidence
+# rather than us agreeing with ourselves.
+pillow-heif==1.7.0
 pyacoustid==1.3.1
 PyExifTool==0.5.6

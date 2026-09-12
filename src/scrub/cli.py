@@ -111,8 +111,10 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
         # After the write, and never able to raise: an independent check is worth
         # having and is not worth failing a good scrub over.
         try:
-            report.check = crosscheck.run(in_path, out_path,
-                                          report.removed_values)
+            report.check = crosscheck.run(
+                in_path, out_path, report.removed_values,
+                expected_groups=getattr(handler, "expected_residual_groups",
+                                        frozenset()))
         except Exception:                                 # noqa: BLE001
             report.check = None
     return advisories, report

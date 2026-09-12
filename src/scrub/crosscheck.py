@@ -35,6 +35,8 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 
+from .textfmt import clip
+
 TOOL = "exiftool"
 
 # Read with `-a` (duplicate tags), `-G1` (specific group names) and `-s` (tag ids).
@@ -64,7 +66,8 @@ class CrossCheck:
     version: str = ""
     before: dict[str, str] = field(default_factory=dict)
     after: dict[str, str] = field(default_factory=dict)
-    leaked: list[str] = field(default_factory=list)
+    leaked: list[tuple[str, str]] = field(default_factory=list)   # (value, where)
+    expected: list[tuple[str, str]] = field(default_factory=list)  # documented
     error: str = ""
     command: str = ""
 
@@ -166,9 +169,14 @@ def command_for(path: str) -> str:
     return f"{TOOL} {' '.join(ARGS)} {shlex.quote(os.path.abspath(path))}"
 
 
-def run(in_path: str, out_path: str, removed_values=()) -> CrossCheck:
+def run(in_path: str, out_path: str, removed_values=(),
+        expected_groups: frozenset[str] = frozenset()) -> CrossCheck:
     """Compare what ExifTool reads before and after, and look for what we claimed
-    to remove."""
+    to remove.
+
+    `expected_groups` names ExifTool groups a tier documents as surviving, so a
+    value found there is reported as a known residual rather than as a failure.
+    """
     cmd = command_for(out_path)
     if not available():
         return CrossCheck(available=False, command=cmd)
@@ -184,13 +192,27 @@ def run(in_path: str, out_path: str, removed_values=()) -> CrossCheck:
         return check
 
     # The part that can fail: is a value we said we removed still readable?
-    haystack = "\n".join(f"{k} {v}" for k, v in after.items()).lower()
+    #
+    # Reported WITH the tag holding it, because where a value survives decides what
+    # it means. A HEIC's EXIF `Make` is `Apple`, and the string `Apple` also appears
+    # in the ICC profile's copyright tag — which this tier deliberately keeps, since
+    # rewriting colour data would change the picture (limit #14). Announcing that as
+    # "treat the scrub as incomplete" would cry wolf on every iPhone photo, and a
+    # check that cries wolf is one people learn to ignore.
     for value in removed_values:
         text = str(value).strip()
         if len(text) < MIN_SEARCHABLE or text.startswith("("):
             continue
-        if text.lower() in haystack:
-            check.leaked.append(text)
+        needle = text.lower()
+        for key, val in after.items():
+            if needle not in f"{key} {val}".lower():
+                continue
+            where = group_of(key)
+            if where in expected_groups:
+                check.expected.append((text, key))
+            else:
+                check.leaked.append((text, key))
+            break
     return check
 
 
@@ -227,17 +249,26 @@ def render(check: CrossCheck) -> list[str]:
         shown = ", ".join(f"{g} ({n})" for g, n in remaining.items())
         lines.append(f"    still reported: {shown}")
 
+    if check.expected:
+        # Deduplicated: several removed fields can share a value (a HEIC's `Make`
+        # and `LensMake` are both `Apple`), and repeating the same note per field
+        # says nothing new.
+        for value, key in dict.fromkeys(check.expected):
+            lines.append(f"    note: {clip(value, 32)!r} still appears in {key} — a "
+                         f"locus this tier keeps by design")
+
     if check.leaked:
         # The whole reason this module exists. Loud, and never softened: our own
         # report said these were gone and a different reader can still see them.
         lines.append("")
         lines.append("  ** A value this report listed as removed is still readable "
                      "in the output:")
-        for value in check.leaked:
-            lines.append(f"    ** {value}")
+        for value, key in check.leaked:
+            lines.append(f"    ** {clip(value, 48)}   (in {key})")
         lines.append("  ** Treat the scrub as incomplete and please report this.")
     elif check.before:
-        lines.append("    none of the removed values appear in the output")
+        lines.append("    none of the removed values appear where they were removed "
+                     "from")
 
     lines.append("  Check it yourself:")
     lines.append(f"    {check.command}")
