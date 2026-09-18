@@ -1,0 +1,208 @@
+{
+  "format": "heic",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p4",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-09-18T13:04:53.918717+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "noise_floor": {
+        "deterministic": true,
+        "repeats": 3,
+        "variable_loci": []
+      }
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "heic_f2_not_built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "heic_f3_not_built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "container layout survives F1 \u2014 this tier relocates items and rebuilds the tables, and deliberately changes nothing else, so every writer choice is passed through: struct:brand, struct:compatible_brands, struct:iloc_widths, struct:meta_table_order, struct:size. Peer set = apple, generic, compact (container-writer profiles wrapping BYTE-IDENTICAL tiles, so the separation is the muxer and not the picture). The coded HEVC tiles separate producers too and are not counted here \u2014 F1 does not re-encode, so that is a property of the tier rather than a finding. Closing this cell needs an F2 that normalizes brand, table order, `iloc` widths and item numbering losslessly; the named features above are its specification.",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:brand",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:brand constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:meta_table_order",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:meta_table_order constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:iloc_widths",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:iloc_widths constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:compatible_brands",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:compatible_brands constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 3)",
+          "evidence": "struct:size constant within producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "heic_f2_not_built: a lossless container normalization (one brand, one table order, one set of `iloc` widths, canonical item numbering) is the next step and is what the A2@F1 leaks specify"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "heic_f3_not_built: would mean re-emitting the HEVC tiles, which Phase 4 has not measured"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "66747970",
+        "decoded": "ftyp"
+      },
+      {
+        "bytes_hex": "6d657461",
+        "decoded": "meta"
+      },
+      {
+        "bytes_hex": "6d646174",
+        "decoded": "mdat"
+      },
+      {
+        "bytes_hex": "68646c72",
+        "decoded": "hdlr"
+      },
+      {
+        "bytes_hex": "7069746d",
+        "decoded": "pitm"
+      },
+      {
+        "bytes_hex": "69696e66",
+        "decoded": "iinf"
+      },
+      {
+        "bytes_hex": "696e6665",
+        "decoded": "infe"
+      },
+      {
+        "bytes_hex": "696c6f63",
+        "decoded": "iloc"
+      },
+      {
+        "bytes_hex": "69707270",
+        "decoded": "iprp"
+      },
+      {
+        "bytes_hex": "6970636f",
+        "decoded": "ipco"
+      },
+      {
+        "bytes_hex": "69706d61",
+        "decoded": "ipma"
+      },
+      {
+        "bytes_hex": "69737065",
+        "decoded": "ispe"
+      },
+      {
+        "bytes_hex": "68766343",
+        "decoded": "hvcC"
+      },
+      {
+        "bytes_hex": "68766331",
+        "decoded": "hvc1"
+      },
+      {
+        "bytes_hex": "6d696631",
+        "decoded": "mif1"
+      },
+      {
+        "bytes_hex": "68656963",
+        "decoded": "heic"
+      }
+    ],
+    "signatures": []
+  }
+}
