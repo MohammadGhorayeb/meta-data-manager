@@ -195,3 +195,44 @@ print about who made the font; and the deep clean makes files about a **third
 larger**, which matters because file size is itself one of the clues we report as
 leaking.
 <!-- FORMAT:pdf:END -->
+
+<!-- FORMAT:heic:BEGIN -->
+The photos on your phone, and the first format where "delete the tag" is not
+even half the job.
+
+An iPhone photo is not one picture in a wrapper. It is a **table of parts**: the
+photograph itself is a grid of sixty to ninety-five separate tiles, and stored
+right beside them are the camera data, a small preview, and up to six **extra
+pictures of the same scene** — depth maps, a brightness layer, and Apple's
+machine-made maps of where the people and the sky are. Everything is located by
+its exact position in the file, so removing anything means correctly re-pointing
+everything that came after it.
+
+**What the light clean removes:** the camera make and model, the iOS version,
+the date, the GPS position, altitude and timestamp, every XMP block, the
+embedded preview, and the extra pictures described above. Measured on six real
+iPhone photos, the richest went from **428 pieces of metadata to 147**, and the
+picture came out **pixel-for-pixel identical** — checked by decoding it with a
+different program than the one we wrote.
+
+**One thing it removes that nobody talks about.** Apple ships a block of about
+58 KB — three to five percent of the file — describing the photo's own **subject**:
+whether there are people in the frame, how much of it is skin, and a small map of
+where they are. Not a fact about the camera but a judgement the phone made about
+what the picture is *of*. It has never been a secret, but nobody looks. It goes.
+
+**One thing it deliberately keeps:** the HDR brightness layer. Without it the
+photo still opens and looks the same on an ordinary screen, but renders flat on a
+phone or monitor that supports HDR. It says nothing about the subject — it is a
+half-size brightness map of the very pixels we are preserving — so it stays, and
+the report names it rather than leaving it unexplained.
+
+**What it does not do yet.** A cleaned photo still shows which *software* wrote
+the file — not which phone or which person, but the header stamp, the order of
+the internal tables and the widths of their fields are all the writing program's
+choices, and the only cleaning level this format has preserves data rather than
+rewriting it. We measured that against three container writers wrapping identical
+picture data, so the result is about the software and not the photo, and we
+publish it as a **failure with each clue named** — because that list is exactly
+the specification for the deeper level that would close it.
+<!-- FORMAT:heic:END -->

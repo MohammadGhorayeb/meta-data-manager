@@ -156,8 +156,12 @@ to *verify* pixels, which is exactly where an independent implementation belongs
 | **M2** | Walker + `claims()` + refusal list (W1) | ✅ (§3) — brand-based identification; M4A and MP4 correctly declined |
 | **M3** | `iloc` rewriting (W2), with a **decode** test, not a parse test | ✅ (§3) |
 | **M4** | HEIC F1 (W3) + the auxiliary-image decision | ✅ (§3) — all six real photos scrub pixel-identically; auxiliary images dropped by default with the reasoning recorded |
-| **M5** | A hand-built HEIC with a grid, an auxiliary image and a thumbnail (so CI covers the hard paths), then `HeicPlugin` + matrix + the A2 channel (W4) | 🔜 |
-| **M6** | `limits.md` rows | ✅ — #30 (the segmentation blob), #31 (the auxiliary-image trade), plus the residuals block |
+| **M5** | A hand-built HEIC with a grid, an auxiliary image and a thumbnail (so CI covers the hard paths), then `HeicPlugin` + matrix + the A2 channel (W4) | ✅ (§4) — and building it found three defects M0–M4 could not see |
+| **M6** | `limits.md` rows | ✅ — #30 (the segmentation blob), #31 (the auxiliary-image trade), #32 (the HDR gain map kept, and our oracle blind to it), #33 (the container fingerprint A2@F1 leaves), plus the residuals block |
+
+**HEIC is closed at F1.** F2/F3 are not built and their matrix cells say
+`not_tested` rather than `fail`: a tier that was never run has no verdict. What an
+F2 would have to do is no longer a guess — it is the list of features A2@F1 names.
 
 ---
 
@@ -190,6 +194,13 @@ through an independent decoder. ExifTool sees **428 metadata tags before, 147 af
 on the richest file; `Make`, `Model`, `Software`, `DateTimeOriginal`, GPS latitude,
 longitude, altitude and timestamp are all gone, as are the four XMP packets, the
 thumbnail, the six auxiliary images and the 58 KB segmentation plist.
+
+> **Corrected in M5 — read §4 before believing this paragraph.** "The six auxiliary
+> images" was **false**: the tiled ones left every tile behind, up to 707 KB of a
+> 1.78 MB photo. The count after M5's fix is **428 tags before, 109 after**, one
+> auxiliary image is now kept on purpose, and the rest are gone along with their
+> tiles. The paragraph is left standing rather than edited because the whole point
+> of §4 is that this claim read as a measurement and was not one.
 
 What remains is container structure and the colour profiles, whose headers are
 sanitised and whose tag data is not — limit #14, in a third format.
@@ -224,3 +235,156 @@ cases would be measuring the easy half.
 Phase 4 continues to MP4 (cheap, reuses `stco` patching as-is) and then RAW, whose
 embedded full-size previews are the same "item with its own EXIF" shape HEIC
 establishes here.
+
+---
+
+## 4. M5 as built — and the three defects the corpus found
+
+M5 was planned as tooling: build a HEIC that CI can use, then plug the format into
+the harness. It did not stay tooling. The rule the plan opened with — *a matrix
+computed on a corpus that cannot express the format's hard cases would be measuring
+the easy half* — turned out to apply to the tier itself, not just to the matrix.
+Auditing the six real photos against what F1 actually emitted, before writing any of
+the new code, found three defects. Each one had six green pixel-identity tests
+standing over it.
+
+### 4.1 A tiled auxiliary image is not the eight bytes that describe it
+
+M4 reported that the auxiliary images were dropped. They were not. On an iPhone an
+auxiliary image is usually a **grid**, exactly like the photograph: `iloc` points at
+an 8-byte grid descriptor and the picture lives in twelve or thirty separate `hvc1`
+items. Dropping the item named in `iinf` removed the *description* and left every
+tile in `mdat`:
+
+| file | in | out (as M4 built it) | orphaned tiles |
+|---|--:|--:|--:|
+| IMG_0502 | 1 166 577 | 997 481 | **381 209 B** (45 items) |
+| IMG_2427 | 1 785 048 | 1 708 590 | **707 399 B** (45 items) |
+| IMG_0947 | 803 712 | 792 217 | 239 188 B (14 items) |
+
+Every one of the six leaked; the worst case was **41% of the output**. The tiles were
+individually decodable HEVC, and no check caught it — ours because it looked for
+named items, ExifTool's because there was nothing left to name. The file said the
+mattes were gone and carried them anyway.
+
+The fix is not a special case for grids. Removal is now computed on the `dimg`
+graph: **an item survives only if a surviving root still composes it**, roots being
+the items nothing derives from, minus whatever policy removes. Removed items are
+**barriers**, so nothing is reached through them while a tile some other surviving
+image also uses is still reached by that path.
+
+The residual check that catches it is the more interesting half. It has to be
+**connectivity, not naming** — and *undirected*, because deleting a tiled image also
+deletes the `dimg` reference that made its tiles tiles, and a directed walk then
+reads the abandoned tiles as top-level items and calls the file clean. That is not
+hypothetical: the first version of the check did exactly that and reported zero
+orphans on the broken output.
+
+### 4.2 `iloc` wrote offset 0 for every item stored in `idat`
+
+The walker recorded `idat`-relative extents as offset `-1`, deliberately, so that
+anything moving bytes would skip them. The writer then clamped the `-1` back to `0`.
+So every `idat`-stored item was located at the start of `idat`.
+
+The primary grid survived it, because it is written first and 0 is its real offset —
+which is precisely why six pixel-identical tests passed. Everything beside it did
+not: a `tmap` at offset 24 read the grid descriptors instead of its own tone-mapping
+data. This is the `stco`/`co64` trap one level below `mdat`, and the channel it
+corrupts is one the pixel oracle **cannot see**.
+
+`Extent` now carries `idat_offset` alongside the `-1`, and `idat` is re-packed like
+`mdat` — which also stops the descriptions of removed auxiliary grids being copied
+into the output, where anyone reading `iloc` rather than `iinf` would still find
+them.
+
+### 4.3 `grpl` named items nobody rebuilt
+
+`grpl` holds entity groups — Apple writes an `altr` group meaning "these are
+alternatives, show one" — and they name items by id. It was copied through verbatim,
+so a group could outlive the item it names: the same dangling reference `iref`
+already guards against, in the box nobody looks at.
+
+### 4.4 The auxiliary-image decision, revisited
+
+M4 dropped every auxiliary image. Measuring what they actually are made that wrong in
+one case:
+
+| `auxC` type | what it is | verdict |
+|---|---|---|
+| `hdrgainmap` | half-resolution luminance of the same scene | **kept** |
+| `semanticskinmatte` / `semanticskymatte` / `portraiteffectsmatte` | machine-made claims about the subject | dropped |
+| `styledeltamap` | the photographic edit that was applied | dropped |
+| `linearthumbnail` | a second picture of the same scene | dropped |
+| anything unrecognised | — | dropped |
+
+The gain map is how the photograph **renders** on an HDR display, and removing it is
+a content change under hard constraint #1. The uncomfortable part is that our own
+oracle cannot see it: libheif decodes the primary item and ignores the gain map
+entirely, so the version of the tool that threw it away passed every pixel test we
+had. A decision that a test cannot make is recorded in `limits.md` (#32) instead, so
+a future change to it has to argue with something.
+
+Keeping it means keeping its tiles and its `tmap`, which §4.1's graph rule does
+without a special case. The allowlist is matched on the **trailing component** of the
+URN, because Apple has rewritten the prefix twice (`…2019:aux:` → `…2020:aux:` →
+`tag:apple.com,2023:photo:aux:`) while keeping the name at the end; the allowlist is
+the small side, so an aux type we have never seen fails toward removal.
+
+### 4.5 The corpus
+
+`heic_corpus.handbuilt()` writes the container **byte by byte** and imports nothing
+from `src.scrub` — a test asserts that by walking the module's import statements, not
+by grepping for a string. `pillow-heif` is still used, but only as an HEVC *encoder*:
+the tiles are real, which is what lets the acceptance test **decode** the result. It
+does: libheif composes our hand-built 2×2 grid into a 128×128 image.
+
+What it carries, and what each one is for:
+
+| structure | the path it covers |
+|---|---|
+| 2×2 `grid` primary, bytes in `idat` | construction method 1 — the shape of every iPhone photo |
+| 2×1 gain-map grid (`auxl`) | a **tiled** auxiliary image that is kept |
+| 1×2 matte grid (`auxl`) | a tiled auxiliary image that is **dropped**, with its tiles |
+| single-tile matte (`auxl`) | the untiled case, so the graph rule is not only right for grids |
+| `thmb` thumbnail | Phase 1's lesson in a container |
+| `Exif` / `mime` / `uri ` | the metadata items, including a subject-describing plist |
+| `altr` entity group | §4.3 |
+| shared `ipco` properties | pruning forces the renumbering |
+
+The three grids are deliberately **different shapes**. They were the same shape
+first, and that made the file useless for catching §4.2: every grid descriptor was
+byte-identical, so writing them all at offset 0 still decoded correctly. A corpus
+that cannot tell a wrong answer from a lucky one is not a corpus.
+
+Both defects were then re-run against the old code paths to confirm the new tests
+*fail* on them — a regression test that passes on the broken version is decoration.
+
+### 4.6 The matrix, and what A2 says
+
+`HeicPlugin` exposes the **muxer** channel only: brand, compatible brands, top-level
+and `meta` table order, `iloc` field widths, primary kind, tile count, item and
+reference inventories, property inventory, and the `hvcC` decoder-configuration
+digest. The coded tile digest is exposed separately and kept **out** of it, for the
+reason written up in `m4a.py` — compressed content in a categorical A2 channel makes
+one format judged against its own content while another's channel is headers-only.
+
+The peer set is three container-writer profiles wrapping **byte-identical tiles**, so
+anything separating them is the writing software and not the picture. A test checks
+that claim rather than asserting it in prose.
+
+| | F1 | F2 | F3 |
+|---|---|---|---|
+| **A1** | ✅ pass | not_tested | not_tested |
+| **A2** | ❌ fail — `brand`, `compatible_brands`, `meta_table_order`, `iloc_widths`, `size` | not_tested | not_tested |
+
+The A2 failure is the expected result and the reason for running the cell. F1
+relocates items and rebuilds the tables and deliberately changes nothing else, so
+every writer choice passes through. Published as a failure with each feature named,
+because that list **is** the specification for an F2: one canonical brand, one table
+order, one set of `iloc` widths, canonical item numbering, tiles untouched. Same
+method Phase 3 used on PDF — measure which producer channel leaks before designing
+the fix.
+
+Phase 4 continues to MP4 (cheap: `stco`/`co64` patching already exists and is proven)
+and then RAW, whose embedded full-size previews are the same "item with its own EXIF"
+shape HEIC establishes here.
