@@ -55,8 +55,15 @@ CONSTRUCTION_ITEM = 2
 
 @dataclass
 class Extent:
-    offset: int
+    offset: int                      # absolute file offset, or -1 when idat-relative
     length: int
+    # Where the bytes sit inside the `idat` box, for construction method 1. Kept
+    # separate from `offset` deliberately: `offset` stays -1 so every existing
+    # caller that moves bytes still skips these, while the value needed to REBUILD
+    # `idat` is no longer thrown away. It was, and the rebuilt `iloc` then wrote 0
+    # for every idat item -- which the primary grid survives (it is first) and a
+    # `tmap` does not.
+    idat_offset: int = -1
 
     @property
     def end(self) -> int:
@@ -119,6 +126,11 @@ class Layout:
     items: dict[int, Item]
     references: list[Reference]
     iloc_format: IlocFormat
+    idat: isobmff.Box | None = None
+    # item id -> the `auxC` URN that says WHAT an auxiliary image is. The difference
+    # between a depth map, a person-segmentation matte and an HDR gain map is only
+    # ever written here, and they are not the same kind of thing to a privacy tool.
+    aux_types: dict[int, str] = field(default_factory=dict)
 
     def by_type(self, item_type: bytes) -> list[Item]:
         return [i for i in self.items.values() if i.item_type == item_type]
@@ -136,6 +148,67 @@ class Layout:
 
     def auxiliary_ids(self) -> set[int]:
         return self.referenced_by(b"auxl")
+
+    def derived_inputs(self) -> dict[int, list[int]]:
+        """`dimg`: derived item -> the items it is composed from.
+
+        A HEIC's photograph is a `grid` item that owns nothing: its tiles are
+        separate items, and so are an auxiliary image's tiles. Removing a derived
+        image therefore means removing what fed it, which is why this graph exists
+        rather than a per-item flag.
+        """
+        out: dict[int, list[int]] = {}
+        for ref in self.references:
+            if ref.kind == b"dimg":
+                out.setdefault(ref.from_id, []).extend(ref.to_ids)
+        return out
+
+    def dimg_targets(self) -> set[int]:
+        return {t for ids in self.derived_inputs().values() for t in ids}
+
+    def connected_to(self, item_id: int) -> set[int]:
+        """Every item joined to `item_id` by any reference, in either direction.
+
+        Deliberately undirected and kind-agnostic, unlike `reachable_from`. Removing
+        a tiled image deletes the `dimg` reference that made its tiles tiles, and
+        they then look like top-level items to any directed walk — which is exactly
+        how 381 KB of abandoned matte tiles passed an orphan check. The question that
+        survives the deletion is the weaker one: does *anything* in this file still
+        relate these bytes to the photograph?
+        """
+        neighbours: dict[int, set[int]] = {}
+        for ref in self.references:
+            for target in ref.to_ids:
+                neighbours.setdefault(ref.from_id, set()).add(target)
+                neighbours.setdefault(target, set()).add(ref.from_id)
+        seen, stack = set(), [item_id]
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(n for n in neighbours.get(node, ()) if n in self.items)
+        return seen
+
+    def reachable_from(self, roots: set[int],
+                       blocked: frozenset[int] | set[int] = frozenset()) -> set[int]:
+        """Every item the given roots compose, transitively.
+
+        `blocked` items are barriers, not merely excluded: nothing is reached
+        *through* a removed image, so an auxiliary grid's tiles fall with it — while
+        a tile some surviving image also uses is still reached by that other path.
+        """
+        graph = self.derived_inputs()
+        seen: set[int] = set()
+        stack = [r for r in roots if r in self.items and r not in blocked]
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(t for t in graph.get(node, ())
+                         if t in self.items and t not in blocked)
+        return seen
 
 
 def _full_box_children(box: isobmff.Box) -> list[isobmff.Box]:
@@ -201,7 +274,7 @@ def _parse_iinf(meta: isobmff.Box, items: dict[int, Item]) -> None:
 
 
 def _parse_iloc(meta: isobmff.Box, items: dict[int, Item],
-                total: int) -> IlocFormat:
+                total: int, idat_len: int) -> IlocFormat:
     iloc = next((c for c in meta.children if c.type == b"iloc"), None)
     if iloc is None:
         raise ParseError("HEIC: no iloc box (cannot locate items)")
@@ -262,8 +335,13 @@ def _parse_iloc(meta: isobmff.Box, items: dict[int, Item],
                 # `idat`-relative (method 1): the offset indexes into the `idat` box
                 # rather than the file. Recorded rather than resolved, and never
                 # given a file Extent, so nothing downstream can mistake it for a
-                # region of the file to move.
-                entry.extents.append(Extent(-1, length))
+                # region of the file to move -- but the relative offset IS kept, so
+                # `idat` can be rebuilt instead of copied whole.
+                if offset + length > idat_len:
+                    raise ParseError(
+                        f"HEIC: item {item_id} idat extent runs past the idat box "
+                        f"({offset + length} > {idat_len})")
+                entry.extents.append(Extent(-1, length, idat_offset=offset))
         if construction == CONSTRUCTION_ITEM:
             # Item-relative storage nests one item's bytes inside another's, so
             # moving either moves both. Not written by any producer measured here,
@@ -272,6 +350,94 @@ def _parse_iloc(meta: isobmff.Box, items: dict[int, Item],
                 f"HEIC: item {item_id} uses construction method 2 "
                 f"(stored inside another item), which is not modelled")
     return fmt
+
+
+def children_of(box: isobmff.Box) -> list[isobmff.Box]:
+    """A container's children, whether or not the shared walker knows it is one.
+
+    `standards/isobmff.CONTAINERS` is the set M4A needed. `iprp` and `grpl` are not
+    in it, so `.children` is empty and the child boxes live in the payload.
+    Rebuilding from `.children` therefore emitted an **empty `iprp`**, and libheif
+    answered `Invalid input: No 'ipco' box`: a file that walked perfectly and decoded
+    to nothing.
+
+    Handled here rather than by widening the shared set, which is load-bearing for
+    M4A's box surgery -- widening it to suit a different format is how a shared
+    module acquires a format-specific bug.
+    """
+    if box.children:
+        return box.children
+    try:
+        return isobmff.parse(box.payload)
+    except Exception:                                     # noqa: BLE001
+        return []
+
+
+def parse_ipma(payload: bytes) -> tuple[int, int, list[tuple[int, list[tuple[int, bool]]]]]:
+    """`(version, flags, [(item_id, [(property_index, essential)])])`.
+
+    Property indices are 1-based into `ipco` and are shared between items, which is
+    the fact that makes pruning properties a renumbering job rather than a deletion.
+    """
+    version, flags = payload[0], int.from_bytes(payload[1:4], "big")
+    wide_id = version >= 1
+    wide_index = bool(flags & 1)
+    count = struct.unpack_from(">I", payload, 4)[0]
+    i = 8
+    out = []
+    for _ in range(count):
+        item_id = (struct.unpack_from(">I", payload, i)[0] if wide_id
+                   else struct.unpack_from(">H", payload, i)[0])
+        i += 4 if wide_id else 2
+        n = payload[i]
+        i += 1
+        assoc = []
+        for _k in range(n):
+            if wide_index:
+                raw = struct.unpack_from(">H", payload, i)[0]
+                essential, index = bool(raw & 0x8000), raw & 0x7FFF
+                i += 2
+            else:
+                raw = payload[i]
+                essential, index = bool(raw & 0x80), raw & 0x7F
+                i += 1
+            assoc.append((index, essential))
+        out.append((item_id, assoc))
+    return version, flags, out
+
+
+def _parse_aux_types(meta: isobmff.Box) -> dict[int, str]:
+    """item id -> its `auxC` URN, for the items that have one.
+
+    An `auxl` reference says only *that* an image is auxiliary. What it IS -- a depth
+    map, a person-segmentation matte, an HDR gain map -- is written once, in the
+    `auxC` property, and a privacy tool that cannot read it can only treat all of
+    them the same way.
+    """
+    iprp = next((c for c in meta.children if c.type == b"iprp"), None)
+    if iprp is None:
+        return {}
+    kids = children_of(iprp)
+    ipco = next((c for c in kids if c.type == b"ipco"), None)
+    ipma = next((c for c in kids if c.type == b"ipma"), None)
+    if ipco is None or ipma is None or len(ipma.payload) < 8:
+        return {}
+    properties = children_of(ipco)
+    try:
+        _version, _flags, entries = parse_ipma(ipma.payload)
+    except (struct.error, IndexError):
+        return {}
+    out: dict[int, str] = {}
+    for item_id, assoc in entries:
+        for index, _essential in assoc:
+            if not 1 <= index <= len(properties):
+                continue
+            prop = properties[index - 1]
+            if prop.type != b"auxC" or len(prop.payload) < 5:
+                continue
+            out[item_id] = (prop.payload[4:].split(b"\x00")[0]
+                            .decode("utf-8", "replace"))
+    return out
 
 
 def _parse_iref(meta: isobmff.Box) -> list[Reference]:
@@ -319,11 +485,14 @@ def walk(data: bytes) -> Layout:
                if pitm.payload[0] == 0
                else struct.unpack_from(">I", pitm.payload, 4)[0])
 
+    idat = next((c for c in meta.children if c.type == b"idat"), None)
     items: dict[int, Item] = {}
     _parse_iinf(meta, items)
-    fmt = _parse_iloc(meta, items, len(data))
+    fmt = _parse_iloc(meta, items, len(data),
+                      idat_len=len(idat.payload) if idat is not None else 0)
     if primary not in items:
         raise ParseError(f"HEIC: primary item {primary} is not in the item table")
 
     return Layout(boxes=boxes, meta=meta, primary_id=primary, items=items,
-                  references=_parse_iref(meta), iloc_format=fmt)
+                  references=_parse_iref(meta), iloc_format=fmt, idat=idat,
+                  aux_types=_parse_aux_types(meta))

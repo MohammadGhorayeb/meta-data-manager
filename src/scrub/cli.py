@@ -114,7 +114,9 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
             report.check = crosscheck.run(
                 in_path, out_path, report.removed_values,
                 expected_groups=getattr(handler, "expected_residual_groups",
-                                        frozenset()))
+                                        frozenset()),
+                expected_tags=getattr(handler, "expected_residual_tags",
+                                      frozenset()))
         except Exception:                                 # noqa: BLE001
             report.check = None
     return advisories, report

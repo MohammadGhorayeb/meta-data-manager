@@ -112,8 +112,15 @@ def test_an_orphaned_property_does_not_advertise_what_was_removed():
     person-segmentation output but still said the segmentation had run.
     """
     out = f1.scrub(open(REAL[0], "rb").read())
-    assert b"semanticskinmatte" not in out
-    assert b"aux:" not in out
+    for gone in (b"semanticskinmatte", b"semanticskymatte", b"portraiteffectsmatte",
+                 b"styledeltamap", b"linearthumbnail"):
+        assert gone not in out, gone
+
+    # The only auxiliary image left is the HDR gain map, which is kept on purpose
+    # (limit #32), so the check is that nothing ELSE is still announced rather than
+    # that the string `aux:` is absent.
+    surviving = set(w.walk(out).aux_types.values())
+    assert {f1._aux_kind(a) for a in surviving} <= f1.KEEP_AUX_KINDS, surviving
 
 
 @needs_real

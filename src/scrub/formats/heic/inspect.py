@@ -4,6 +4,7 @@ from __future__ import annotations
 import plistlib
 
 from ...standards import tiff_ifd, tiff_values
+from . import f1
 from . import walker as w
 
 
@@ -86,9 +87,26 @@ def describe(data: bytes) -> dict[str, str]:
     if thumbs:
         size = sum(layout.items[t].size for t in thumbs if t in layout.items)
         out["embedded thumbnail"] = f"{len(thumbs)} item(s), {size} bytes"
-    aux = layout.auxiliary_ids()
-    if aux:
-        size = sum(layout.items[a].size for a in aux if a in layout.items)
-        out["auxiliary images"] = (f"{len(aux)} depth/matte image(s), {size} bytes "
-                                   f"— derived from the subject")
+    # An auxiliary image's own size is the grid descriptor when it is tiled — 8
+    # bytes for a 2-megapixel matte — so the report counts what it actually
+    # composes. Understating this by a factor of forty thousand is how the tiles got
+    # left in the file in the first place.
+    removable, kept = [], []
+    for aux in sorted(layout.auxiliary_ids()):
+        kind = f1._aux_kind(layout.aux_types.get(aux, ""))
+        (kept if kind in f1.KEEP_AUX_KINDS else removable).append(aux)
+    if removable:
+        composed = layout.reachable_from(set(removable))
+        size = sum(layout.items[i].size for i in composed if i in layout.items)
+        names = sorted({f1._aux_kind(layout.aux_types.get(a, "")) or "unnamed"
+                        for a in removable})
+        out["auxiliary images"] = (
+            f"{len(removable)} depth/matte image(s) in {len(composed)} item(s), "
+            f"{size} bytes — derived from the subject ({', '.join(names)})")
+    if kept:
+        composed = layout.reachable_from(set(kept))
+        size = sum(layout.items[i].size for i in composed if i in layout.items)
+        out["HDR gain map"] = (
+            f"{size} bytes — luminance of the same scene, kept because removing it "
+            f"changes how the photo renders on an HDR display (limit #32)")
     return out

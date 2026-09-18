@@ -56,3 +56,11 @@ class HeicHandler(BaseHandler):
         "ICC_Profile4", "ICC-header2", "ICC-header3", "ICC-header4",
         "ICC-cicp2", "ICC-cicp3", "ICC-cicp4",
     })
+
+    # One TAG rather than a group, because the group would be far too broad.
+    # The HDR gain map is kept on purpose (limit #32) and announces itself as
+    # `urn:com:apple:photo:2020:aux:hdrgainmap` — which contains `Apple`, the same
+    # string the EXIF `Make` we removed contained. Exempting `QuickTime` to excuse
+    # that would wave through 53 structural tags; exempting this one tag says
+    # exactly what is true, and the report still prints the note.
+    expected_residual_tags = frozenset({"AuxiliaryImageType"})

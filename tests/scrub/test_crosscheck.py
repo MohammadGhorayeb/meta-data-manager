@@ -47,6 +47,37 @@ def test_it_catches_a_value_the_report_claimed_was_removed(photo):
     assert "incomplete" in text
 
 
+def test_a_tier_can_declare_one_tag_without_excusing_its_whole_group(photo):
+    """A group-wide exemption is sometimes far too broad to be honest.
+
+    HEIC is the case that forced this: the one auxiliary image F1 keeps on purpose
+    announces itself as `urn:com:apple:photo:2020:aux:hdrgainmap`, which contains
+    `Apple` — the same string as the EXIF `Make` that was removed. Its ExifTool group
+    is `QuickTime`, 53 tags of container structure, so exempting the group to excuse
+    one value would blind the check to everything else in it.
+
+    So a declared tag is reported as a known residual while the rest of its group
+    still fails, and the report prints the note either way.
+    """
+    loud = crosscheck.run(photo, photo, ["TestCam"])
+    assert [v for v, _w in loud.leaked] == ["TestCam"]
+    where = loud.leaked[0][1]
+    tag = where.rsplit(":", 1)[-1]
+
+    quiet = crosscheck.run(photo, photo, ["TestCam"],
+                           expected_tags=frozenset({tag}))
+    assert quiet.leaked == []
+    assert [v for v, _w in quiet.expected] == ["TestCam"]
+    text = "\n".join(crosscheck.render(quiet))
+    assert "keeps by design" in text
+    assert "still readable in the output" not in text
+
+    # ...and declaring that tag must not quieten a different one in the same group.
+    other = crosscheck.run(photo, photo, ["secret-app 1.0"],
+                           expected_tags=frozenset({tag}))
+    assert [v for v, _w in other.leaked] == ["secret-app 1.0"]
+
+
 def test_a_real_scrub_leaks_nothing_and_says_so(photo, tmp_path):
     out = str(tmp_path / "out.jpg")
     _, report = cli.scrub_file_reported(photo, out, "F1",

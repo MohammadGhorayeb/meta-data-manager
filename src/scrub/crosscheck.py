@@ -170,12 +170,19 @@ def command_for(path: str) -> str:
 
 
 def run(in_path: str, out_path: str, removed_values=(),
-        expected_groups: frozenset[str] = frozenset()) -> CrossCheck:
+        expected_groups: frozenset[str] = frozenset(),
+        expected_tags: frozenset[str] = frozenset()) -> CrossCheck:
     """Compare what ExifTool reads before and after, and look for what we claimed
     to remove.
 
     `expected_groups` names ExifTool groups a tier documents as surviving, so a
     value found there is reported as a known residual rather than as a failure.
+    `expected_tags` does the same for a single tag, matched on the bare tag name or
+    the full `Group:Tag` key — for the case where the group is far too broad to
+    exempt. HEIC is that case: the one auxiliary image this tier keeps on purpose
+    announces its type in `QuickTime:AuxiliaryImageType`, and that string contains
+    `Apple`, but exempting the whole `QuickTime` group would wave through 53 tags to
+    excuse one.
     """
     cmd = command_for(out_path)
     if not available():
@@ -208,7 +215,8 @@ def run(in_path: str, out_path: str, removed_values=(),
             if needle not in f"{key} {val}".lower():
                 continue
             where = group_of(key)
-            if where in expected_groups:
+            if where in expected_groups or key in expected_tags \
+                    or key.rsplit(":", 1)[-1] in expected_tags:
                 check.expected.append((text, key))
             else:
                 check.leaked.append((text, key))

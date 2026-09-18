@@ -35,26 +35,70 @@ from . import walker as w
 # Items whose whole purpose is to describe, not to depict.
 DROP_TYPES = {b"Exif", b"mime", b"uri "}
 
+# The one auxiliary image kept, named by the last component of its `auxC` URN.
+#
+# An HDR gain map is not a claim about the subject; it is a half-resolution
+# luminance map of the very pixels we are preserving, and it is *how the photograph
+# renders* on an HDR display. Removing it is a content change under hard constraint
+# #1, and — this is the uncomfortable part — one our own oracle cannot see: libheif
+# decodes the primary item and ignores the gain map, so a pixel-identity test stays
+# green while the picture changes on the device its owner looks at it on (limit #32).
+#
+# Every other auxiliary image goes. A depth map is the shape of the scene; Apple's
+# semantic skin/sky/portrait mattes are machine-made claims about the subject (a map
+# of where the people are); a `styledeltamap` is the edit that was applied; a
+# `linearthumbnail` is a second picture of the same scene. An unrecognised aux type
+# is dropped too — the allowlist is deliberately the small side, so a new Apple
+# matte we have never seen fails toward removal.
+KEEP_AUX_KINDS = frozenset({"hdrgainmap"})
 
-def _dropped_ids(layout: w.Layout, drop_auxiliary: bool) -> set[int]:
-    """Which items go.
 
-    The thumbnail goes for the Phase 1 reason: it is a second picture of the same
-    scene, and a thumbnail that outlives an edit shows what the picture used to be.
+def _aux_kind(urn: str) -> str:
+    """The trailing component of an `auxC` URN.
 
-    Auxiliary images — depth maps and Apple's semantic skin/person mattes — are the
-    genuinely arguable ones, and the argument is recorded rather than settled by
-    taste. They are not the photograph and removing them does not change how it
-    looks, but they *are* derived content: a person-segmentation matte is a map of
-    where the people in the frame are. A privacy tool should not ship that quietly,
-    so the default is to drop them and say so in the report.
+    Apple rewrites the prefix — `urn:com:apple:photo:2019:aux:` became
+    `urn:com:apple:photo:2020:aux:` and then `tag:apple.com,2023:photo:aux:` — while
+    keeping the name at the end. Matching the tail rather than the whole string means
+    a year bump does not silently turn a kept image into a dropped one.
     """
+    return urn.rsplit(":", 1)[-1].strip().lower()
+
+
+def _policy_drops(layout: w.Layout, drop_auxiliary: bool) -> set[int]:
+    """Items removed because of what they are, before the graph has its say."""
     drop = {i.item_id for i in layout.items.values() if i.item_type in DROP_TYPES}
+    # The thumbnail goes for the Phase 1 reason: it is a second picture of the same
+    # scene, and a thumbnail that outlives an edit shows what the picture used to be.
     drop |= layout.thumbnail_ids()
     if drop_auxiliary:
-        drop |= layout.auxiliary_ids()
+        drop |= {a for a in layout.auxiliary_ids()
+                 if _aux_kind(layout.aux_types.get(a, "")) not in KEEP_AUX_KINDS}
     drop.discard(layout.primary_id)          # never the picture itself
     return drop
+
+
+def _dropped_ids(layout: w.Layout, drop_auxiliary: bool) -> set[int]:
+    """Which items go — removal computed on the `dimg` graph, not per item.
+
+    The first version of this function was the per-item version, and it was wrong in
+    a way that only a real photo shows. An auxiliary image on an iPhone is usually a
+    **grid**: item 62 is the HDR gain map, and the 8 bytes `iloc` points at are the
+    grid descriptor, while the picture itself lives in twelve separate `hvc1` items.
+    Dropping item 62 therefore removed the *description* of the auxiliary image and
+    left every one of its tiles in `mdat` — 381 KB of a 1.17 MB file on IMG_0502,
+    707 KB of 1.78 MB on IMG_2427, and each tile still individually decodable. The
+    file said the mattes were gone and carried them anyway.
+
+    So: an item survives if a surviving root still composes it. Roots are the items
+    nothing else derives from (the photograph, a `tmap`, a kept auxiliary), minus
+    whatever policy removes; removed items are **barriers**, so nothing is reached
+    through them, while a tile shared with a surviving image is still reached by that
+    other path.
+    """
+    by_policy = _policy_drops(layout, drop_auxiliary)
+    roots = ({layout.primary_id} | (set(layout.items) - layout.dimg_targets()))
+    keep = layout.reachable_from(roots - by_policy, blocked=by_policy)
+    return set(layout.items) - keep
 
 
 def _keep_order(layout: w.Layout, dropped: set[int]) -> list[w.Item]:
@@ -136,17 +180,20 @@ def _rebuild_iref(iref: isobmff.Box, dropped: set[int]) -> bytes | None:
 
 
 def _build_iloc(fmt: w.IlocFormat, placements: list[tuple[int, int, int]],
-                idat_items: list[w.Item]) -> bytes:
+                idat_placements: dict[int, list[tuple[int, int]]]) -> bytes:
     """Emit an `iloc` with the new offsets.
 
     `placements` is (item_id, offset, length) for file-addressed items;
-    `idat_items` keep their original payloads because their bytes live in `idat`,
-    which this tier does not move.
+    `idat_placements` is item id -> [(offset within the REBUILT `idat`, length)].
+
+    The idat half used to be written as `max(extent.offset, 0)`, and the model stored
+    -1 there, so every idat-stored item was located at **offset 0**. The primary grid
+    survived that because it is written first; a `tmap` beside it did not, and read
+    the grid descriptors instead of its own tone-mapping data. It is the `stco` trap
+    one level further down — the file parses, and the channel it corrupts is one the
+    pixel oracle cannot see.
     """
-    if fmt.version < 2:
-        head = struct.pack(">BBBB", fmt.version, 0, 0, 0)
-    else:
-        head = struct.pack(">BBBB", fmt.version, 0, 0, 0)
+    head = struct.pack(">BBBB", fmt.version, 0, 0, 0)
     sizes = bytes([(fmt.offset_size << 4) | fmt.length_size,
                    (fmt.base_offset_size << 4) | fmt.index_size])
 
@@ -163,19 +210,18 @@ def _build_iloc(fmt: w.IlocFormat, placements: list[tuple[int, int, int]],
         body += length.to_bytes(fmt.length_size, "big")
         entries.append((item_id, body))
 
-    for item in idat_items:
+    for item_id, spans in idat_placements.items():
         body = b""
         if fmt.version in (1, 2):
             body += struct.pack(">H", w.CONSTRUCTION_IDAT)
         body += struct.pack(">H", 0)
         body += b"\x00" * fmt.base_offset_size
-        body += struct.pack(">H", len(item.extents))
-        for extent in item.extents:
+        body += struct.pack(">H", len(spans))
+        for offset, length in spans:
             body += b"\x00" * fmt.index_size
-            # An idat-relative offset is preserved verbatim: `idat` is untouched.
-            body += max(extent.offset, 0).to_bytes(fmt.offset_size, "big")
-            body += extent.length.to_bytes(fmt.length_size, "big")
-        entries.append((item.item_id, body))
+            body += offset.to_bytes(fmt.offset_size, "big")
+            body += length.to_bytes(fmt.length_size, "big")
+        entries.append((item_id, body))
 
     entries.sort(key=lambda e: e[0])
     out = bytearray(head + sizes)
@@ -190,8 +236,101 @@ def _build_iloc(fmt: w.IlocFormat, placements: list[tuple[int, int, int]],
     return bytes(out)
 
 
-def _idat_offsets_preserved(layout: w.Layout) -> list[w.Item]:
-    return [i for i in layout.items.values() if not i.in_file]
+def _rebuild_idat(layout: w.Layout,
+                  dropped: set[int]) -> tuple[bytes, dict[int, list[tuple[int, int]]]]:
+    """Re-pack `idat` with only the surviving items, and say where they landed.
+
+    `idat` used to be copied through whole. It is small — 86 bytes on a real photo —
+    but it is where the *grid descriptors* live, so copying it whole left the
+    description of every removed auxiliary grid sitting in the output, addressable by
+    anyone who reads `iloc` rather than `iinf`.
+
+    Nothing here depends on file offsets, so the result is computed once and used by
+    both offset passes below; `idat` shrinking cannot move `mdat` twice.
+    """
+    if layout.idat is None:
+        return b"", {}
+    old = layout.idat.payload
+    out = bytearray()
+    placements: dict[int, list[tuple[int, int]]] = {}
+    survivors = [i for i in layout.items.values()
+                 if not i.in_file and i.item_id not in dropped and i.extents]
+    # Original order, for the `_keep_order` reason: our own sorting would be our own
+    # fingerprint.
+    survivors.sort(key=lambda i: min(e.idat_offset for e in i.extents))
+    for item in survivors:
+        spans = []
+        for extent in item.extents:
+            start = len(out)
+            out += old[extent.idat_offset:extent.idat_offset + extent.length]
+            spans.append((start, extent.length))
+        placements[item.item_id] = spans
+    return bytes(out), placements
+
+
+def _rebuild_grpl(grpl: isobmff.Box, dropped: set[int]) -> bytes | None:
+    """Drop removed items from every entity group.
+
+    `grpl` holds `EntityToGroupBox`es — Apple writes an `altr` group meaning "these
+    are alternatives, show one" — and they name items by id, which makes them a
+    fourth table that can point at something no longer there. Same failure as a
+    dangling `iref`, in a box the rewrite previously copied through verbatim.
+    """
+    kept: list[bytes] = []
+    for box in w.children_of(grpl):
+        p = box.payload
+        if len(p) < 12:
+            continue
+        group_id = struct.unpack_from(">I", p, 4)[0]
+        count = struct.unpack_from(">I", p, 8)[0]
+        ids = [struct.unpack_from(">I", p, 12 + 4 * k)[0]
+               for k in range(count) if 12 + 4 * (k + 1) <= len(p)]
+        ids = [i for i in ids if i not in dropped]
+        if not ids:
+            continue
+        body = (p[:4] + struct.pack(">II", group_id, len(ids))
+                + b"".join(struct.pack(">I", i) for i in ids))
+        kept.append(_box(box.type, body))
+    return b"".join(kept) if kept else None
+
+
+def _meta_body(layout: w.Layout, dropped: set[int], iloc_body: bytes,
+               new_idat: bytes) -> bytes:
+    """Rebuild `meta` once, from one place.
+
+    Written as a single function because it used to be two copies — one for the pass
+    that measures and one for the pass that fills in the offsets — and two copies of
+    a rewrite that must agree byte for byte is a bug waiting for the first table that
+    is only fixed in one of them.
+    """
+    children: list[bytes] = []
+    for child in layout.meta.children:
+        if child.type == b"iinf":
+            body = _rebuild_iinf(child, dropped)
+        elif child.type == b"iref":
+            maybe = _rebuild_iref(child, dropped)
+            if maybe is None:
+                continue
+            body = maybe
+        elif child.type == b"grpl":
+            maybe = _rebuild_grpl(child, dropped)
+            if maybe is None:
+                continue
+            body = maybe
+        elif child.type == b"iprp":
+            body = _rebuild_iprp(child, dropped)
+        elif child.type == b"idat":
+            if not new_idat:
+                continue
+            body = new_idat
+        elif child.type == b"iloc":
+            body = iloc_body
+        else:
+            body = child.payload if child.payload else isobmff.serialize(
+                child.children)
+        children.append(_box(child.type, body))
+    head = layout.meta.payload[:4] if layout.meta.payload else b"\x00" * 4
+    return head + b"".join(children)
 
 
 def scrub(data: bytes, *, drop_auxiliary: bool = True) -> bytes:
@@ -221,27 +360,12 @@ def scrub(data: bytes, *, drop_auxiliary: bool = True) -> bytes:
 
     # Pass 2: rebuild `meta`. `iloc` entry sizes do not depend on the offset VALUES
     # (the field widths are fixed per file), so meta's size is known before the
-    # absolute offsets are, and the two never chase each other.
-    idat_items = _idat_offsets_preserved(layout)
-    children: list[bytes] = []
-    for child in layout.meta.children:
-        if child.type == b"iinf":
-            body = _rebuild_iinf(child, dropped)
-        elif child.type == b"iref":
-            body = _rebuild_iref(child, dropped)
-            if body is None:
-                continue
-        elif child.type == b"iloc":
-            body = _build_iloc(layout.iloc_format, relative, idat_items)
-        elif child.type == b"iprp":
-            body = _rebuild_iprp(child, dropped)
-        else:
-            body = child.payload if child.payload else isobmff.serialize(
-                child.children)
-        children.append(_box(child.type, body))
-
-    meta_body = layout.meta.payload[:4] if layout.meta.payload else b"\x00" * 4
-    meta_box = _box(b"meta", meta_body + b"".join(children))
+    # absolute offsets are, and the two never chase each other. `idat` is re-packed
+    # first, once, for the same reason.
+    new_idat, idat_placements = _rebuild_idat(layout, dropped)
+    meta_box = _box(b"meta", _meta_body(
+        layout, dropped,
+        _build_iloc(layout.iloc_format, relative, idat_placements), new_idat))
     ftyp_box = _box(b"ftyp", ftyp.payload)
 
     mdat_start = len(ftyp_box) + len(meta_box) + 8      # + mdat header
@@ -249,77 +373,20 @@ def scrub(data: bytes, *, drop_auxiliary: bool = True) -> bytes:
 
     # Re-emit `iloc` with absolute offsets. Same length by construction, so the
     # layout computed above still holds — asserted rather than assumed.
-    final_children: list[bytes] = []
-    for child in layout.meta.children:
-        if child.type == b"iloc":
-            body = _build_iloc(layout.iloc_format, absolute, idat_items)
-        elif child.type == b"iinf":
-            body = _rebuild_iinf(child, dropped)
-        elif child.type == b"iref":
-            body = _rebuild_iref(child, dropped)
-            if body is None:
-                continue
-        elif child.type == b"iprp":
-            body = _rebuild_iprp(child, dropped)
-        else:
-            body = child.payload if child.payload else isobmff.serialize(
-                child.children)
-        final_children.append(_box(child.type, body))
-    final_meta = _box(b"meta", meta_body + b"".join(final_children))
+    final_meta = _box(b"meta", _meta_body(
+        layout, dropped,
+        _build_iloc(layout.iloc_format, absolute, idat_placements), new_idat))
     if len(final_meta) != len(meta_box):
         raise ParseError("HEIC: meta size changed when offsets were filled in")
 
     return ftyp_box + final_meta + _box(b"mdat", bytes(payload))
 
 
-def _children_of(box: isobmff.Box) -> list[isobmff.Box]:
-    """A container's children, whether or not the shared walker knows it is one.
-
-    `standards/isobmff.CONTAINERS` is the set M4A needed, and `iprp` is not in it —
-    so `iprp.children` is empty and its payload holds the raw child boxes. Rebuilding
-    from `.children` therefore emitted an **empty `iprp`**, and libheif answered
-    `Invalid input: No 'ipco' box`: a file that walked perfectly and decoded to
-    nothing, which is exactly the failure mode this tier's decode test exists for.
-
-    Handled here rather than by adding `iprp` to the shared set, because that set is
-    load-bearing for M4A's box surgery and widening it to suit a different format is
-    how a shared module acquires a format-specific bug.
-    """
-    if box.children:
-        return box.children
-    try:
-        return isobmff.parse(box.payload)
-    except Exception:                                     # noqa: BLE001
-        return []
-
-
-def _parse_ipma(payload: bytes) -> tuple[int, int, list[tuple[int, list[tuple[int, bool]]]]]:
-    """`(version, flags, [(item_id, [(property_index, essential)])])`."""
-    version, flags = payload[0], int.from_bytes(payload[1:4], "big")
-    wide_id = version >= 1
-    wide_index = bool(flags & 1)
-    count = struct.unpack_from(">I", payload, 4)[0]
-    i = 8
-    out = []
-    for _ in range(count):
-        item_id = (struct.unpack_from(">I", payload, i)[0] if wide_id
-                   else struct.unpack_from(">H", payload, i)[0])
-        i += 4 if wide_id else 2
-        n = payload[i]
-        i += 1
-        assoc = []
-        for _k in range(n):
-            if wide_index:
-                raw = struct.unpack_from(">H", payload, i)[0]
-                essential, index = bool(raw & 0x8000), raw & 0x7FFF
-                i += 2
-            else:
-                raw = payload[i]
-                essential, index = bool(raw & 0x80), raw & 0x7F
-                i += 1
-            assoc.append((index, essential))
-        out.append((item_id, assoc))
-    return version, flags, out
+# The readers live in the walker, with the rest of the item model; the writers stay
+# here. Aliased rather than re-implemented — one copy of `iprp`'s awkward
+# not-a-container rule is the whole point.
+_children_of = w.children_of
+_parse_ipma = w.parse_ipma
 
 
 def _emit_ipma(version: int, flags: int,
@@ -425,7 +492,16 @@ def _box(box_type: bytes, body: bytes) -> bytes:
 
 
 def residuals(data: bytes) -> list[str]:
-    """Metadata that should have been removed and was not — a scrub failure."""
+    """Metadata that should have been removed and was not — a scrub failure.
+
+    The orphan check is here because the interesting failure was not a named tag
+    surviving: it was **content with nothing left to name it**. Dropping a tiled
+    auxiliary image removed the 8-byte grid descriptor and left its twelve tiles in
+    `mdat`, where no `iinf` entry mentions them and every tag-based check reports the
+    file clean. So the check is connectivity, not naming — an item nothing in the
+    file relates to the photograph is bytes we failed to remove, whatever it is
+    called.
+    """
     try:
         layout = w.walk(data)
     except ParseError as exc:
@@ -434,6 +510,16 @@ def residuals(data: bytes) -> list[str]:
     for item in layout.metadata_items:
         out.append(f"{item.item_type.decode('latin-1').strip()} item "
                    f"{item.item_id} survived ({item.size} bytes)")
-    for thumb in layout.thumbnail_ids():
+    for thumb in sorted(layout.thumbnail_ids()):
         out.append(f"thumbnail item {thumb} survived")
+    for aux in sorted(layout.auxiliary_ids()):
+        kind = _aux_kind(layout.aux_types.get(aux, ""))
+        if kind not in KEEP_AUX_KINDS:
+            out.append(f"auxiliary image item {aux} survived "
+                       f"({layout.aux_types.get(aux, 'unnamed')})")
+    orphans = sorted(set(layout.items) - layout.connected_to(layout.primary_id))
+    if orphans:
+        total = sum(layout.items[i].size for i in orphans)
+        out.append(f"{len(orphans)} orphaned item(s) nothing relates to the "
+                   f"picture, {total} bytes: {orphans[:8]}")
     return out
