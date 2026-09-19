@@ -110,11 +110,18 @@ GLOSSARY = {
 # as supported; the rest are reported as planned. Landing a format's matrix is
 # all it takes for this report to start claiming it — there is no second list to
 # remember to update.
+#
+# The ids here MUST be the ids the matrices are published under — the `format`
+# field written by tests/scrub/gen_matrix_*.py. Word documents were listed here
+# as `ooxml` (the name of the shared package layer, src/scrub/formats/ooxml/)
+# while their matrix is published as `docx`, and the mismatch cost the report the
+# whole Word section: the lookup missed, `load_capabilities()` skipped it, and
+# nothing said so. `unclaimed_matrices()` below now makes that failure loud.
 ROADMAP = [
     ("jpeg", "JPEG photos"), ("png", "PNG graphics and screenshots"),
     ("mp3", "MP3 audio"), ("flac", "FLAC lossless audio"),
     ("m4a", "M4A / AAC audio"),
-    ("pdf", "PDF documents"), ("ooxml", "Word documents"),
+    ("pdf", "PDF documents"), ("docx", "Word documents"),
     ("mp4", "MP4 video"), ("heic", "HEIC iPhone photos"),
     ("raw", "camera RAW files"),
 ]
@@ -122,7 +129,7 @@ ROADMAP = [
 FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
                 "mp3": "MP3 (audio)", "flac": "FLAC (lossless audio)",
                 "m4a": "M4A (Apple / AAC audio)",
-                "pdf": "PDF (documents)", "ooxml": "Word (.docx)",
+                "pdf": "PDF (documents)", "docx": "Word (.docx)",
                 "mp4": "MP4 (video)", "heic": "HEIC (iPhone photos)",
                 "raw": "Camera RAW"}
 
@@ -377,7 +384,7 @@ FORMAT_GROUPS = [
     ("MP3 audio", "🎵", ["mp3"]),
     ("FLAC audio", "🎶", ["flac"]),
     ("M4A audio", "🎬", ["m4a"]),
-    ("Documents", "📄", ["pdf", "ooxml"]),
+    ("Documents", "📄", ["pdf", "docx"]),
     ("Video and camera", "📷", ["mp4", "heic", "raw"]),
 ]
 
@@ -385,6 +392,19 @@ FORMAT_GROUPS = [
 # formats are matched before JPEG, whose tests are named after the fidelity
 # tiers (test_f1/f2/f3) rather than the format.
 FORMAT_TEST_PATTERNS = [
+    # DOCX and HEIC come first because their tests collide with the broad
+    # patterns further down: test_docx_f2.py has test_f1_still_refuses_what_f2
+    # _accepts and an embedded-JPEG check, and test_heic.py has both
+    # test_the_segmentation_blob_goes and a "without stealing m4a" dispatch
+    # test. Matched later, every one of those is counted against another format.
+    #
+    # The sharpest of those collisions is invisible on sight: MP3's `e_engine`
+    # (for the E-ENGINE experiment) is a substring of "th|e_engine|s_own", so the
+    # six DOCX F3 tests named after the re-typesetting *engine* were counted as
+    # MP3 checks. Ordering fixes it; a pattern that has to be a whole word would
+    # be the deeper fix, and is not worth it for a table this small.
+    ("docx", ["docx", "ooxml", "e_session_id"]),
+    ("heic", ["heic"]),
     ("png", ["png"]),
     ("mp3", ["mp3", "e_lame", "e_engine"]),
     ("flac", ["flac"]),
@@ -398,12 +418,62 @@ FORMAT_TEST_PATTERNS = [
 ]
 
 
+RESULTS_DIR = os.path.join(REPO, "tests", "harness", "results")
+
+# Matrices are published as `<format>_<tool>.json`; only our own tool's are the
+# report's business. `toyf_leaky_stub.json` is the harness's deliberately-leaky
+# fixture and is not a format we ship, so it is excluded by the tool name rather
+# than by a name we would have to remember to keep in sync.
+TOOL_NAME = "irreversible_scrubber"
+
+
+def published_matrices() -> dict[str, str]:
+    """`{format id: path}` for every matrix our own scrubber has published.
+
+    The id is read from the document's own `format` field rather than parsed out
+    of the filename, because the field is what the rest of the pipeline keys on.
+    """
+    found = {}
+    for path in sorted(glob.glob(os.path.join(RESULTS_DIR,
+                                              f"*_{TOOL_NAME}.json"))):
+        doc = load_json(path)
+        fmt = (doc or {}).get("format")
+        if fmt:
+            found[fmt] = path
+    return found
+
+
+def unclaimed_matrices() -> list[str]:
+    """Formats measured and published on disk that no ROADMAP entry names.
+
+    This is the gap that hid Word documents from the report for a whole phase: a
+    matrix published as `docx`, a roadmap listing it as `ooxml`, a lookup that
+    missed, and a `continue` that said nothing. A format can be absent from the
+    report for exactly one legitimate reason — nobody has measured it yet — and
+    that reason is visible on disk. Any other absence is a bug, and this names it.
+    """
+    return sorted(set(published_matrices()) - {fmt for fmt, _ in ROADMAP})
+
+
 def load_capabilities() -> list[dict]:
-    """Per-format capability rows, derived from the Pareto matrices on disk."""
+    """Per-format capability rows, derived from the Pareto matrices on disk.
+
+    A published matrix with no matching roadmap id is reported, never skipped —
+    see `unclaimed_matrices()`. It warns rather than raises so a naming slip
+    costs the run a loud line instead of the entire report; the hard failure is
+    a test (test_qa_report.py), which is where it can be fixed before it ships.
+    """
+    found = published_matrices()
+    for fmt in sorted(set(found) - {f for f, _ in ROADMAP}):
+        print(f"WARNING: {os.path.relpath(found[fmt], REPO)} publishes results "
+              f"for '{fmt}', which no ROADMAP entry claims — the report cannot "
+              "show it. Add it to ROADMAP/FORMAT_LABEL, or fix the id the matrix "
+              "is generated under.", file=sys.stderr)
+
     rows = []
     for fmt, _ in ROADMAP:
-        doc = load_json(os.path.join(REPO, "tests", "harness", "results",
-                                     f"{fmt}_irreversible_scrubber.json"))
+        doc = load_json(os.path.join(RESULTS_DIR,
+                                     f"{fmt}_{TOOL_NAME}.json"))
         if not doc:
             continue
         cells = {(c["adversary"], c["fidelity"]): c["verdict"]
@@ -905,11 +975,39 @@ def _verdict_lines(cap: dict) -> tuple[list[str], list[str], str]:
     return works, open_, solved_at or ""
 
 
+# What a mode costs is generic prose (FIDELITY_TIERS) everywhere it is honest,
+# and overridden where the measurement says otherwise. Both entries are Word
+# documents, and both are costs a reader would act on:
+#
+#   F2 — the deep clean accepts tracked changes and removes comments, because
+#        with markup on a reader *sees* them, so they are content that cannot
+#        survive a rebuild (docs/limits.md #24). "Nothing at all" would tell
+#        someone with a document still under review that they lose nothing.
+#   F3 — the full rebuild re-typesets through another program, and we cannot
+#        measure what that costs: our own before/after render is done by the
+#        same program that did the rebuild, and Word cannot be scripted on any
+#        platform (docs/limits.md #26). "A tiny, invisible amount" would publish
+#        as measured the one number this project has said it does not have.
+#
+# These live here rather than in docs/formats.md because they are table cells,
+# and the story beneath the table must not be the only place the truth appears —
+# a reader who reads only the table is the reader this matters most to.
+COST_OVERRIDE = {
+    ("docx", "F2"): "Nothing visible on the page — but **tracked changes are "
+                    "accepted and comments removed**, and the review history "
+                    "cannot be recovered.",
+    ("docx", "F3"): "**Not measured, and reported as not measured** — the "
+                    "document is re-typeset by another program, so fonts and "
+                    "spacing can shift.",
+}
+
+
 def _format_mode_table(cap: dict) -> str:
     """One row per cleaning mode — far easier to read than a cramped grid."""
     rows = ["| Cleaning mode | Hidden tags removed | Nobody can tell who made it "
             "| What it costs you |", "|---|:--:|:--:|---|"]
-    for code, ic, name, cost, _ in FIDELITY_TIERS:
+    for code, ic, name, generic, _ in FIDELITY_TIERS:
+        cost = COST_OVERRIDE.get((cap["fmt"], code), generic)
         a1, a2 = cap["a1"][code], cap["a2"][code]
         if a1 == "not_applicable" and a2 == "not_applicable":
             rows.append(f"| {ic} **{name}** | — | — | "
@@ -988,6 +1086,18 @@ def section_formats(run: Run) -> str:
                          "The measurements above stand; the explanation is "
                          "absent, not empty."]
             out += ["", "\n".join(body)]
+
+    # A measured format that the report cannot render is a reporting failure,
+    # and it belongs in the report rather than only in the build log. Saying
+    # nothing here is exactly how Word documents went missing.
+    orphans = unclaimed_matrices()
+    if orphans:
+        out += ["", "---", "",
+                "> ⚠️ **This report is incomplete.** Measured results exist for "
+                + ", ".join(f"`{o}`" for o in orphans)
+                + " under `tests/harness/results/`, but no roadmap entry claims "
+                "that name, so those file types have no section anywhere above. "
+                "The measurements are real; the report is at fault."]
 
     planned = [label for fmt, label in ROADMAP if fmt not in covered]
     if planned:

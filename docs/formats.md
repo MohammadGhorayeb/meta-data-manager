@@ -23,6 +23,16 @@ Each block is delimited so the report can pull it out on its own. Adding a new
 format means adding a `FORMAT:<id>` block here; if a format publishes results
 with no block, the report says so instead of quietly omitting it.
 
+**The `<id>` must be the id the format's Pareto matrix is published under** — the
+`format` field written by `tests/scrub/gen_matrix_*.py`, which is also the
+filename stem in `tests/harness/results/`. Word documents were listed in the
+report's roadmap as `ooxml` (the name of the *shared package layer* in
+`src/scrub/formats/ooxml/`) while their matrix was published as `docx`, and the
+mismatch silently cost the report its entire Word section for a phase — the
+lookup missed, the loader skipped it, and the guard that should have caught it
+was comparing two lists that were both missing DOCX. The guard now reads the
+matrices off disk, so a name that does not line up fails a test instead.
+
 ---
 
 <!-- FORMAT:jpeg:BEGIN -->
@@ -195,6 +205,83 @@ print about who made the font; and the deep clean makes files about a **third
 larger**, which matters because file size is itself one of the clues we report as
 leaking.
 <!-- FORMAT:pdf:END -->
+
+<!-- FORMAT:docx:BEGIN -->
+**All three modes exist**, and every tick and cross beside them was measured on
+four programs writing the same document — LibreOffice, macOS `textutil`, MAT2's
+own output, and a synthetic writer built to differ on purpose.
+
+A Word file is not a document. It is a **zip archive of small files**, so it has
+two makers rather than one: the program that wrote the words, and the program
+that zipped them up. They leak separately, so we report them separately rather
+than averaging them into one number that would hide whichever half is worse.
+
+**What the light clean removes.** The author, the company, the editing time, the
+revision count, the template it came from, the little picture of the first page —
+and the **hidden identifiers Word stamps on every paragraph**. Those last ones
+matter more than they sound: a paragraph's id **travels with it when it is pasted
+into another document**, so two files that look unrelated can be tied back to one
+source. There is also a permanent id for the document itself, written twice in
+two different dialects. We remove all of them. And the zipping half is closed
+outright at this level: which computer zipped it, in what order, with what clock
+— none of that separates one program from another in our output any more.
+
+**A claim we had to correct.** This project inherited, from published research,
+that Word's hidden editing-session ids defeat every cleaning tool including the
+standard one. We measured it instead of repeating it, and **it is not true** — the
+standard tool removes the ids the research named. What it leaves is the family
+nobody names: the per-paragraph ids and the permanent document id above. So the
+honest version is sharper than the original claim, not weaker: a cleaner can
+close the channel that has a name and leave the one that does not.
+
+**What the deep clean adds.** With the tags gone, what still identifies the
+writing program is *how it spells the markup* — which shorthand names it uses for
+its vocabulary, whether it writes an empty tag one way or the other, how it
+punctuates the first line of each internal file. The deep clean rewrites every
+internal file through one single writer, and that half stops separating anyone.
+The document itself is untouched: all four programs' files render
+**byte-identically**, before and after, checked by rendering them to pictures
+rather than by trusting our own rule.
+
+**What the full rebuild adds, and this is the one file type where it earns its
+place.** For a PDF, the strongest mode photographs the page, which just moves the
+typesetter's signature into the pixels. A Word document is different: rebuilding
+it **re-types the document from scratch** through one program, so the program's
+own choices replace the original's. Seven separate clues collapse to **one**.
+
+**What is deliberately not fixed.**
+
+- **The deep clean cannot remove what a program's *choices* say about it** —
+  which internal files it bothers to write, which styles it defines, what it
+  records in its settings, how it builds a paragraph. Changing any of those
+  changes the document. It is a floor, not an unfinished job, and we say which
+  clues are left rather than reporting a bare failure.
+- **One clue survives even the full rebuild:** a document whose *original*
+  defined a style keeps that style. It describes where the document came from,
+  not which program handed it to us — the same kind of leftover as a re-recorded
+  song remembering its first recording's quality setting.
+- **The full rebuild's cost is reported as unmeasured, not as zero.** Our check
+  renders the document before and after and gets identical pictures — but the
+  program doing the rendering is the same one that rebuilt it, which is a program
+  grading its own homework. The real cost shows up on opening the file in Word,
+  and **Word cannot be driven by a script on any platform**. For the same reason
+  Word is **not in the comparison set** at all, and the result says so out loud
+  instead of quietly comparing three programs and calling it four.
+- **Tracked changes and comments are refused by the light clean and resolved by
+  the deeper two.** With markup switched on a reader *sees* them, so they are
+  content, and deleting them silently would change what the document says. The
+  light clean therefore stops and explains rather than touching such a file; the
+  deeper modes accept the changes as the author intended and tell you so. The
+  review history cannot be recovered afterwards.
+- **Bookmark names and links stay.** A table of contents, a cross-reference and a
+  hyperlink all find their destination *by name*, so deleting the name turns a
+  working document into a broken one. Anything that survives for this reason is
+  **listed back to you by name**. The one exception we do remove is the invisible
+  marker recording where the cursor was when the file was last saved, because
+  nothing points at it.
+- **File size still separates the programs**, at every mode. It is not a tag and
+  there is nothing inside the file to delete to fix it.
+<!-- FORMAT:docx:END -->
 
 <!-- FORMAT:heic:BEGIN -->
 The photos on your phone, and the first format where "delete the tag" is not

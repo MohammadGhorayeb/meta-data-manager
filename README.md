@@ -214,7 +214,7 @@ The report itself renders **on the run page** (Job Summary) — no external site
 - a **coverage bar**, overall and file by file;
 - results grouped into plain-English areas (*Hidden data removed*, *Picture and sound preserved*, *Made untraceable*, *Cannot be recovered*, *File stays valid*, *The tool behaves*), with a ✅-grid across Python versions;
 - **what failed**, in readable words, with the file and line — also annotated inline on the pull-request diff;
-- a per-format **capability table** read from the measured Pareto matrices, so a format the tool cannot yet do can never be claimed;
+- a per-format **capability table** read from the measured Pareto matrices, so a format the tool cannot yet do can never be claimed — and, since the guard reads the matrices off disk rather than trusting the report's own roadmap, one the tool *can* do can never go missing either (it did: a roadmap entry naming Word documents `ooxml` while their matrix is published as `docx` silently cost the report its entire Word section, and both the loader and the test agreed by being wrong together);
 - the **"What we can't do yet"** section rendered straight from [`docs/limits.md`](docs/limits.md) — the single source of truth for every known limit, so the published report cannot drift from reality (tests enforce the wiring, and a missing document is reported loudly rather than rendering as a clean bill of health);
 - the **before → after** scrub flow on real sample files.
 
