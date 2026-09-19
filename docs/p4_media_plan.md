@@ -388,3 +388,208 @@ the fix.
 Phase 4 continues to MP4 (cheap: `stco`/`co64` patching already exists and is proven)
 and then RAW, whose embedded full-size previews are the same "item with its own EXIF"
 shape HEIC establishes here.
+
+---
+
+# MP4
+
+## 5. M0 — measured ground truth (the opening spike)
+
+Six producers, one 2-second 160×120 test clip, measured with the existing
+`standards/isobmff.py` walker and `exiftool` as the measuring stick. No real
+phone video is in this corpus yet — see M1 below, and read every number here as
+being about *muxers we can run*, not about what an iPhone writes.
+
+| producer | how | brand / compatible | top-level order |
+|---|---|---|---|
+| `ffmpeg_x264` | ffmpeg 8.1.1, libx264 | `isom` / isom,iso2,avc1,mp41 | `ftyp free mdat moov` |
+| `ffmpeg_x264_faststart` | same, `-movflags +faststart` | `isom` / same | `ftyp moov free mdat` |
+| `ffmpeg_videotoolbox` | ffmpeg, `h264_videotoolbox` | `isom` / same | `ftyp free mdat moov` |
+| `avfoundation` | Swift `AVAssetExportSession`, passthrough | **`mp42`** / isom,mp41,mp42 | `ftyp mdat moov` |
+| `mat2_out` | mat2 0.14.0 over `ffmpeg_x264` | `isom` / same | `ftyp free mdat moov` |
+| `exiftool_out` | `exiftool -all=` over the tagged file | `isom` / same | **`ftyp free moov mdat`** |
+
+The AVFoundation producer is a pass-through re-mux (the coded video and audio are
+copied, only the container is rewritten), which is deliberate: it gives a second
+*muxer* without introducing a second *encoder*, so the two producer channels M4A
+taught us to separate stay separated from the first measurement.
+
+Reproducing the corpus, so the numbers above can be re-derived rather than
+taken on trust (the AVFoundation producer needs macOS; everything else is portable):
+
+```
+ffmpeg -f lavfi -i testsrc2=size=160x120:rate=15:duration=2 \
+       -f lavfi -i sine=frequency=440:duration=2 \
+       -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -shortest out.mp4
+#  + `-movflags +faststart`                    -> the moov-first layout
+#  + `-c:v h264_videotoolbox`                  -> a second video encoder, same muxer
+#  + `-metadata location="+40.7128-074.0060/"` -> udta/loci
+#  + `-movflags use_metadata_tags`             -> the mdta Keys namespace as well
+```
+
+AVFoundation's file is an `AVAssetExportSession` pass-through re-mux
+(`AVAssetExportPresetPassthrough`, `outputFileType = .mp4`) of the first file —
+about 20 lines of Swift, to be folded into the corpus module at M1.
+
+### The leak surface, per locus — and the same coordinate written three times
+
+| locus | measured | disposition |
+|---|---|---|
+| `moov/udta/meta/ilst` (`mdir`/`appl`) | iTunes-style tags: `©too` = `Lavf62.12.101` in **every** ffmpeg file, `©nam`, `©cmt` | **drop** |
+| `moov/udta/loci` | GPS, binary, `Lat=40.71280 Lon=-74.00600 Body=earth`. Written **whenever** `-metadata location` is set, independent of muxer flags | **drop** |
+| `moov/udta/meta/keys` + `ilst` (`mdta`) | the Apple Keys namespace: `location`, `location-eng`, `com.apple.quicktime.location.ISO6709`, `make`, `model`, `encoder` | **drop** — see the trap below |
+| `mvhd` / `tkhd` create+modify | ffmpeg writes **0**; AVFoundation writes **local wall clock** (`3872688647` = 2026-09-19 18:50:47) | **zero** |
+| `hdlr` name field | ffmpeg writes the generic `VideoHandler` / `SoundHandler`; **AVFoundation writes `Core Media Video` / `Core Media Audio`** — the framework names itself in a field nothing needs | **normalize** |
+| `udta/meta/hdlr` vendor | `appl` — in files ffmpeg wrote, on a machine with no Apple software involved | **drop with the box** |
+| top-level `free` | 8 bytes, before `mdat`, in every ffmpeg file; absent in AVFoundation's | **drop** — and see the offset trap |
+| `mdat` sample data | the video and audio themselves | **keep** |
+
+The `hdlr` row is worth stating plainly: the one producer here that is not ffmpeg
+puts its own framework's name inside every track, in a field no player needs, in a
+file whose tag boxes are otherwise empty. `hdlr` is not a metadata box, so no
+tag-oriented scrubber touches it — see the benchmark below, where that turns out to
+matter more than the tags do.
+
+**One coordinate, three boxes.** Asking ffmpeg for a location once writes it into
+`udta/loci` *and*, with `-movflags use_metadata_tags`, three more times inside the
+Keys `ilst` (`location`, `location-eng`, and the `com.apple.quicktime…` spelling).
+This is the EXIF+XMP+IPTC problem of Phase 1 in a new container, and it means a
+handler written against `ilst` alone leaves the GPS sitting in `loci`.
+
+### The trap: a Keys `ilst` entry has no name
+
+In the `mdir` namespace an `ilst` child is a fourcc — `©nam`, `©too` — and a
+scrubber can match on it. In the `mdta` (Keys) namespace it is **not**: the child's
+four "type" bytes are a big-endian **1-based index into the `keys` box**, which
+holds the names in a parallel list. Measured on `ffmpeg_gps.mp4`:
+
+```
+keys[1] = location        ilst child type b'\x00\x00\x00\x01'  value '+40.7128-074.0060/'
+keys[4] = make            ilst child type b'\x00\x00\x00\x04'  value 'TestCorp'
+keys[6] = encoder         ilst child type b'\x00\x00\x00\x06'  value 'Lavf62.12.101'
+```
+
+Three consequences, and the third is the one that is not merely a leak:
+
+1. A handler that matches fourcc names finds **nothing here** — the GPS is invisible
+   to it, not merely missed.
+2. Dropping `keys` and keeping `ilst` leaves every **value** in the file and removes
+   only its label. The coordinate is still there in plain ASCII.
+3. Dropping *one* entry from `keys` **renumbers every entry after it**, so the
+   surviving `ilst` values silently acquire the wrong names. That is not a leak, it
+   is a corruption that still parses and still plays — the same species as the
+   `stco` failure M4A taught, in the metadata table rather than the sample table.
+   So `keys`/`ilst` are dropped or kept as a **pair**, never edited apart.
+
+### The offset trap fires, but not for the reason the plan assumed
+
+§"Why HEIC first" says MP4 "reuses the offset-patching we already have … two tables,
+both covered, zero new machinery." Both halves are true and the conclusion needs
+narrowing, so the claim is left standing and corrected here rather than edited away.
+
+`stco` holds **absolute** file offsets, so it needs patching only when bytes are
+removed *before* `mdat`. Measured: `moov` sits **after** `mdat` in four of the six
+producers, so removing metadata from `moov` moves nothing and the patch is a no-op.
+But **every ffmpeg file carries an 8-byte `free` box before `mdat`**, and a `free`
+box is padding — FLAC's lesson was to omit a tool constant rather than normalize it,
+so we will want it gone, and the moment it goes `mdat` moves and every `stco` entry
+is wrong. The trap is therefore conditional on *what we remove*, not on the format,
+and the dangerous reading is "moov is at the end, so offsets are safe."
+
+The `+faststart` layout puts `moov` before `mdat` outright, where any shrink moves
+`mdat`. And **exiftool's own output is faststart** even though its input was not, so
+a tool's layout choice is itself a producer channel, not a neutral detail.
+
+### Benchmark: what the standard tools do, measured rather than assumed
+
+**On the ffmpeg files, both tools do the job.** `mat2 0.14.0` and `exiftool -all=`
+each remove the GPS from all three loci and every identity tag with it. The
+inherited expectation that a video scrubber misses the QuickTime location box did
+not reproduce, and is not published as a result.
+
+**On the AVFoundation file, `exiftool -all=` removes nothing at all.** Not "less
+than we hoped" — it reports `1 image files unchanged` and the output is
+**byte-identical** to the input, while the file still carries:
+
+- `mvhd` and `tkhd` creation and modification times of **`2026-09-19 18:50:47`**, the
+  local wall-clock second the file was written, and
+- `Core Media Video` / `Core Media Audio` in the track handlers.
+
+Both are plainly identifying, and exiftool lists 71 tags for the file, so it is not
+that it cannot see them. They are simply not in a box it will write. A user who runs
+the measuring stick over an Apple-muxed video and gets "unchanged" has been told the
+file was already clean.
+
+**`mat2` does remove them — by re-muxing.** Its output is 76 577 bytes against the
+original's 76 224, the timestamps are zeroed, and the handler names come out
+`VideoHandler` / `SoundHandler`: ffmpeg's. That is a real clean and it is also a
+producer substitution, an F2-tier act rather than deletion, and it leaves
+`udta/meta/hdlr` (`mdir`/`appl`) with an **empty `ilst`** — scaffolding a
+never-tagged file does not have, since AVFoundation's original has no `udta` at all.
+So mat2's cleaned file is distinguishable from one that was never tagged. That is an
+A2 observation, not an A1 failure, and it is recorded as one.
+
+This is the clearest statement of the gap MP4 F1 exists to fill: the two loci that
+survive the measuring stick entirely are both ones we already planned to handle
+(`mvhd`/`tkhd` times, `hdlr` names), and neither is a tag.
+
+*(A first pass at the ffmpeg half of this counted `[System] FileName` as a surviving
+GPS tag, because the test files are named `*_gps_*`. It is recorded because it is
+the third time in this project a feature has measured something other than its name.
+Chasing that artifact is what led to running the tools against AVFoundation's file
+at all.)*
+
+### `claims()` today
+
+All six files are **correctly declined** by the current dispatcher
+(`UnsupportedFormatError: no handler for magic … ftyp`). The M4A handler's brand
+check (`M4A `) and HEIC's (`heic`/`heix`/`mif1`) both pass on `isom` and `mp42`, so
+the fail-closed property holds before MP4 exists and a test must keep it holding
+after.
+
+---
+
+## 6. MP4 work items
+
+### W8 — the MP4 walker and `claims()`
+Brand-based identification against the two ISOBMFF handlers already registered.
+`isom` and `mp42` are MP4; `M4A ` and `heic`/`heix`/`mif1` are not. Register **after**
+M4A and HEIC, as HEIC was, so the narrower claims run first.
+
+Refuse rather than guess: fragmented MP4 (`moof`/`mfra` — the sample tables are not
+in `moov` and the offset model is different), `co64` where we have never measured
+one, DRM boxes, and any file whose `stco` entries do not land inside `mdat`.
+
+### W9 — MP4 F1: drop the metadata boxes, patch what moved
+Drop `udta` whole (`loci`, `meta`/`keys`/`ilst` and all), zero `mvhd`/`tkhd`
+timestamps, normalize `hdlr` names, drop top-level `free`. Then patch `stco` by the
+delta of everything removed **before** `mdat` — which is zero in the common layout
+and non-zero as soon as `free` goes.
+
+The acceptance test is the M4A/HEIC lesson a third time: **decode**, do not parse.
+A wrong `stco` yields a file that walks perfectly, reports the right duration, and
+plays noise.
+
+### W10 — `Mp4Plugin` + the A2 channel, split two ways
+M4A's precedent applies directly: an MP4 has a **muxer** (brand, compatible-brand
+list, box order, `free` slack, timestamp scheme, `hdlr` vendor) and a **video
+encoder** (the coded H.264 itself). Report them as separate channels rather than
+averaging them, and keep the coded-video digest out of the categorical A2 channel
+for the reason M4A did.
+
+### W11 — the corpus problem, again and differently
+The six producers above are all software muxers on this machine. What is missing is
+a **real phone video** — the `.MOV` an iPhone writes, which carries `mebx` timed
+metadata tracks (motion data sampled per frame) that none of these files contain.
+That is a leak surface this spike has not touched and must not be claimed as absent.
+
+## 7. MP4 milestones
+
+| # | Deliverable | Status |
+|---|---|---|
+| **M0** | Opening spike — the census above, six producers | ✅ (§5) |
+| **M1** | Corpus decision (W11), including whether a real phone video is in scope | ☐ |
+| **M2** | Walker + `claims()` + refusal list (W8) | ☐ |
+| **M3** | MP4 F1 (W9) with a **decode** test | ☐ |
+| **M4** | `Mp4Plugin` + matrix + the two A2 channels (W10) | ☐ |
+| **M5** | `limits.md` rows and the `FORMAT:mp4` block in `docs/formats.md` | ☐ |
