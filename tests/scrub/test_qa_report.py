@@ -441,6 +441,26 @@ def test_the_word_modes_do_not_advertise_costs_they_never_measured():
     assert "Nothing at all — rebuilt from scratch" in jpeg
 
 
+def test_no_mode_table_cell_contradicts_a_documented_limit():
+    """The generic mode legend is a default, not a measurement.
+
+    Wherever docs/limits.md records a real cost for one (format, mode), the
+    table cell must not print the generic line instead — a reader who reads
+    only the table would get the opposite of what the limits section says one
+    screen down. PDF's full rebuild flattens the page to a picture (#17); the
+    generic wording calls that "a tiny, invisible amount".
+    """
+    caps = {c["fmt"]: c for c in qr.load_capabilities()}
+    pdf = qr._format_mode_table(caps["pdf"])
+    assert "becomes a picture" in pdf
+    assert "tiny, invisible" not in pdf
+    # Every override must name a format/tier that actually has a matrix, or it
+    # is dead prose nobody will ever see fail.
+    for fmt, tier in qr.COST_OVERRIDE:
+        assert fmt in caps, f"COST_OVERRIDE names {fmt!r}, which has no matrix"
+        assert tier in ("F1", "F2", "F3"), tier
+
+
 def test_word_documents_actually_reach_the_report():
     """The regression itself, named after what a reader would notice: the
     capability table and the per-format story both had no Word row at all."""

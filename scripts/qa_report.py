@@ -976,8 +976,10 @@ def _verdict_lines(cap: dict) -> tuple[list[str], list[str], str]:
 
 
 # What a mode costs is generic prose (FIDELITY_TIERS) everywhere it is honest,
-# and overridden where the measurement says otherwise. Both entries are Word
-# documents, and both are costs a reader would act on:
+# and overridden where the measurement says otherwise. Every entry is a cost a
+# reader would act on, and each one is already written down in docs/limits.md --
+# the override exists so the table cell agrees with the limit rather than
+# contradicting it one screen apart:
 #
 #   F2 — the deep clean accepts tracked changes and removes comments, because
 #        with markup on a reader *sees* them, so they are content that cannot
@@ -999,6 +1001,13 @@ COST_OVERRIDE = {
     ("docx", "F3"): "**Not measured, and reported as not measured** — the "
                     "document is re-typeset by another program, so fonts and "
                     "spacing can shift.",
+    # PDF F3 flattens every page to a picture. limits.md #17: it "costs the
+    # document its selectable text — it can no longer be searched, copied from,
+    # or read aloud by a screen reader." That is an accessibility regression,
+    # not "a tiny, invisible amount", and it is the cost most likely to decide
+    # whether someone should use this mode at all.
+    ("pdf", "F3"): "**The page becomes a picture** — it can no longer be "
+                   "searched, copied from, or read aloud by a screen reader.",
 }
 
 

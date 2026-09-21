@@ -588,8 +588,28 @@ That is a leak surface this spike has not touched and must not be claimed as abs
 | # | Deliverable | Status |
 |---|---|---|
 | **M0** | Opening spike — the census above, six producers | ✅ (§5) |
-| **M1** | Corpus decision (W11), including whether a real phone video is in scope | ☐ |
+| **M1** | Corpus decision (W11) | ✅ — **real phone video is out of scope** (§8). ffmpeg on the CI runner; AVFoundation stays macOS-only under the limit-#12 precedent |
 | **M2** | Walker + `claims()` + refusal list (W8) | ☐ |
 | **M3** | MP4 F1 (W9) with a **decode** test | ☐ |
 | **M4** | `Mp4Plugin` + matrix + the two A2 channels (W10) | ☐ |
 | **M5** | `limits.md` rows and the `FORMAT:mp4` block in `docs/formats.md` | ☐ |
+
+## 8. M1 — the corpus decision, and what it costs us to say no
+
+**Decided: no real phone video.** The corpus is the six software muxers of §5 —
+ffmpeg (installable on the CI runner, so CI can build an MP4 from scratch) plus
+the AVFoundation re-mux, which stays macOS-only under the same limit-#12
+precedent that already covers Apple's AAC encoder and Microsoft Word.
+
+**What that costs, stated rather than absorbed.** An iPhone `.MOV` carries a
+`mebx` timed-metadata track — device motion sampled *per frame*, alongside the
+picture — and nothing in this corpus has one. So `mebx` is recorded as
+**untested scope**, not as measured-absent. The distinction is the same one
+HEIC's A3 cells make: a surface nobody ran has no verdict, and writing `fail`
+or `pass` for it would be inventing a measurement either way.
+
+The practical consequence for the build: MP4 F1 must **refuse** a file carrying
+a track handler type it does not model rather than scrub around it, so a real
+phone video meets a stated refusal instead of a silent partial clean. That is
+the `UNCLASSIFIED` rule of the DOCX locus census in a different container, and
+it is what keeps "out of scope" from quietly becoming "leaks".
