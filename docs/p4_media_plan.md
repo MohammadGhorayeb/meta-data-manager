@@ -589,7 +589,7 @@ That is a leak surface this spike has not touched and must not be claimed as abs
 |---|---|---|
 | **M0** | Opening spike — the census above, six producers | ✅ (§5) |
 | **M1** | Corpus decision (W11) | ✅ — **real phone video is out of scope** (§8). ffmpeg on the CI runner; AVFoundation stays macOS-only under the limit-#12 precedent |
-| **M2** | Walker + `claims()` + refusal list (W8) | ☐ |
+| **M2** | Walker + `claims()` + refusal list (W8) | ✅ (§9) — and the fixture was wrong before the walker was |
 | **M3** | MP4 F1 (W9) with a **decode** test | ☐ |
 | **M4** | `Mp4Plugin` + matrix + the two A2 channels (W10) | ☐ |
 | **M5** | `limits.md` rows and the `FORMAT:mp4` block in `docs/formats.md` | ☐ |
@@ -613,3 +613,84 @@ a track handler type it does not model rather than scrub around it, so a real
 phone video meets a stated refusal instead of a silent partial clean. That is
 the `UNCLASSIFIED` rule of the DOCX locus census in a different container, and
 it is what keeps "out of scope" from quietly becoming "leaks".
+
+---
+
+## 9. M2 as built — the track model, and a fixture that proved nothing
+
+`formats/mp4/walker.py` turns `moov` into the track table: per-track id, handler
+kind, handler *name*, creation and modification times, and the chunk-offset table.
+`formats/mp4/handler.py` identifies MP4s. Neither is in `default_dispatcher()`,
+which is deliberate and is asserted by a test — DOCX's M8 precedent: a registered
+handler is the tool advertising a format, and nothing scrubs an MP4 until M3.
+
+### Identification is harder than HEIC's, and the fix is a property rather than an order
+
+HEIC could decide on the brand alone. MP4 cannot: `isom` and `mp42` are declared by
+audio-only M4A files, which the M4A handler has claimed since Phase 2. Registration
+order would "solve" it the way a coin toss solves a tie.
+
+The real separation is in the predicates. M4A claims a file with a `soun` track and
+**refuses** any file with a `vide` handler; MP4 claims a file with a `vide` track.
+Those cannot both be true, so the handlers are mutually exclusive whatever order
+they are registered in — and a test asserts **exactly one** of them claims each of
+five shapes, not merely that both never do. That distinction matters: two handlers
+that declined everything would satisfy "never both" perfectly.
+
+### The refusal list, and what each refusal is protecting
+
+| refused | why |
+|---|---|
+| fragmented (`moof`/`mvex`/`mfra`/`sidx`) | samples live in fragment runs with their own offset model; every assumption in the walker is wrong for one |
+| protection boxes (`sinf`/`pssh`/`schm`/`frma`/`senc`) | scrubbing encrypted media at best fails, at worst produces a file that no longer decrypts |
+| `encv`/`enca`/… sample entries | the *other* way a file says it is encrypted — a top-level box scan walks straight past it |
+| an unmodelled track handler | the M1 scope decision, enforced: `mebx` is what an iPhone writes and nobody here has measured one |
+| more than one `mdat` | offsets would need patching per region, which is untested |
+| a chunk offset outside `mdat` | either we misread the file or it is already broken; patching a pointer we do not understand is how M4A once produced a file that parsed and decoded to noise |
+| `mvhd`/`tkhd` versions other than 0/1 | see below |
+| a chunk table declaring more entries than it holds | reading it short would silently lose chunks |
+
+The header-version refusal is the subtle one. `mvhd` and `tkhd` write their
+timestamps as **32-bit in version 0 and 64-bit in version 1**, and reading a
+version-1 box as version 0 does not fail — it returns the top half of a timestamp,
+a plausible-looking wrong number. So the version is read, and an unmodelled one is
+refused rather than defaulted.
+
+### The fixture was wrong before the walker was
+
+`tests/scrub/mp4_corpus.py` hand-builds an MP4 byte by byte and imports nothing
+from `src/` (asserted by walking its import statements, as `heic_corpus` is). The
+first version was structurally valid, parsed correctly, and **carried no readable
+metadata at all**: the metadata `hdlr` had a zeroed manufacturer field where a
+reader needs `mdir`+`appl`, and `loci` stored longitude and latitude in the order
+they are spoken rather than the order they are stored, one byte short of its
+terminator. ExifTool reported no tags and no GPS for a file that was carrying both.
+
+Every later "the tag is gone" assertion would have been green from the first day
+and meaningless — the DOCX `b"w:rsid" not in out`-against-compressed-bytes mistake,
+in a different container. A test now asserts an independent reader *finds* the
+metadata the fixture claims to carry, so the removal tests M3 writes cannot pass
+vacuously.
+
+The fixture's honest limit is recorded with it: its sample entries carry no codec
+configuration, so ffprobe reads both tracks and still says `missing mandatory
+atoms`. That is the right trade for testing container structure and wrong for M3,
+whose acceptance test must **decode**. M3 uses the ffmpeg corpus for that.
+
+### Checked against the M0 measurements, not just against itself
+
+The walker reproduces §5 on the real corpus: ffmpeg files come out with zeroed
+movie timestamps, generic `VideoHandler`/`SoundHandler` names and an 8-byte `free`
+before `mdat`; the AVFoundation file comes out with a wall-clock `mvhd` time,
+`Core Media Video`, and **nothing removable before `mdat`**. Running it over MAT2's
+output of the AVFoundation file shows the re-mux from the inside — handlers renamed
+to ffmpeg's, timestamps zeroed — which is the §5 benchmark claim reproduced through
+our own code rather than through ExifTool's.
+
+`co64` is now exercised by an actual file for the first time in this project. It
+was always handled by `isobmff.shift_chunk_offsets()`, but the M4A tests only ever
+asserted that *some* table was patched.
+
+**Five mutations, five caught.** Deleting the unmodelled-handler refusal, the
+chunk-bounds check, the fragmentation refusal, the version read, and widening
+`claims()` to accept audio each turn the suite red on the test written for them.
