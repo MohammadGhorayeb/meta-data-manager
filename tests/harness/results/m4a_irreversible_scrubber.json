@@ -5,7 +5,7 @@
     "version": "0.1.0-p2",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-08-03T21:17:18.862055+00:00",
+  "generated_at": "2026-09-22T17:47:44.903738+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
@@ -50,6 +50,19 @@
             "space": "structural",
             "offset": null,
             "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "producer (across 2)",
+          "evidence": "struct:size constant within producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
             "feature_id": "struct:moov_before_mdat",
             "annotated_as": null,
             "hex_context": null
@@ -69,19 +82,6 @@
           },
           "correlates_with": "producer (across 2)",
           "evidence": "struct:top_level_order constant within producer, differs across"
-        },
-        {
-          "kind": "source_fingerprint",
-          "locus": {
-            "space": "structural",
-            "offset": null,
-            "length": null,
-            "feature_id": "struct:size",
-            "annotated_as": null,
-            "hex_context": null
-          },
-          "correlates_with": "producer (across 2)",
-          "evidence": "struct:size constant within producer, differs across"
         }
       ]
     },
@@ -189,6 +189,22 @@
       {
         "bytes_hex": "6d703461",
         "decoded": "mp4a"
+      },
+      {
+        "bytes_hex": "00000000002168646c720000000000000000736f756e000000000000000000000000000000",
+        "decoded": "\u0000\u0000\u0000\u0000\u0000!hdlr\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000soun\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+      },
+      {
+        "bytes_hex": "00000000002168646c72000000000000000076696465000000000000000000000000000000",
+        "decoded": "\u0000\u0000\u0000\u0000\u0000!hdlr\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000vide\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+      },
+      {
+        "bytes_hex": "00000000002168646c7200000000000000006d646972000000000000000000000000000000",
+        "decoded": "\u0000\u0000\u0000\u0000\u0000!hdlr\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000mdir\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+      },
+      {
+        "bytes_hex": "00000000002168646c7200000000000000006d647461000000000000000000000000000000",
+        "decoded": "\u0000\u0000\u0000\u0000\u0000!hdlr\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000mdta\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
       }
     ],
     "signatures": []

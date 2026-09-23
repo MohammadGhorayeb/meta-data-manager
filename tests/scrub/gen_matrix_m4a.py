@@ -43,12 +43,28 @@ def _scrubber():
 
 
 def _diverse(tmpdir, n=4):
-    specs = [(330, 44100, False), (440, 22050, True), (550, 44100, True),
-             (660, 48000, False)]
+    # Language varies as well as rate and layout: it is the field immediately
+    # before `hdlr`, and with every file writing `und` the guard reports one run
+    # spanning the unvarying neighbourhood and the constant `hdlr` we emit, which
+    # makes a real introduced constant impossible to localise or declare.
+    # Three axes, each chosen because the guard proved it needed one.
+    #   language  -- the field immediately BEFORE `hdlr`. With every file writing
+    #                `und` the guard reported one run spanning the unvarying
+    #                neighbourhood and the `hdlr` we emit, so a real introduced
+    #                constant could not be localised.
+    #   duration  -- varies `stts`/`stsz`/`stco` and therefore the SIZE of `minf`,
+    #                the box immediately AFTER `hdlr`. At one duration every file's
+    #                minf landed in 0x0100-0x01ff, so the high three bytes of its
+    #                size were common too and welded to the run from the other side.
+    #                Sample rate and codec do not break this; length does.
+    #   rate/layout -- the original axes: A2 structure and the faststart path.
+    specs = [(330, 44100, False, "eng", 0.6), (440, 22050, True, "fra", 3.0),
+             (550, 44100, True, "deu", 0.3), (660, 48000, False, "spa", 6.0)]
     paths = []
-    for i, (freq, rate, fast) in enumerate(specs[:n]):
+    for i, (freq, rate, fast, lang, dur) in enumerate(specs[:n]):
         p = os.path.join(tmpdir, f"div_{i}.m4a")
-        mc.base_m4a(p, freq=freq, dur=0.6, rate=rate, faststart=fast)
+        mc.base_m4a(p, freq=freq, dur=dur, rate=rate, faststart=fast,
+                    language=lang)
         paths.append(p)
     return paths
 

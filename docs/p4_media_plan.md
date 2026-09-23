@@ -590,7 +590,7 @@ That is a leak surface this spike has not touched and must not be claimed as abs
 | **M0** | Opening spike — the census above, six producers | ✅ (§5) |
 | **M1** | Corpus decision (W11) | ✅ — **real phone video is out of scope** (§8). ffmpeg on the CI runner; AVFoundation stays macOS-only under the limit-#12 precedent |
 | **M2** | Walker + `claims()` + refusal list (W8) | ✅ (§9) — and the fixture was wrong before the walker was |
-| **M3** | MP4 F1 (W9) with a **decode** test | ☐ |
+| **M3** | MP4 F1 (W9) with a **decode** test | ✅ (§10) — and the decode test found a bug in *M4A*, shipped since Phase 2 |
 | **M4** | `Mp4Plugin` + matrix + the two A2 channels (W10) | ☐ |
 | **M5** | `limits.md` rows and the `FORMAT:mp4` block in `docs/formats.md` | ☐ |
 
@@ -694,3 +694,94 @@ asserted that *some* table was patched.
 **Five mutations, five caught.** Deleting the unmodelled-handler refusal, the
 chunk-bounds check, the fragmentation refusal, the version read, and widening
 `claims()` to accept audio each turn the suite red on the test written for them.
+
+---
+
+## 10. M3 as built — F1, and the decode test finally earning its keep
+
+`formats/mp4/f1.py` drops `udta` whole (both metadata containers, so the GPS goes
+from `loci` as well as from the tag list), drops `meta`/`free`/`skip`/`uuid`, zeroes
+the timestamps in **all three** header boxes, blanks the `hdlr` track names, and
+patches `stco`/`co64` by however far the media actually moved. Registered in
+dispatch, because F1 now exists. All six M0 producers scrub and **decode to
+byte-identical video**, including the faststart layout where offsets must move and
+the AVFoundation file where they must move by a number the old code computed as
+zero.
+
+### The engine is shared, and the reason is not tidiness
+
+M4A F1 already did four fifths of this. Copying it would have been the specific
+thing `CLAUDE.md` forbids — "a missed copy is a leak" — and the proof arrived
+immediately: M4A F1 had been written before anyone measured `hdlr` names, so it
+dropped every tag and left `Core Media Audio` in any Apple-muxed file. Copying
+would have reproduced that in MP4 and left it unfixed in M4A.
+
+So the strip moved into `standards/isobmff.py` as `strip_and_repack()`, and both
+formats call it. The `hdlr` blanking was added there once, which closed the leak in
+the shipped format as a side effect of building the new one.
+
+### The bug the decode test found
+
+This project has written "decode, do not parse" three times. This is the milestone
+where it caught something, and what it caught had been shipped since Phase 2.
+
+**AVFoundation writes `mdat` with the 64-bit largesize header** — `size == 1`, then
+a 64-bit length — for a 17 KB box that would fit in 32 bits. The format permits it.
+Our parser reads `header_len = 16` correctly. But the function measuring where the
+media *was* **reconstructed** that header as 8 bytes rather than reading it, so:
+
+```
+predicted before = 36      real before = 44
+predicted after  = 36      real after  = 36
+delta            = 0       real delta  = -8
+```
+
+No chunk offset was patched. The output kept byte-identical media, parsed
+perfectly, reported the right duration — and decoded to static, because every
+pointer into the sound was 8 bytes out. Every check the project had asked whether
+the media survived. None asked whether the file still knew where it was.
+
+Two things now answer that question. The input offset is read from the parsed box
+(`mdat_payload_offset_of_input`, named so it cannot be confused with the predictor).
+And `strip_and_repack` **follows every chunk offset from input to output and
+compares the bytes it lands on**, refusing rather than returning a file whose
+pointers moved. A hand-built largesize fixture pins it with neither ffmpeg nor a Mac
+in the loop.
+
+### Blanking a name introduces a constant, and the guard said so
+
+With every `hdlr` name blanked, every output carries a byte-identical `hdlr` box —
+the rest of it is the format's. The fingerprint guard failed, correctly. FLAC's rule
+is to omit a constant rather than normalize it, and there was nothing to omit:
+`hdlr` is required and its other fields are not ours.
+
+So it is **declared**, the way DOCX declares its empty `_rels`: generated from the
+same `blank_handler_name()` the strip calls, and bounded by a test asserting the
+declaration carries no locus at all. Keeping the names instead would leak "a Mac
+made this", which is strictly worse than limit #9's "something canonically rewrote
+this".
+
+Getting the declaration to *fit* took two corpus fixes rather than a wider
+declaration, and this is DOCX M11's lesson verbatim — **when the guard reports
+something too broad, suspect the corpus before widening the exclusion.** The guard
+reports maximal runs, and M4A's diverse corpus varied sample rate and layout but
+not:
+
+- **language**, the field immediately *before* `hdlr` — every ffmpeg file writes
+  `und`, so the run started there and no declaration of the box could cover it;
+- **duration**, which sets the size of `minf`, immediately *after* — at one
+  duration every file's `minf` landed in `0x0100–0x01ff`, so the high three bytes
+  of its size were common too and welded the run from the other side. Sample rate,
+  channel count and codec do not break this; length does.
+
+With both varied, the run is exactly the box plus the two format-fixed zero bytes
+each side, which is what the declaration says.
+
+### What this did not change, and one thing it argues for
+
+Regenerating M4A's matrix changed **no verdict and no leaking feature**. The A2
+plugin never measured handler names, so the channel was invisible to the
+measurement as well as to ExifTool. A locus absent from both the scrubber and the
+measurement is what the DOCX locus census exists to prevent, and it is an argument
+for putting handler names into the ISOBMFF structural features when MP4's plugin
+lands at M4.

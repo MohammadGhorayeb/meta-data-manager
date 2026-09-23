@@ -19,6 +19,7 @@ from src.scrub import cli
 from src.scrub.dispatch import default_dispatcher
 from src.scrub.errors import ParseError, ScrubError
 from src.scrub.formats.m4a import f1, f3
+from src.scrub.formats.m4a.handler import M4aHandler
 from src.scrub.standards import isobmff as iso
 from tests.scrub import m4a_corpus as mc
 
@@ -217,15 +218,21 @@ def test_dispatch_claims_m4a_audio(tmp_path):
     assert default_dispatcher().resolve(open(p, "rb").read()).format_id == "m4a"
 
 
-def test_dispatch_refuses_mp4_video(tmp_path):
-    """MP4 video is the same container but belongs to Phase 4. Claiming it here would
-    strip it with audio-shaped assumptions, so the handler must decline and dispatch
-    must fail closed rather than guess."""
-    from src.scrub.errors import UnsupportedFormatError
+def test_this_handler_never_claims_mp4_video(tmp_path):
+    """MP4 video is the same container, and claiming it here would strip it with
+    audio-shaped assumptions.
+
+    Until Phase 4 M3 this asserted that dispatch REFUSED such a file, which was
+    true only because no MP4 handler existed yet — it tested the roadmap rather
+    than this handler. MP4 is registered now, so the property worth pinning is the
+    one that was always the real guarantee: M4A declines a file with a video
+    track, whatever else is registered.
+    """
     p = str(tmp_path / "v.mp4")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
                     "testsrc=duration=1:size=64x64:rate=10", "-f", "lavfi", "-i",
                     "sine=frequency=440:duration=1", "-c:v", "libx264", "-c:a",
                     "aac", "-shortest", p], check=True)
-    with pytest.raises(UnsupportedFormatError):
-        default_dispatcher().resolve(open(p, "rb").read())
+    data = open(p, "rb").read()
+    assert not M4aHandler().claims(data)
+    assert default_dispatcher().resolve(data).format_id == "mp4"

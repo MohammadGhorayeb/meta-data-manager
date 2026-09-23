@@ -52,6 +52,13 @@ def default_dispatcher() -> Dispatcher:
     # (brand `M4A `) run first.
     from .formats.heic.handler import HeicHandler
     d.register(HeicHandler())
+    # MP4 after both: it is the same container as M4A and HEIC, and its claim is
+    # the broadest of the three (`isom`/`mp42` are generic brands an audio file may
+    # declare too). Order is belt-and-braces rather than the mechanism -- M4A
+    # refuses any file with a `vide` track and MP4 requires one, so the two claims
+    # are mutually exclusive whatever order they run in, and a test asserts that.
+    from .formats.mp4.handler import Mp4Handler
+    d.register(Mp4Handler())
     # DOCX last: its magic (`PK\x03\x04`) is the weakest of any handler here -- it
     # is shared with every ZIP ever made -- so it gets asked only after every format
     # with a distinctive prefix has declined.

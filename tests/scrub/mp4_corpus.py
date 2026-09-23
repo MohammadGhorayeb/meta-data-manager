@@ -204,12 +204,51 @@ def udta(gps: bool = True, tags: bool = True) -> bytes:
     return box(b"udta", parts)
 
 
+def large_mdat(payload: bytes) -> bytes:
+    """`mdat` written in the 64-bit largesize form: size word 1, then a 64-bit
+    length, for a 16-byte header instead of 8.
+
+    Legal for any size, and **AVFoundation writes it for a 17 KB box**. It is here
+    because reconstructing that header instead of reading it is a bug that hides
+    perfectly: the media bytes survive, the container parses, the duration is
+    right, and every chunk offset is 8 bytes off, so the file decodes to noise.
+    M4A F1 shipped with it from Phase 2 until an Apple-muxed file was decoded.
+    """
+    return (struct.pack(">I", 1) + b"mdat"
+            + struct.pack(">Q", 16 + len(payload)) + payload)
+
+
+def keys_meta(entries: tuple[tuple[str, str], ...] = (
+        ("location", "+40.7128-074.0060/"), ("make", "TestCorp"))) -> bytes:
+    """A `meta` box in the **Keys** (`mdta`) namespace.
+
+    The shape that makes this format's tag list different from every other one in
+    the project: an `ilst` child's four "type" bytes are not a fourcc, they are a
+    big-endian **1-based index into the `keys` box**, which holds the names in a
+    parallel list. A reader matching fourcc names finds nothing here at all — and
+    dropping one `keys` entry renumbers every entry after it, silently relabelling
+    the surviving values. So the two are dropped or kept as a pair.
+    """
+    key_list = b"".join(
+        struct.pack(">I", 8 + len(name)) + b"mdta" + name.encode()
+        for name, _ in entries)
+    keys = full_box(b"keys", 0, 0,
+                    struct.pack(">I", len(entries)) + key_list)
+    ilst = box(b"ilst", b"".join(
+        box(struct.pack(">I", i + 1),
+            box(b"data", struct.pack(">II", 1, 0) + value.encode()))
+        for i, (_, value) in enumerate(entries)))
+    return full_box(b"meta", 0, 0,
+                    hdlr(b"mdta", "", manufacturer=b"\x00" * 4) + keys + ilst)
+
+
 def handbuilt(*, media: bytes = None, moov_first: bool = False,
               free_before_mdat: bool = True, gps: bool = True, tags: bool = True,
               tracks: tuple[dict, ...] = None, mvhd_creation: int = 0,
               mvhd_version: int = 0, brands: tuple[bytes, ...] = (b"isom", b"mp42"),
               major: bytes = b"isom", extra_top: bytes = b"",
-              table: str = "stco", chunk_offset_delta: int = 0) -> bytes:
+              table: str = "stco", chunk_offset_delta: int = 0,
+              largesize_mdat: bool = False) -> bytes:
     """A complete, structurally valid MP4, assembled from the pieces above.
 
     `moov_first` selects the `+faststart` layout, which is the case where removing
@@ -228,14 +267,18 @@ def handbuilt(*, media: bytes = None, moov_first: bool = False,
     # Chunk offsets are absolute, so the layout has to be laid out before the
     # tables that point into it can be written. Build moov twice: once to learn
     # its size, once with the real offsets.
+    header_len = 16 if largesize_mdat else 8
+
     def build(mdat_at: int) -> tuple[bytes, bytes]:
-        chunk_at = mdat_at + 8 + chunk_offset_delta
+        chunk_at = mdat_at + header_len + chunk_offset_delta
         traks = b"".join(
             trak(offsets=(chunk_at,), table=table, **t) for t in tracks)
         movie = box(b"moov", mvhd(mvhd_creation, mvhd_creation,
                                   len(tracks) + 1, mvhd_version)
                     + traks + udta(gps, tags))
-        return movie, box(b"mdat", media)
+        media_box = (large_mdat(media) if largesize_mdat
+                     else box(b"mdat", media))
+        return movie, media_box
 
     if moov_first:
         movie, _ = build(0)                       # size probe

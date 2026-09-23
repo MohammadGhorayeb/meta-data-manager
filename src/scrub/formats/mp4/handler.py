@@ -10,15 +10,17 @@ two predicates cannot both be true, which is a stronger guarantee than registrat
 order alone would give — and a test asserts it on every corpus file rather than
 trusting the reasoning.
 
-**This handler is deliberately not in `default_dispatcher()` yet.** DOCX's M8 set
-the precedent and the reason holds: a registered handler is the tool advertising a
-format it can scrub, and MP4 F1 does not exist until M3. Registering it now would
-mean the CLI accepting a video and then failing, which is worse than declining it.
+Registered in `default_dispatcher()` as of M3, which is when F1 landed — DOCX's M8
+precedent is that a handler goes in only once it can actually scrub, so that the
+tool never advertises a format it will then fail on. It is registered **after** M4A
+and HEIC, whose claims are narrower.
 """
 from __future__ import annotations
 
 from ...errors import FidelityError
 from ..base import BaseHandler
+from . import f1
+from . import inspect as _inspect
 from . import walker as w
 
 
@@ -27,7 +29,10 @@ class Mp4Handler(BaseHandler):
     # The box-size word precedes `ftyp`, so there is no constant 4-byte prefix to
     # match on; `matches()` is overridden instead, exactly as HEIC's is.
     magic = ()
-    fidelities = ()               # nothing offered until M3 lands F1
+    # F1 only. F2 would mean re-muxing through one canonical muxer and F3
+    # re-encoding the video; neither is measured, and a tier that was never run
+    # has no verdict — the same position HEIC's matrix takes.
+    fidelities = ("F1",)
 
     def matches(self, header: bytes) -> bool:
         return len(header) >= 8 and header[4:8] == w.FTYP
@@ -36,7 +41,15 @@ class Mp4Handler(BaseHandler):
         return w.looks_like_mp4(data)
 
     def scrub_f1(self, data: bytes) -> bytes:
+        return f1.scrub(data)
+
+    def scrub_f2(self, data: bytes) -> bytes:
         raise FidelityError(
-            "mp4 F1 is not built yet (Phase 4 M3). The walker and its refusal list "
-            "are in place; nothing scrubs an MP4 until the offset patching is "
-            "written and verified by decoding, not by parsing")
+            "mp4 F2 is not built yet: a lossless re-mux would mean re-emitting the "
+            "container through one canonical muxer, which Phase 4 has not measured")
+
+    def verify(self, data: bytes, fidelity: str) -> list[str]:
+        return f1.residuals(data) if fidelity == "F1" else []
+
+    def describe(self, data: bytes) -> dict[str, str]:
+        return _inspect.describe(data)

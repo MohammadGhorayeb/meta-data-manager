@@ -154,20 +154,17 @@ def test_identification_never_raises_on_rubbish():
         assert Mp4Handler().claims(junk) is False
 
 
-def test_mp4_is_deliberately_not_registered_in_dispatch_yet():
-    """M3 lands F1; until then the tool must decline an MP4 outright rather than
-    accept it and fail. DOCX's M8 set this precedent."""
+def test_the_handler_is_registered_only_for_what_it_can_actually_do():
+    """M2 asserted this handler was NOT in dispatch, because F1 did not exist yet
+    and a registered handler is the tool advertising a format. M3 landed F1, so
+    the assertion inverts — but the underlying rule does not: what is registered
+    must match what is implemented, and F2 must still refuse by name."""
+    handler = dispatch.default_dispatcher().resolve(c.handbuilt())
+    assert handler.format_id == "mp4"
+    assert handler.fidelities == ("F1",)
     with pytest.raises(Exception) as exc:
-        dispatch.default_dispatcher().resolve(c.handbuilt())
-    assert "no handler" in str(exc.value)
-
-
-def test_the_handler_offers_no_fidelity_it_cannot_deliver():
-    h = Mp4Handler()
-    assert h.fidelities == ()
-    with pytest.raises(Exception) as exc:
-        h.scrub(c.handbuilt(), "F1")
-    assert "F1" in str(exc.value)
+        handler.scrub(c.handbuilt(), "F2")
+    assert "F2" in str(exc.value)
 
 
 # --------------------------------------------------------------------------- #

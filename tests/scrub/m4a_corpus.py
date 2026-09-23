@@ -31,7 +31,8 @@ def cover_jpeg(sentinel: bytes = COVER_SENTINEL) -> bytes:
 
 
 def base_m4a(path: str, freq: int = 440, dur: float = 2.0, rate: int = 44100,
-             codec: str = "aac", bitrate: str = "128k", faststart: bool = False):
+             codec: str = "aac", bitrate: str = "128k", faststart: bool = False,
+             language: str = ""):
     """A clean M4A, no metadata.
 
     `faststart` moves `moov` ahead of `mdat` — a muxer choice that changes the box
@@ -47,6 +48,14 @@ def base_m4a(path: str, freq: int = 440, dur: float = 2.0, rate: int = 44100,
         cmd += ["-b:a", bitrate]
     if faststart:
         cmd += ["-movflags", "+faststart"]
+    if language:
+        # Varies `mdhd`'s language field, which sits immediately before `hdlr`.
+        # Without it every ffmpeg file writes `und` and the corpus is identical
+        # from there on, so the fingerprint guard cannot tell a constant WE
+        # introduce in `hdlr` from the unvarying bytes around it -- it reports one
+        # long run spanning both. DOCX M11 hit the same thing and fixed it the
+        # same way: vary the neighbourhood so the guard can localise.
+        cmd += ["-metadata:s:a:0", f"language={language}"]
     _run(cmd + [path])
 
 
