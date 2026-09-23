@@ -181,9 +181,11 @@ _Regenerate this section with `./.venv/bin/python -m tests.scrub.e_pdf_history`;
 
 ## Evidence 7 — MP4, where the measuring stick reports success and changes nothing (Phase 4 M0)
 
-**We do not handle MP4 yet**, so this row has no "ours" column and is not a
-comparison we win. It is recorded because it is the sharpest thing the opening
-spike found, and because it is about the tool this project uses as ground truth.
+Measured at M0, **before** this project handled MP4 at all, which is why it is
+recorded as a finding about the measuring stick rather than as a comparison we
+win. MP4 F1 has since landed (M3) and closes both of the loci named below; its
+Pareto matrix arrives with the plugin at M4, so there is deliberately still no
+"ours" column here — a comparison needs a measurement, not a feature.
 
 On the ffmpeg-muxed files both standard tools do the job: `exiftool -all=` and
 `mat2 0.14.0` each clear the GPS from all three loci it is written to, and every

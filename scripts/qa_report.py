@@ -405,6 +405,14 @@ FORMAT_TEST_PATTERNS = [
     # be the deeper fix, and is not worth it for a table this small.
     ("docx", ["docx", "ooxml", "e_session_id"]),
     ("heic", ["heic"]),
+    # MP4 before M4A, and the choice is a coin-flip made on a count rather than a
+    # principle: the two formats' tests name each other (MP4's prove they did not
+    # steal audio from M4A; M4A's prove it declines video), so whichever is
+    # matched first takes a couple of the other's. Counted: M4A holds 1 test
+    # naming mp4, MP4 holds 2 naming m4a. This ordering misattributes the 1.
+    # Added BEFORE the MP4 plugin lands so the section is honest the day it
+    # appears -- DOCX and HEIC each spent a phase reporting "all 0 checks passed".
+    ("mp4", ["mp4"]),
     ("png", ["png"]),
     ("mp3", ["mp3", "e_lame", "e_engine"]),
     ("flac", ["flac"]),
