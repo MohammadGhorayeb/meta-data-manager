@@ -283,6 +283,60 @@ own choices replace the original's. Seven separate clues collapse to **one**.
   there is nothing inside the file to delete to fix it.
 <!-- FORMAT:docx:END -->
 
+<!-- FORMAT:mp4:BEGIN -->
+Video, and the file type where the standard tool can hand a file back **unchanged**
+and call it clean.
+
+**What the light clean removes.** Where the video was shot, the make and model of
+whatever shot it, the title and comments, the name of the program that encoded it,
+and the date and time — in all *ten* places a two-track file writes them. It also
+removes two things no ordinary tool touches, and they are the reason this format
+was worth doing properly.
+
+**The same coordinate, written three times.** Ask a program to put a location in a
+video once, and it writes that coordinate into a dedicated location box *and*, in
+some modes, three more times into the tag list under three different names. A
+cleaner that knows about the tag list and not the location box leaves your position
+sitting in the file. We measured all of them and remove all of them.
+
+**The label that says which software made the file.** Every track carries a short
+name for itself. Apple's software writes `Core Media Video`; the common open-source
+tool writes `VideoHandler`. It is not a tag — it is a structural field — so
+tag-oriented tools walk straight past it. **We measured what the standard tool does
+with an Apple-made video: it reports the file "unchanged" and hands back a
+byte-identical copy**, still carrying that label and still carrying the
+wall-clock second the file was written. A user who runs it and is told nothing
+changed has been told the file was already clean.
+
+**What it costs you: nothing.** The picture and the sound are copied through
+untouched, and we check that by *decoding* the result and comparing frames, not by
+checking the file still opens. That distinction is not pedantry — it is the only
+reason we found a bug of our own that had been shipping for two phases, where a
+cleaned audio file kept perfect sound, opened correctly, reported the right length,
+and played as static because the pointers into it were eight bytes out.
+
+**What it does not do yet.** A cleaned video still shows **which program wrote the
+container** — not which camera, not which person, and none of your content. Four
+things give it away and we name them rather than rounding the result up: the
+four-letter brand the program stamps at the front, the list of standards it claims
+compatibility with, the order it writes the file's major sections in, and whether it
+puts the index before or after the video data so the file can start playing before
+it finishes downloading. Every one of those is a choice about *structure*, not a
+piece of hidden data, so a mode that only deletes cannot touch them.
+
+Measured against four producers, one of which is a genuinely different program
+rather than another setting of the same one. Five other clues that *did* separate
+them — the padding, which sections exist, the track labels, the width of one length
+field, and whether timestamps were written at all — are **closed**. The four that
+remain are the exact specification for the deeper mode, which would rewrite the
+container through one single writer so every file comes out looking the same. That
+mode is not built, and its row says *not tested* rather than guessing.
+
+**File size also still separates producers**, as it does for every format here: a
+video encoded at a higher quality is a bigger file, and nothing in the metadata can
+change that.
+<!-- FORMAT:mp4:END -->
+
 <!-- FORMAT:heic:BEGIN -->
 The photos on your phone, and the first format where "delete the tag" is not
 even half the job.

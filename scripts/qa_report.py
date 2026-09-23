@@ -1032,6 +1032,12 @@ def _format_mode_table(cap: dict) -> str:
             continue
         mark = {"pass": "✅", "fail": "❌", "not_applicable": "—",
                 "not_tested": "·", None: "·"}
+        # A mode that was never run is a mode this file type does not have yet, and
+        # quoting its cost invites a reader to pick something that is not on offer.
+        # HEIC and MP4 are both F1-only, and before this the table told anyone
+        # reading it that their deep clean would cost "nothing at all".
+        if a1 in (None, "not_tested") and a2 in (None, "not_tested"):
+            cost = "*Not built for this file type yet*"
         rows.append(f"| {ic} **{name}** | {mark.get(a1)} | {mark.get(a2)} | {cost} |")
     return "\n".join(rows)
 

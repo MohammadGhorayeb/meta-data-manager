@@ -464,15 +464,19 @@ def canonical_handler_boxes(handlers: tuple[bytes, ...] = (b"soun", b"vide",
         box = serialize([Box(type=b"hdlr", offset=0,
                              size=HEADER_MIN + len(blanked),
                              header_len=HEADER_MIN, payload=blanked)])
-        # Padded by two zero bytes each side: `mdhd`'s `predefined` field before
-        # it and the high half of the next box's size word after it, both zero
-        # by the spec rather than by a producer's choice, so no corpus can vary
-        # them away. The guard reports
+        # Padded by four zero bytes each side: `mdhd`'s `predefined` field before
+        # it, and the high bytes of the following box's size word after it, both
+        # zero by the spec rather than by a producer's choice, so no corpus can
+        # vary them away. Four rather than exactly-as-many-as-observed because
+        # the count differs by format -- M4A's run carries two trailing zeros and
+        # MP4's three -- and tuning a pad per format would be a constant that
+        # drifts. The guard reports MAXIMAL runs, so the declaration has to cover
+        # the run rather than just the box. The guard reports
         # MAXIMAL runs, so without them the declaration does not cover the run
         # the box actually sits in. Everything on the OTHER side is a producer's
         # choice and is broken by corpus diversity instead of declared -- see
         # `gen_matrix_m4a._diverse`, where duration varies specifically to stop
         # the following `minf` size from being common too. The bound on this
         # declaration is the test asserting it carries no locus at all.
-        out.append(b"\x00\x00" + box + b"\x00\x00")
+        out.append(b"\x00" * 4 + box + b"\x00" * 4)
     return out

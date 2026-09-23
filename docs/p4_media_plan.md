@@ -591,8 +591,8 @@ That is a leak surface this spike has not touched and must not be claimed as abs
 | **M1** | Corpus decision (W11) | ✅ — **real phone video is out of scope** (§8). ffmpeg on the CI runner; AVFoundation stays macOS-only under the limit-#12 precedent |
 | **M2** | Walker + `claims()` + refusal list (W8) | ✅ (§9) — and the fixture was wrong before the walker was |
 | **M3** | MP4 F1 (W9) with a **decode** test | ✅ (§10) — and the decode test found a bug in *M4A*, shipped since Phase 2 |
-| **M4** | `Mp4Plugin` + matrix + the two A2 channels (W10) | ☐ |
-| **M5** | `limits.md` rows and the `FORMAT:mp4` block in `docs/formats.md` | ☐ |
+| **M4** | `Mp4Plugin` + matrix + the two A2 channels (W10) | ✅ (§11) — five of nine channels close at F1; the four that remain are the F2 spec |
+| **M5** | `limits.md` rows and the `FORMAT:mp4` block in `docs/formats.md` | ✅ — #37, #38, four residual notes, and the block the report guard demanded the moment the matrix landed |
 
 ## 8. M1 — the corpus decision, and what it costs us to say no
 
@@ -785,3 +785,81 @@ measurement as well as to ExifTool. A locus absent from both the scrubber and th
 measurement is what the DOCX locus census exists to prevent, and it is an argument
 for putting handler names into the ISOBMFF structural features when MP4's plugin
 lands at M4.
+
+---
+
+## 11. M4 as built — two channels, and what F1 actually closed
+
+`tests/harness/plugins/mp4.py` measures nine structural features; `tests/scrub/
+e_mp4.py` runs them over four producers at `raw` and at F1; `gen_matrix_mp4.py`
+publishes the matrix. A1@F1 **passes**, A2@F1 **fails with its channel named**, F2
+and F3 are `not_tested` because nobody ran them.
+
+### The cell reports what closed, not only what leaked
+
+| feature | raw | after F1 |
+|---|:--:|:--:|
+| `free_bytes` | separates | **closed** |
+| `box_inventory` | separates | **closed** |
+| `handler_names` | separates | **closed** |
+| `mdat_header_form` | separates | **closed** |
+| `timestamps_present` | separates | **closed** |
+| `brand` | separates | open |
+| `compatible_brands` | separates | open |
+| `top_level_order` | separates | open |
+| `moov_before_mdat` | separates | open |
+| `size` (encoder channel) | separates | open |
+
+Five of nine is the finding. A cell that listed only the four survivors would read
+identically whether F1 had collapsed most of the channel or none of it — the
+correction DOCX's F2 cell had to make — so the experiment measures `raw` first and
+a test asserts the five actually close.
+
+What survives is coherent rather than arbitrary: a bit-preserving tier deletes,
+zeroes and re-lays-out, so it cannot change what the muxer **chose to be** — the
+brand it stamped, the standards it claimed, the order it wrote its sections in, and
+whether it put `moov` before `mdat`. Those four are the F2 specification, and the
+`not_tested` cells say so in as many words.
+
+### Two features exist because Phase 4 found them and nothing else was looking
+
+`handler_names` is the field `exiftool -all=` leaves while reporting a file
+unchanged (§5), and M4A's plugin never measured it — which is why that format
+leaked it from Phase 2 until M3. `mdat_header_form` is the largesize header behind
+limit #35. Both are normalised by F1 **by construction**, and measuring them anyway
+is the difference between "we handle this" and "we believe we handle this": a
+future change that stops closing them fails a cell instead of passing quietly.
+
+### The peer set has a second implementation, not a second invocation
+
+Three producers are ffmpeg configurations; `avfoundation` is a pass-through re-mux
+through Apple's own muxer, so the coded video is identical and only the container
+differs. Measuring a container channel against one program's options would mostly
+measure the options. It is macOS-only, and the cell **names the peer set it had** —
+a peer set that silently shrinks turns "we compared four producers" into a claim
+about three.
+
+### The guard failed first, and the corpus was wrong again
+
+The fingerprint guard reported a **389-byte run** — an entire `trak` box — as our
+signature. The diverse corpus varied brand, layout, largesize form and track count
+while every hand-built track kept the same duration, dimensions and timescale, so
+all four outputs shared a byte-identical track. The guard was right: an undiverse
+corpus cannot tell a constant the *tool* introduces from one the *corpus* never
+varied.
+
+Third time this project has hit it — DOCX M11, M4A during M3, and here — and the
+fix is the same each time: **vary the thing, do not widen the declaration.** With
+duration, dimensions, timescale, track ids, language and sample-entry format varied,
+the run collapsed to the same `hdlr` neighbourhood M4A had, which is already
+declared. The declaration's padding widened from two zero bytes each side to four,
+because the run length differs by format (M4A carries two trailing zeros, MP4
+three) and tuning a pad per format would itself be a constant that drifts.
+
+### One thing the report was saying that was not true
+
+With MP4 and HEIC both F1-only, the capability table quoted a cost for modes that
+do not exist — "Deep clean — costs you: nothing at all" for a file type with no
+deep clean. Those cells now read *not built for this file type yet* (limit #38).
+Found by rendering the section rather than by a test, which is its own small
+argument for rendering the thing you ship.

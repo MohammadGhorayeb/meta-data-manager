@@ -241,9 +241,9 @@ def test_capabilities_come_from_the_measured_matrices_not_a_hardcoded_list():
     fmts = {c["fmt"] for c in caps}
     assert {"jpeg", "png", "mp3"} <= fmts
     # Nothing may be claimed for a format with no matrix on disk. This line has
-    # named `pdf`, then `docx`, and moves again with each phase — that churn is
-    # the test working. `mp4` is the next format with nothing measured yet.
-    assert "mp4" not in fmts
+    # named `pdf`, then `docx`, then `mp4`, and moves again with each phase —
+    # that churn is the test working. `raw` is the last one with nothing measured.
+    assert "raw" not in fmts
     md = qr.section_capabilities(_run())
     assert "MP3" in md
 
@@ -480,3 +480,20 @@ def test_empty_run_still_renders_a_report():
     md = qr.render_full(_run())
     assert qr.MARKER in md
     assert "{{" not in md
+
+
+def test_a_mode_that_was_never_built_does_not_advertise_a_cost():
+    """MP4 and HEIC are light-clean-only. Before this, their table rows still read
+    "Deep clean — costs you: nothing at all", which invites a reader to pick a mode
+    the tool does not offer for that file type."""
+    caps = {c["fmt"]: c for c in qr.load_capabilities()}
+    for fmt in ("mp4", "heic"):
+        if fmt not in caps:
+            continue
+        table = qr._format_mode_table(caps[fmt])
+        deep = next(r for r in table.splitlines() if "Deep clean" in r)
+        assert "Not built" in deep, f"{fmt}: {deep}"
+        assert "Nothing at all" not in deep
+    # A format that HAS the mode must still state its real cost.
+    jpeg = qr._format_mode_table(caps["jpeg"])
+    assert "Not built" not in jpeg

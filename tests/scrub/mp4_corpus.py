@@ -33,9 +33,61 @@ import os
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None
+
+# AVFoundation is the only non-ffmpeg MUXER available to this project, and it is
+# macOS-only. Reported absent rather than quietly dropped, the limit-#12 precedent
+# that already covers Apple's AAC encoder and Microsoft Word: a peer set that
+# silently shrinks turns "we compared four producers" into a claim about three.
+HAVE_AVFOUNDATION = (sys.platform == "darwin"
+                     and shutil.which("swiftc") is not None)
+
+_REMUX_SWIFT = r"""
+import AVFoundation
+import Foundation
+
+// Re-mux through AVFoundation's own muxer, pass-through: the coded video and audio
+// are COPIED and only the container is rewritten. That is deliberate -- it gives a
+// second muxer without introducing a second encoder, so the container channel and
+// the coded-video channel stay separable.
+let args = CommandLine.arguments
+guard args.count == 3 else { exit(2) }
+let inURL = URL(fileURLWithPath: args[1]), outURL = URL(fileURLWithPath: args[2])
+try? FileManager.default.removeItem(at: outURL)
+let asset = AVURLAsset(url: inURL)
+guard let session = AVAssetExportSession(asset: asset,
+                                         presetName: AVAssetExportPresetPassthrough)
+else { exit(1) }
+session.outputURL = outURL
+session.outputFileType = .mp4
+let sem = DispatchSemaphore(value: 0)
+session.exportAsynchronously { sem.signal() }
+sem.wait()
+if session.status != .completed { exit(1) }
+"""
+
+_remux_binary: str | None = None
+
+
+def avfoundation_remux(src: str, dst: str) -> str:
+    """Re-mux `src` through AVFoundation. Builds the helper once per session."""
+    global _remux_binary
+    if not HAVE_AVFOUNDATION:
+        raise RuntimeError("AVFoundation re-mux needs macOS with swiftc")
+    if _remux_binary is None:
+        d = tempfile.mkdtemp(prefix="mp4_remux_")
+        source = os.path.join(d, "remux.swift")
+        with open(source, "w", encoding="utf-8") as f:
+            f.write(_REMUX_SWIFT)
+        binary = os.path.join(d, "remux")
+        subprocess.run(["swiftc", "-O", "-o", binary, source],
+                       check=True, capture_output=True)
+        _remux_binary = binary
+    subprocess.run([_remux_binary, src, dst], check=True, capture_output=True)
+    return dst
 
 # A recognisable byte pattern for "media", so a test can assert the samples came
 # through untouched without needing a decoder.
@@ -81,23 +133,28 @@ def mvhd(creation: int = 0, modification: int = 0, next_track: int = 2,
 
 
 def tkhd(track_id: int = 1, creation: int = 0, modification: int = 0,
-         version: int = 0) -> bytes:
+         version: int = 0, duration: int = 2000, width: int = 160,
+         height: int = 120) -> bytes:
     if version == 0:
-        head = struct.pack(">IIIII", creation, modification, track_id, 0, 2000)
+        head = struct.pack(">IIIII", creation, modification, track_id, 0, duration)
     else:
-        head = struct.pack(">QQIIQ", creation, modification, track_id, 0, 2000)
+        head = struct.pack(">QQIIQ", creation, modification, track_id, 0, duration)
     rest = (b"\x00" * 8                            # reserved
             + struct.pack(">hhhh", 0, 0, 0, 0)     # layer, group, volume, reserved
             + struct.pack(">9i", 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0,
                           0x40000000)              # matrix
-            + struct.pack(">II", 160 << 16, 120 << 16))
+            + struct.pack(">II", width << 16, height << 16))
     return full_box(b"tkhd", version, 3, head + rest)
 
 
-def mdhd() -> bytes:
+def mdhd(timescale: int = 1000, duration: int = 2000,
+         language: int = 0x55C4) -> bytes:
+    """Media header. Timescale, duration and language are producer/content
+    choices, and varying them is what stops a diverse corpus from emitting four
+    byte-identical `trak` boxes — see `gen_matrix_mp4._diverse`."""
     return full_box(b"mdhd", 0, 0,
-                    struct.pack(">IIII", 0, 0, 1000, 2000)
-                    + struct.pack(">HH", 0x55C4, 0))   # language `und`
+                    struct.pack(">IIII", 0, 0, timescale, duration)
+                    + struct.pack(">HH", language, 0))
 
 
 def hdlr(handler: bytes = b"vide", name: str = "VideoHandler",
@@ -164,15 +221,19 @@ def trak(track_id: int = 1, handler: bytes = b"vide",
          name: str = "VideoHandler", offsets: tuple[int, ...] = (),
          creation: int = 0, modification: int = 0, fmt: bytes = b"avc1",
          table: str = "stco", tkhd_version: int = 0,
-         extra_minf: bytes = b"") -> bytes:
+         extra_minf: bytes = b"", duration: int = 2000, width: int = 160,
+         height: int = 120, timescale: int = 1000,
+         language: int = 0x55C4) -> bytes:
     header = extra_minf if extra_minf else media_header(handler)
     media_info = box(b"minf", header + box(b"dinf", b"") + stbl(offsets, fmt, table))
     return box(b"trak",
-               tkhd(track_id, creation, modification, tkhd_version)
-               + box(b"mdia", mdhd() + hdlr(handler, name) + media_info))
+               tkhd(track_id, creation, modification, tkhd_version,
+                    duration, width, height)
+               + box(b"mdia", mdhd(timescale, duration, language)
+                     + hdlr(handler, name) + media_info))
 
 
-def udta(gps: bool = True, tags: bool = True) -> bytes:
+def udta(gps: bool = True, tags: bool = True, variant: str = "") -> bytes:
     """User data: the two metadata containers M0 found the same coordinate in.
 
     `loci` is the QuickTime location box — binary, and where ffmpeg puts GPS
@@ -182,9 +243,9 @@ def udta(gps: bool = True, tags: bool = True) -> bytes:
     if tags:
         ilst = box(b"ilst",
                    box(b"\xa9too", box(b"data", struct.pack(">II", 1, 0)
-                                       + b"Lavf62.12.101"))
+                                       + b"Lavf62.12.101" + variant.encode()))
                    + box(b"\xa9nam", box(b"data", struct.pack(">II", 1, 0)
-                                         + b"Ground truth")))
+                                         + b"Ground truth" + variant.encode())))
         parts += full_box(b"meta", 0, 0,
                           hdlr(b"mdir", "", manufacturer=b"appl") + ilst)
     if gps:
@@ -248,7 +309,7 @@ def handbuilt(*, media: bytes = None, moov_first: bool = False,
               mvhd_version: int = 0, brands: tuple[bytes, ...] = (b"isom", b"mp42"),
               major: bytes = b"isom", extra_top: bytes = b"",
               table: str = "stco", chunk_offset_delta: int = 0,
-              largesize_mdat: bool = False) -> bytes:
+              largesize_mdat: bool = False, variant: str = "") -> bytes:
     """A complete, structurally valid MP4, assembled from the pieces above.
 
     `moov_first` selects the `+faststart` layout, which is the case where removing
@@ -275,7 +336,7 @@ def handbuilt(*, media: bytes = None, moov_first: bool = False,
             trak(offsets=(chunk_at,), table=table, **t) for t in tracks)
         movie = box(b"moov", mvhd(mvhd_creation, mvhd_creation,
                                   len(tracks) + 1, mvhd_version)
-                    + traks + udta(gps, tags))
+                    + traks + udta(gps, tags, variant))
         media_box = (large_mdat(media) if largesize_mdat
                      else box(b"mdat", media))
         return movie, media_box
@@ -294,13 +355,20 @@ def handbuilt(*, media: bytes = None, moov_first: bool = False,
 # ffmpeg: files a real muxer wrote
 # --------------------------------------------------------------------------- #
 def ffmpeg_sample(path: str, *, faststart: bool = False, gps: bool = False,
-                  duration: float = 1.0, audio: bool = True) -> str:
+                  duration: float = 1.0, audio: bool = True,
+                  videotoolbox: bool = False) -> str:
     """Encode a tiny deterministic clip. Returns `path`, or raises if ffmpeg fails."""
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
            "-f", "lavfi", "-i", f"testsrc2=size=160x120:rate=15:duration={duration}"]
     if audio:
         cmd += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={duration}"]
-    cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"]
+    if videotoolbox:
+        # A different VIDEO ENCODER behind the same muxer: it separates the coded
+        # stream without touching the container, which is what keeps the two A2
+        # channels distinguishable.
+        cmd += ["-c:v", "h264_videotoolbox", "-pix_fmt", "yuv420p"]
+    else:
+        cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"]
     if audio:
         cmd += ["-c:a", "aac", "-shortest"]
     if gps:
@@ -329,3 +397,43 @@ def temp_mp4(data: bytes) -> str:
     with os.fdopen(fd, "wb") as f:
         f.write(data)
     return path
+
+
+def producers(tmpdir: str, repeats: int = 3) -> dict[str, list[str]]:
+    """A2 peer set: the same picture through different producers.
+
+    Three of the four differ only in how the file was **muxed** — faststart or not,
+    and one encoded by VideoToolbox rather than libx264 so the coded video differs
+    while the muxer does not. The fourth is the interesting one and is the reason
+    this peer set is stronger than M4A's: `avfoundation` is a genuinely different
+    **muxer**, not a different ffmpeg invocation, so the container channel is being
+    measured against a real second implementation rather than against ffmpeg's own
+    options. It is a pass-through re-mux of the first producer's output, which keeps
+    the coded video identical and isolates the container.
+
+    macOS-only, and reported absent rather than quietly dropped — the limit-#12
+    precedent. On Linux the peer set is the three ffmpeg producers and the cell says
+    which producers it had.
+    """
+    specs = {
+        "ffmpeg_plain": dict(faststart=False),
+        "ffmpeg_faststart": dict(faststart=True),
+        "ffmpeg_videotoolbox": dict(faststart=False, videotoolbox=True),
+    }
+    sources: dict[str, list[str]] = {}
+    for name, kw in specs.items():
+        paths = []
+        for r in range(repeats):
+            p = os.path.join(tmpdir, f"{name}__r{r}.mp4")
+            ffmpeg_sample(p, **kw)
+            paths.append(p)
+        sources[name] = paths
+
+    if HAVE_AVFOUNDATION:
+        paths = []
+        for r in range(repeats):
+            p = os.path.join(tmpdir, f"avfoundation__r{r}.mp4")
+            avfoundation_remux(sources["ffmpeg_plain"][r], p)
+            paths.append(p)
+        sources["avfoundation"] = paths
+    return sources

@@ -336,8 +336,8 @@ def test_the_declared_handler_constant_carries_no_locus():
         # Decompose it rather than pattern-match it: two zero bytes, the size
         # word, `hdlr`, version/flags, predefined, the handler type, twelve
         # reserved zeros, an empty name, two zero bytes.
-        assert constant[:2] == b"\x00\x00" and constant[-2:] == b"\x00\x00"
-        box = constant[2:-2]
+        assert constant[:4] == b"\x00" * 4 and constant[-4:] == b"\x00" * 4
+        box = constant[4:-4]
         assert int.from_bytes(box[:4], "big") == len(box)
         assert box[4:8] == b"hdlr"
         assert box[8:16] == b"\x00" * 8            # version/flags + predefined
