@@ -580,7 +580,8 @@ for the reason M4A did.
 ### W11 — the corpus problem, again and differently
 The six producers above are all software muxers on this machine. What is missing is
 a **real phone video** — the `.MOV` an iPhone writes, which carries `mebx` timed
-metadata tracks (motion data sampled per frame) that none of these files contain.
+metadata tracks that none of these files contain (what they actually carry was
+measured later, §12 — it is not motion data).
 That is a leak surface this spike has not touched and must not be claimed as absent.
 
 ## 7. MP4 milestones
@@ -601,9 +602,11 @@ ffmpeg (installable on the CI runner, so CI can build an MP4 from scratch) plus
 the AVFoundation re-mux, which stays macOS-only under the same limit-#12
 precedent that already covers Apple's AAC encoder and Microsoft Word.
 
-**What that costs, stated rather than absorbed.** An iPhone `.MOV` carries a
-`mebx` timed-metadata track — device motion sampled *per frame*, alongside the
-picture — and nothing in this corpus has one. So `mebx` is recorded as
+**What that costs, stated rather than absorbed.** An iPhone `.MOV` carries
+`mebx` timed-metadata tracks — sampled *per frame*, alongside the picture — and
+nothing in this corpus has one. (This paragraph originally said they carry device
+motion. That was an assumption; §12 measured five real files and found face
+detection, scene illuminance, Live Photo info and a UUID instead.) So `mebx` is recorded as
 **untested scope**, not as measured-absent. The distinction is the same one
 HEIC's A3 cells make: a surface nobody ran has no verdict, and writing `fail`
 or `pass` for it would be inventing a measurement either way.
@@ -863,3 +866,69 @@ do not exist — "Deep clean — costs you: nothing at all" for a file type with
 deep clean. Those cells now read *not built for this file type yet* (limit #38).
 Found by rendering the section rather than by a test, which is its own small
 argument for rendering the thing you ship.
+
+---
+
+## 12. Real files, after M5 — two defects the synthetic corpus could not show
+
+M1 said no real phone video; the scope decision stands (re-confirmed 2026-09-24).
+But the machine does hold real video — five iPhone `.MOV`s, thirteen WhatsApp
+`.mp4`s and an editor export — and running the shipped F1 against them, read-only
+and **structure only** (box types, key names, sizes; never a value), found two
+things a hand-built corpus had no way to contain.
+
+### What an iPhone `.MOV` actually carries
+
+Identical on all five files: brand `qt  `, `mdat` **before** `moov`, and a QuickTime
+`meta` box — which, unlike ISO's, has **no version/flags word**, so the shared
+walker's `FULL_CONTAINERS` rule would read its children four bytes off. `moov/meta`
+holds the familiar keys (`location.ISO6709`, `location.accuracy.horizontal`, `make`,
+`model`, `software`, `creationdate`); the video track's own `meta` holds the lens
+model and 35 mm focal length. Then **six `mebx` timed-metadata tracks**, keyed:
+
+| track | keys (`com.apple.quicktime.` prefix dropped) |
+|---|---|
+| 1 | `video-orientation` |
+| 2 | `cinematic-audio` |
+| 3 | `detected-face`, `.bounds`, `.face-id`, `.roll-angle`, `.yaw-angle` |
+| 4 | `live-photo-info` |
+| 5 | `milli-lux`, `scene-illuminance` |
+| 6 | `segment-identifier`, `uuid` |
+
+Their samples live in `mdat` between the video and audio chunks. So the HEIC §4.1
+lesson applies directly: dropping the six `trak`s removes the *description* and
+leaves every face box in the file with nothing left pointing at it. A real
+implementation compacts `mdat` to the chunks the kept tracks reference and
+re-derives every surviving offset — not a single delta. Plus `tref` cleanup
+(`cdsc`/`cdep`/`rndr` point from these tracks at the video) and an `apac` spatial-
+audio track, which is content and would stay. That is the work the scope decision
+declines, now with its size known. None of it was motion data, which is what this
+document had said.
+
+### Defect 1: every QuickTime file met "no handler", not the refusal
+
+`MP4_BRANDS` never included `qt  `, so no `.MOV` was ever claimed and the `mebx`
+refusal §8 promised was unreachable. The editor export — one `avc1` track, one
+`mp4a` track, no timed metadata — failed identically. Fail-closed, so nothing
+leaked; but "no handler for magic" reads as a broken tool. QuickTime is now claimed
+**only so it can be refused by name**, before any parse (limit #40). A test asserts
+the CLI says *QuickTime* and never says *no handler*.
+
+### Defect 2: the strip was a denylist, and WhatsApp's `beam` walked through it
+
+Every WhatsApp video carries a proprietary 24-byte top-level `beam` box, before
+`moov`. `strip_and_repack()` dropped `udta`/`meta`/`free`/`skip`/`uuid` and kept
+everything else, so `beam` survived a scrub that reported success. It is a
+WhatsApp constant rather than a per-file id (two distinct payloads across thirteen
+files), but a box no list names passing through is exactly the failure the HEIC
+auxiliary-image rule was written against — **decide by what is kept**. The shared
+strip now holds the top level to `ftyp`/`moov`/`mdat` and drops everything else,
+with one exception set that is **refused** instead: `moof`/`mfra`/`sidx`/`ssix`/
+`styp`/`emsg`/`prft`, which carry or index media outside `moov`/`mdat`, so dropping
+one deletes picture or sound while every `stco` check still passes. M4A goes through
+the same function and had no fragment refusal of its own; it has one now.
+
+Checked on all thirteen WhatsApp files with an independent oracle: `ffmpeg -c copy
+-f streamhash` per stream is identical before and after, and `beam` sits *ahead of*
+`mdat` there, so that comparison also re-proves the offset patch on real files.
+

@@ -53,6 +53,10 @@ def residuals(data: bytes) -> list[str]:
     """Re-walk scrubbed output; anything but a clean audio-only file is a leak."""
     out: list[str] = []
     boxes = iso.parse(data)
+    for b in boxes:
+        if b.type not in iso.TOP_LEVEL_KEEP:
+            out.append(f"top-level {b.type.decode('latin-1', 'replace')!r} box "
+                       f"survived at {b.offset} -- outside the keep list")
     for root in boxes:
         for box in root.walk():
             if box.type in DROP_TYPES:

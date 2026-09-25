@@ -153,7 +153,7 @@ recorded in `docs/limits.md`, and the benchmark table shows the M4A gap closed.
 
 Recorded in `docs/limits.md`, not here — that file is the single source of truth and
 the CI report renders it. In brief: MP3 anonymity is per sample-rate group; Layer II
-and free-format MP3s are refused; VBRI headers are unhandled and untested;
+and free-format MP3s are refused; VBRI headers are not recognised (passed through at F1, gone at F3 — not refused, as this line used to say);
 MDCT-domain classifiers are untested; and microphone/room response and mains hum are
 structural impossibilities, the audio counterpart of PRNU.
 
@@ -190,7 +190,7 @@ instead of resolving itself in our favour.
 | # | Gap | Status |
 |---|---|---|
 | 1 | **MDCT-domain classifiers.** Published forensics inspects the encoder's internal number-crunching; our attacks work on the frequency profile. A stronger adversary than ours may well succeed. | Untested (limit #6) |
-| 2 | **VBRI headers** (Fraunhofer's alternative to Xing) are unhandled and untested. | Files using them are refused, not half-cleaned (limit #7) |
+| 2 | **VBRI headers** (Fraunhofer's alternative to Xing) are unhandled and untested. | **Not refused**, as this row used to claim: F1 passes the header through like the LAME tag it keeps; F3 removes it. Measured 2026-09-24 (limit #7) |
 | 3 | **Layer II audio and free-format bitrates** are refused outright. | Fail-closed: safe, but the user gets no output (limit #3) |
 | 4 | **The AAC cross-engine result cannot be reproduced in CI** — it needs Apple's encoder, which is macOS-only. | Reported as "not measured" there rather than inheriting the number (limit #12) |
 

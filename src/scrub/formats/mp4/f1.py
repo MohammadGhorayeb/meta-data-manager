@@ -62,6 +62,10 @@ def residuals(data: bytes) -> list[str]:
     """
     out: list[str] = []
     boxes = iso.parse(data)
+    for b in boxes:
+        if b.type not in iso.TOP_LEVEL_KEEP:
+            out.append(f"top-level {b.type.decode('latin-1', 'replace')!r} box "
+                       f"survived at {b.offset} -- outside the keep list")
     for root in boxes:
         for box in root.walk():
             name = box.type.decode("latin-1", "replace")

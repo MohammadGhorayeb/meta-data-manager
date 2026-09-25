@@ -172,6 +172,72 @@ def test_the_padding_before_the_media_goes():
     assert not [b for b in iso.parse(out) if b.type in (b"free", b"skip")]
 
 
+def test_a_top_level_box_nobody_named_goes_too():
+    """The keep side decides the top level, not a list of known offenders.
+
+    Found on real files: WhatsApp writes a proprietary 24-byte `beam` box beside
+    `moov` in every video it sends. The strip was a denylist (`udta`, `meta`,
+    `free`, `skip`, `uuid`), so `beam` came through while the scrub reported
+    success. Placed before `mdat` here, as WhatsApp places it, so dropping it also
+    has to move every chunk offset.
+    """
+    from src.scrub.formats.m4a import f1 as m4a_f1
+    beam = c.box(b"beam", b"\x00\x00\x00\x10\x01\x00\x00\x00" + b"\x5a" * 8)
+    audio_only = ({"track_id": 1, "handler": b"soun", "name": "SoundHandler",
+                   "fmt": b"mp4a"},)
+    for scrub, residuals, kwargs in (
+            (f1.scrub, f1.residuals, {}),
+            (m4a_f1.scrub, m4a_f1.residuals, {"tracks": audio_only})):
+        for moov_first in (False, True):
+            data = c.handbuilt(extra_top=beam, moov_first=moov_first, **kwargs)
+            assert b"beam" in data
+            out = scrub(data)
+            assert [b.type for b in iso.parse(out)
+                    if b.type not in iso.TOP_LEVEL_KEEP] == []
+            assert residuals(out) == []
+            src = next(b for b in iso.parse(data) if b.type == b"mdat")
+            assert next(b for b in iso.parse(out)
+                        if b.type == b"mdat").payload == src.payload
+
+
+def test_residuals_see_an_unlisted_top_level_box():
+    """The check has to be able to fail, or the test above proves nothing."""
+    out = f1.scrub(c.handbuilt())
+    tampered = out + c.box(b"beam", b"\x00" * 16)
+    assert any("beam" in r for r in f1.residuals(tampered))
+
+
+def test_a_fragment_box_is_refused_by_the_shared_strip_not_dropped():
+    """Dropping `moof` would delete media that no `stco` accounts for, and every
+    chunk check would still pass. M4A had no fragment refusal of its own, so the
+    guard lives in the shared strip where both formats go through it."""
+    from src.scrub.formats.m4a import f1 as m4a_f1
+    data = c.handbuilt(
+        tracks=({"track_id": 1, "handler": b"soun", "name": "SoundHandler",
+                 "fmt": b"mp4a"},),
+        extra_top=c.box(b"moof", b"\x00" * 16))
+    with pytest.raises(ParseError, match="moof"):
+        m4a_f1.scrub(data)
+
+
+def test_quicktime_is_refused_by_name_not_as_an_unknown_format(tmp_path):
+    """Every `.MOV` used to meet "no handler for magic" — including a plain
+    two-track editor export — so the documented refusal was never reached. Real
+    phone video is out of scope (§8); the user is now told that, and why."""
+    data = c.handbuilt(major=b"qt  ", brands=(b"qt  ",))
+    assert dispatch.default_dispatcher().resolve(data).format_id == "mp4"
+    with pytest.raises(ParseError, match="QuickTime.*out of scope"):
+        f1.scrub(data)
+    src, out = tmp_path / "in.mov", tmp_path / "out.mov"
+    src.write_bytes(data)
+    r = subprocess.run([sys.executable, "-m", "src.scrub", str(src), str(out),
+                        "--fidelity", "F1"], cwd=REPO, capture_output=True,
+                       text=True)
+    assert r.returncode != 0 and not out.exists()
+    assert "QuickTime" in r.stdout + r.stderr
+    assert "no handler" not in r.stdout + r.stderr
+
+
 def test_the_media_bytes_are_untouched():
     for kwargs in ({}, {"largesize_mdat": True}, {"moov_first": True}):
         data = c.handbuilt(**kwargs)

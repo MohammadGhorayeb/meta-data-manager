@@ -339,6 +339,22 @@ def strip_tree(boxes: list[Box], drop_types: set[bytes], *,
     return kept
 
 
+# The top level of a non-fragmented file, on the KEEP side. `drop_types` is a
+# denylist, and a denylist passes whatever nobody thought to name: WhatsApp writes
+# a proprietary 24-byte `beam` box beside `moov` in every video it sends, and it
+# came through F1 untouched while the scrub reported success. So the top level is
+# decided the way HEIC's auxiliary images are — by what is kept — and anything else
+# goes, which is the direction an unseen box should fail in.
+TOP_LEVEL_KEEP = frozenset({b"ftyp", b"moov", b"mdat"})
+
+# Except these, which are refused rather than dropped: each carries or indexes
+# media OUTSIDE `moov`/`mdat` (fragment runs and their indexes), so dropping one
+# deletes picture or sound while every check below — which reads `stco`/`co64` —
+# still passes. That is the one outcome worse than a refusal.
+TOP_LEVEL_REFUSE = frozenset({b"moof", b"mfra", b"sidx", b"ssix", b"styp",
+                              b"emsg", b"prft"})
+
+
 def strip_and_repack(data: bytes, drop_types: set[bytes], *, label: str,
                      blank_handler_names: bool = False) -> bytes:
     """A bit-preserving metadata strip of any ISOBMFF file.
@@ -349,10 +365,20 @@ def strip_and_repack(data: bytes, drop_types: set[bytes], *, label: str,
     duration, and decodes to garbage. So the media bytes are captured first, the
     move is measured rather than predicted, and the result is refused unless those
     exact bytes come back out.
+
+    `drop_types` applies at every depth; the top level is additionally held to
+    `TOP_LEVEL_KEEP`, so a box outside both lists is dropped there, not kept.
     """
     boxes = parse(data)
     if not any(b.type == b"ftyp" for b in boxes):
         raise ParseError(f"{label}: no ftyp box")
+    refused = sorted({b.type for b in boxes} & TOP_LEVEL_REFUSE)
+    if refused:
+        raise ParseError(
+            f"{label}: top-level {', '.join(t.decode('latin-1') for t in refused)} "
+            "carries or indexes media outside moov/mdat (a fragmented file) -- "
+            "refusing rather than dropping media no chunk table accounts for")
+    boxes = [b for b in boxes if b.type in TOP_LEVEL_KEEP]
     mdat = next((b for b in boxes if b.type == b"mdat"), None)
     if mdat is None:
         raise ParseError(f"{label}: no mdat box (no media to preserve)")

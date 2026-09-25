@@ -23,10 +23,12 @@ therefore reports `bytes_before_mdat` per box rather than leaving a caller to as
 either way.
 
 **A track kind we do not model is refused, not skipped.** Phase 4 M1 put real phone
-video out of scope, which makes an iPhone `.MOV`'s `mebx` timed-metadata track
-(device motion sampled per frame) an unmeasured surface. Scrubbing around it would
-turn "out of scope" into "leaks", so a file carrying one is refused with its handler
-type named. That is the DOCX locus census's `UNCLASSIFIED` rule in another container.
+video out of scope, which makes an iPhone `.MOV`'s `mebx` timed-metadata tracks
+an unhandled surface (a structure-only census of five iPhone files found six per
+file: face detection, scene illuminance, Live Photo info, a UUID and more).
+Scrubbing around them would turn "out of scope" into "leaks", so a file carrying
+one is refused with its handler type named — and a QuickTime-branded file is
+refused before that, by brand, since its `meta` layout differs too. That is the DOCX locus census's `UNCLASSIFIED` rule in another container.
 """
 from __future__ import annotations
 
@@ -47,6 +49,14 @@ FTYP = b"ftyp"
 # unrecognised brand means the tool declines rather than scrubs on a guess.
 MP4_BRANDS = {b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42",
               b"avc1", b"M4V ", b"M4VH", b"M4VP"}
+
+# QuickTime. Claimed ONLY so that it can be refused by name: Phase 4 M1 put real
+# phone video out of scope (`docs/p4_media_plan.md` §8), and until this brand was
+# recognised a `.MOV` met "no handler for magic" — every one, including a plain
+# two-track editor export with no timed metadata at all, so the documented `mebx`
+# refusal was never actually reached. Declining is safe; declining without saying
+# why leaves the user guessing whether the tool is broken.
+QUICKTIME_BRAND = b"qt  "
 
 # Track handler types we model. Anything else is refused by name rather than
 # ignored -- see the module docstring.
@@ -182,6 +192,8 @@ def looks_like_mp4(data: bytes) -> bool:
     major = brand(data)
     if not major:
         return False
+    if major == QUICKTIME_BRAND:
+        return True                  # claimed to be refused by name; see walk()
     if major not in MP4_BRANDS and not any(
             b in MP4_BRANDS for b in compatible_brands(data)):
         return False
@@ -285,6 +297,14 @@ def walk(data: bytes) -> Layout:
     """
     if not looks_like_mp4(data):
         raise ParseError("MP4: not an MP4 video (brand or video track missing)")
+    if brand(data) == QUICKTIME_BRAND:
+        raise ParseError(
+            "MP4: QuickTime (.MOV, brand 'qt  ') is out of scope -- phone video "
+            "carries `mebx` timed-metadata tracks whose samples sit in mdat beside "
+            "the picture (measured on iPhone files: face-detection bounds and ids, "
+            "scene illuminance, Live Photo info, a per-file UUID), and QuickTime's "
+            "`meta` box has a different layout from the ISO one this walker reads. "
+            "Refusing rather than scrubbing around either (docs/p4_media_plan.md §8)")
 
     boxes = isobmff.parse(data)
     layout = Layout(boxes=boxes, brand=brand(data),
