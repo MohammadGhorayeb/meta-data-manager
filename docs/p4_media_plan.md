@@ -932,3 +932,152 @@ Checked on all thirteen WhatsApp files with an independent oracle: `ffmpeg -c co
 -f streamhash` per stream is identical before and after, and `beam` sits *ahead of*
 `mdat` there, so that comparison also re-proves the offset patch on real files.
 
+
+---
+
+# Camera RAW
+
+## 13. RAW M0 — measured ground truth (the opening spike)
+
+**Corpus.** Eight real camera files, one per container family, all CC0 from
+raw.pixls.us (the archive LibRaw and darktable test against), sha256-pinned in
+`tests/corpus/raw/manifest.txt` and fetched to `~/metadata-research/raw/` — never
+committed (14–35 MB each, 184 MB total). Decode oracle: **LibRaw 0.22.1 via
+`rawpy`**, independent of anything in `src/`.
+
+| file | container | magic |
+|---|---|---|
+| Canon EOS R6 Mark III `.CR3` | **ISOBMFF** (brand `crx `) | `....ftypcrx ` |
+| Canon EOS 80D `.CR2` | TIFF | `II*\0` + `CR` |
+| Nikon D750 `.NEF` (lossy-compressed) | TIFF | `II*\0` |
+| Sony ILCE-7M3 `.ARW` | TIFF | `II*\0` |
+| Fujifilm X-T4 `.RAF` | Fuji's own: header → JPEG + TIFF-ish CFA | `FUJIFILMCCD-RAW ` |
+| Apple iPhone 12 Pro `.DNG` (ProRAW) | TIFF/DNG | `MM\0*` |
+| Olympus E-M10 IV `.ORF` | TIFF variant | `IIRO` |
+| Panasonic DC-G9 `.RW2` | TIFF variant | `IIU\0` |
+
+Today every one is declined and nothing is written — seven as "no handler for
+magic", and **CR3 misidentified as MP4**: brand `crx ` lists `isom` compatible and
+carries a `vide` track, so the MP4 handler claims it and then refuses its `CTMD`
+track. Safe, but for the wrong stated reason; CR3 needs a brand check ahead of MP4,
+exactly as HEIC's `heic` brand is checked.
+
+### The leak surface: serials, counters, owners — mostly inside MakerNotes
+
+Identity loci found by ExifTool, per file (values are CC0 public samples):
+
+- **Body serial**, up to three copies: EXIF `SerialNumber` (Canon, Fuji), MakerNote
+  `SerialNumber` (Nikon, Olympus) and MakerNote `InternalSerialNumber` (Canon,
+  Sony, Fuji, Olympus, Panasonic). Fuji's internal serial embeds a **manufacture
+  date**; Panasonic's reads `(XEL) 2018:03:01 no. 0012`.
+- **Lens serial** (Canon, Fuji, Olympus, Panasonic).
+- **Shutter / image counters** — Nikon `ShutterCount` 5710, Canon `ImageCount`
+  4243, Fuji `ImageCount` 241, Sony `ShutterCount`. A counter plus a model links
+  photos to one body *across time* without any serial at all.
+- **Owner / Artist** set in-camera: Canon 80D `OwnerName` + `Artist` (a name),
+  Nikon `Artist` (an **email address**).
+- **GPS with heading and speed** (iPhone), Canon's `ImageUniqueID`, and the
+  usual dates, firmware and software versions everywhere.
+- XMP on seven of eight — mostly `CreatorTool`/`CreateDate`, restating EXIF.
+
+### The finding the design turns on: a MakerNote cannot simply be dropped
+
+Zeroing the whole EXIF MakerNote **in place** (same length, so no offset moves) and
+decoding before/after with LibRaw:
+
+| file | MakerNote | sensor data | rendered image |
+|---|---|---|---|
+| DNG (ProRAW) | 1.3 KB | identical | **identical** — DNG is self-describing |
+| ARW | 37 KB | identical | **identical** |
+| CR2 | 42 KB | identical | camera white balance lost → **94.7% of pixels change** |
+| NEF | 148 KB | — | **does not decode** |
+| ORF | 1.5 MB | — | **does not decode** |
+| RW2 | none in ExifIFD | | maker data lives in IFD0 and in the preview's EXIF |
+
+Then blanking **only the identity values** in place — EXIF owner/body/lens serial;
+Canon MakerNote owner + internal serial; Nikon MakerNote serial and shutter count,
+separately and together — leaves the render **pixel-identical** on every file. So
+F1 is two strategies, not one: drop the MakerNote where it is decode-irrelevant
+(DNG, ARW), and blank identity values **per vendor, in place** where it is not
+(CR2, NEF, ORF). The Nikon case was the one expected to break: Nikon encrypts its
+colour-balance block keyed on serial and shutter count. LibRaw's D750 white balance
+survived both being blanked. **Not measured, and not claimed:** whether the
+still-encrypted blocks — ciphertext produced under the original serial and count —
+are themselves a linking channel.
+
+In-place blanking has a cost to state rather than discover: a zeroed slot keeps
+the original field's *length* (a 12-character serial leaves 12 zero bytes), and a
+run of zeros where every camera writes text is the scrubber's own mark (limit #9's
+species). Both are A2-side, both measurable in the RAW matrix.
+
+### The embedded previews: three of eight carry a second full metadata copy
+
+Every file embeds 2–4 JPEG/TIFF renditions (thumbnail → full-size `JpgFromRaw`,
+up to 5.4 MB). Extracting each and running ExifTool on it:
+
+- **Fujifilm** — the 4.2 MB `PreviewImage` has its own EXIF *and* XMP: make,
+  model, software, date, **body serial, lens serial**.
+- **Panasonic** — the 716 KB `JpgFromRaw` has its own EXIF with the
+  **internal serial and lens serial**.
+- **iPhone ProRAW** — the 5.4 MB preview carries the **full GPS position,
+  altitude and heading**. And its altitude differs from the main IFD's in the last
+  decimal (…326 vs …328): the two copies were written independently, so a check
+  that searches the output for the *removed bytes* misses the second copy. The
+  residual check has to be structural (is there an EXIF segment in the preview at
+  all?), not value-matching.
+- The other five previews carry no EXIF — measured, not assumed.
+
+This is the "item with its own EXIF" the plan predicted from HEIC, confirmed on
+three vendors, with GPS on the one phone in the set.
+
+### Subject-derived images: ProRAW ships a semantic matte
+
+The iPhone DNG's `SubIFD1` is a DNG 1.6 **`SemanticMask`** — a 2016×1512 JPEG,
+`AuxiliaryImageType urn:com:apple:photo:2020:aux:semanticskymatte`, with its own
+`XMP-semanticSegmentationMatte` namespace. Same family as HEIC limits #30/#31: a
+judgement about the picture's content, not a camera fact. The HEIC decision (drop
+mattes, keep the HDR gain map) is the default to carry over; it is a decision, so
+it gets recorded, not inherited silently.
+
+### CR3 is MP4's problem again, inside a still photo
+
+The shared ISOBMFF walker parses CR3 unmodified: `moov/uuid(85c0b687…)` holds
+`CMT1`–`CMT4` (TIFF blocks: IFD0, ExifIFD, **MakerNote**, GPS) and `THMB`; a
+top-level XMP `uuid` and a `PRVW` preview `uuid`; and **four tracks** — a full-size
+JPEG, two raw images, and a **`CTMD` timed-metadata track** whose samples in
+`mdat` carry the image counter. The walker treats `uuid` as a leaf, so the Canon
+uuid needs a child walk; and the `CTMD` samples are §12's `mebx` problem — removing
+the track means compacting `mdat`, not deleting a `trak`.
+
+## 14. RAW work items and order
+
+By dependency and by threat model, not by market share:
+
+1. **Shared: surgical TIFF-IFD writing** in `standards/tiff_ifd.py` — blank a
+   value in place, follow `SubIFDs` (0x014A) and the vendor MakerNote IFD layouts
+   (Canon plain, Nikon `Nikon\0` + own TIFF header, Olympus `OLYMPUS\0II`), and
+   remove or rewrite an embedded preview's APP1. Written once: CR2, NEF, ARW, ORF,
+   RW2, DNG and CR3's `CMT` blocks are all TIFF underneath.
+2. **DNG first** — open spec, self-describing (MakerNote measured droppable),
+   carries the one GPS-bearing preview and the semantic matte, and **CI can
+   hand-build one** from nothing, as HEIC's corpus was built.
+3. **ARW** — MakerNote droppable; previews carry no EXIF.
+4. **CR2, NEF, ORF** — per-vendor in-place blanking; decode is the acceptance test.
+5. **RAF, RW2** — the two with a metadata-bearing preview; RAF's own container.
+6. **CR3** — brand-before-MP4 identification, Canon-uuid walk, and `CTMD`
+   removal with `mdat` compaction, which also unblocks the `.MOV` scope decision.
+
+Decode oracle for every step: LibRaw's `raw_image` must be **bit-identical** (the
+sensor data is the content F1 preserves) and the camera-WB render pixel-identical.
+
+## 15. RAW milestones
+
+| # | Deliverable | Status |
+|---|---|---|
+| **M0** | Opening spike — the census above, eight vendors | ✅ (§13) |
+| **M1** | Corpus: sha256-pinned CC0 manifest + fetch; hand-built DNG for CI | 🔜 — manifest committed; hand-built DNG next |
+| **M2** | Surgical TIFF-IFD writer (shared) | 🔜 |
+| **M3** | DNG F1, decode-tested, matte decision recorded | 🔜 |
+| **M4** | ARW, then CR2/NEF/ORF F1 | 🔜 |
+| **M5** | RAF, RW2, CR3 | 🔜 |
+| **M6** | `RawPlugin` + matrices + A2; `limits.md` rows | 🔜 |

@@ -153,7 +153,7 @@ Depth-first **by dependency, not popularity** — leaf formats before the contai
 
 ## Near-future goals
 Phases 0–3 are closed; Phase 4 has **HEIC and MP4 closed at F1**. Next, in order (schedule: media formats by 30 September, feature freeze 31 October):
-- **Camera RAW** — survey what the major makers actually put in their files before any code: the full-size embedded preview carries its own copy of the camera and location data, the same "item with its own EXIF" shape HEIC established.
+- **Camera RAW** — **opening spike measured** on eight vendors ([plan](docs/p4_media_plan.md) §13). Three findings shape the build: the identity loci (body and lens serials, shutter counters, in-camera owner names) sit mostly **inside MakerNotes**, which cannot simply be dropped — zeroing one loses Canon's white balance and leaves Nikon and Olympus files undecodable, while blanking only the identity values in place keeps every render pixel-identical; **three of eight embedded previews carry a second full metadata copy**, the iPhone ProRAW one with GPS and heading; and ProRAW ships a semantic sky matte. Next: a surgical TIFF-IFD writer (shared by every TIFF-based RAW), then **DNG first**.
 - **MP4 F2** — the four channels A2@F1 leaves are its specification ([limit #37](docs/limits.md)).
 - **HEIC F2** — likewise specified by A2@F1's named failure ([limit #33](docs/limits.md)): one canonical brand, one table order, one set of `iloc` widths, canonical item numbering, tiles untouched.
 - **MP3: the second VBR header style (VBRI)** — not recognised. We had written that such files are refused; checked, they are not: F1 passes the header through (the same class of encoder trace as the LAME tag it keeps) and F3 removes it ([limit #7](docs/limits.md)).

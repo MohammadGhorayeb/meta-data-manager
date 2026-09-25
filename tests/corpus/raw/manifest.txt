@@ -1,0 +1,8 @@
+canon_r6m3.CR3|https://raw.pixls.us/getfile.php/8963/nice/Canon - EOS R6 Mark III - RAW (3:2).CR3|1f533686b2230817dac98266a6cc8ffd960413c109965768b7efc05cc1ca96eb
+canon_80d.CR2|https://raw.pixls.us/getfile.php/1294/nice/Canon - EOS 80D - RAW (3:2).CR2|8f28465cee09844ffad95dbd3ec91923717a329c5ec4f3f405f5b4fce83aaea3
+nikon_d750.NEF|https://raw.pixls.us/getfile.php/895/nice/Nikon - D750 - 12bit 12bit compressed (Lossy (type 2)) (3:2).NEF|e4a3f85e014275fc0a47600a373af95ec850872a5f6cf87649bcaa42b77ef2e4
+sony_a7m3.ARW|https://raw.pixls.us/getfile.php/2414/nice/Sony - ILCE-7M3 - 14bit 14bit compressed (3:2).ARW|250784580ea527442c09004417bb0eead484f2bf3ee8f9121a776ac65bb50d0f
+fuji_xt4.RAF|https://raw.pixls.us/getfile.php/3918/nice/Fujifilm - X-T4 - 14bit 14bit compressed (3:2).RAF|871836938ffa695f4c41765ddb107c2703ce755f7f3ced7e10f9e04746f1734e
+apple_iphone12pro.DNG|https://raw.pixls.us/getfile.php/4264/nice/Apple - iPhone 12 Pro - 8bit (4:3).DNG|e91e77a4533ed7cce551d83330676ea5c47dd5e55fb38adda7819366afdbdfc2
+olympus_em10m4.ORF|https://raw.pixls.us/getfile.php/4132/nice/Olympus - E-M10 Mark IV - 16bit (4:3).ORF|77b67d898f85d3d738cb16daf9740c0fcf078ce9662c381994604ac540ce36b4
+panasonic_g9.RW2|https://raw.pixls.us/getfile.php/3218/nice/Panasonic - DC-G9 - 3:2.RW2|83a4f4d703e17a0d1e92fbd1dbd960c3d9313f09bd3e562c58ebb5808e35b5f3
