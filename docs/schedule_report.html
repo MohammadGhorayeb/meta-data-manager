@@ -1,0 +1,280 @@
+<title>Runway to Feature Freeze</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+  :root{
+    --paper:#f2f5f7;
+    --panel:#ffffff;
+    --ink:#121e27;
+    --ink-2:#4c5f6d;
+    --ink-3:#7c8d99;
+    --rule:#d2dbe1;
+    --rule-soft:#e4eaee;
+    --accent:#0e6a74;
+    --accent-soft:#e2f0f1;
+    --amber:#8f5d10;
+    --amber-soft:#f6ecd9;
+    --clay:#984538;
+    --clay-soft:#f6e5e2;
+    --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+    --sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0d141a;
+      --panel:#141f26;
+      --ink:#e3ecf1;
+      --ink-2:#9cb0bd;
+      --ink-3:#728897;
+      --rule:#26343d;
+      --rule-soft:#1d2830;
+      --accent:#4fc0cb;
+      --accent-soft:#14343a;
+      --amber:#d5a24f;
+      --amber-soft:#33280f;
+      --clay:#dc8d7e;
+      --clay-soft:#33201c;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0d141a;
+    --panel:#141f26;
+    --ink:#e3ecf1;
+    --ink-2:#9cb0bd;
+    --ink-3:#728897;
+    --rule:#26343d;
+    --rule-soft:#1d2830;
+    --accent:#4fc0cb;
+    --accent-soft:#14343a;
+    --amber:#d5a24f;
+    --amber-soft:#33280f;
+    --clay:#dc8d7e;
+    --clay-soft:#33201c;
+  }
+
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:920px;
+    margin:0 auto;
+    padding:44px 24px 72px;
+    display:flex;
+    flex-direction:column;
+    gap:38px;
+  }
+  h1,h2,h3{font-family:var(--serif);text-wrap:balance;margin:0;}
+  p{margin:0;}
+  a{color:var(--accent);}
+
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--ink-3);
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead{display:flex;flex-direction:column;gap:14px;}
+  .masthead h1{font-size:38px;line-height:1.12;font-weight:600;letter-spacing:-.015em;}
+  .standfirst{font-size:17px;line-height:1.58;color:var(--ink-2);max-width:64ch;}
+  .dateline{
+    font-family:var(--mono);font-size:12px;color:var(--ink-3);
+    border-top:1px solid var(--rule);padding-top:12px;
+  }
+
+  /* ---------- stats ---------- */
+  .stats{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:1px;
+    background:var(--rule);
+    border-block:1px solid var(--rule);
+  }
+  .stat{background:var(--paper);padding:16px 18px;display:flex;flex-direction:column;gap:3px;}
+  .stat .n{
+    font-family:var(--mono);font-size:26px;font-weight:600;line-height:1.1;
+    font-variant-numeric:tabular-nums;color:var(--ink);
+  }
+  .stat .k{font-size:12.5px;color:var(--ink-2);line-height:1.4;}
+
+  /* ---------- sections ---------- */
+  section{display:flex;flex-direction:column;gap:16px;}
+  h2{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);}
+  .lede{max-width:66ch;color:var(--ink-2);}
+
+  /* ---------- timeline bands ---------- */
+  .bands{display:flex;flex-direction:column;gap:0;}
+  .band{
+    display:grid;
+    grid-template-columns:132px 1fr;
+    gap:26px;
+    padding:22px 0 24px 0;
+    border-top:1px solid var(--rule);
+  }
+  .band:last-child{border-bottom:1px solid var(--rule);}
+  .band .when{display:flex;flex-direction:column;gap:4px;}
+  .band .date{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .band .span{font-family:var(--mono);font-size:11px;color:var(--ink-3);}
+  .band h3{font-size:19px;font-weight:600;margin-bottom:2px;}
+  .band .body{display:flex;flex-direction:column;gap:12px;}
+  .band ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;}
+  .band li{padding-left:16px;position:relative;color:var(--ink-2);max-width:62ch;}
+  .band li::before{
+    content:"";position:absolute;left:0;top:.62em;
+    width:6px;height:1.5px;background:var(--rule);
+  }
+  .band li strong{color:var(--ink);font-weight:600;}
+  .band-a{border-left:3px solid var(--accent);padding-left:18px;}
+  .band-b{border-left:3px solid var(--amber);padding-left:18px;}
+  .band-c{border-left:3px solid var(--ink-3);padding-left:18px;}
+  .outcome{
+    font-family:var(--mono);font-size:12px;color:var(--ink-2);
+    background:var(--rule-soft);padding:8px 11px;align-self:flex-start;
+  }
+
+  /* ---------- table ---------- */
+  .scroller{overflow-x:auto;}
+  table{border-collapse:collapse;width:100%;min-width:520px;font-size:14px;}
+  caption{text-align:left;color:var(--ink-3);font-size:12.5px;padding-bottom:10px;}
+  th{
+    text-align:left;font-family:var(--mono);font-size:11px;font-weight:500;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
+    padding:0 12px 8px 0;border-bottom:1px solid var(--rule);
+  }
+  td{padding:9px 12px 9px 0;border-bottom:1px solid var(--rule-soft);vertical-align:top;color:var(--ink-2);}
+  td:first-child{color:var(--ink);}
+  td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink-2);}
+  tr.total td{border-bottom:none;border-top:1px solid var(--rule);padding-top:11px;font-weight:600;color:var(--ink);}
+  .chip{
+    display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:500;
+    letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;white-space:nowrap;
+  }
+  .chip-sep{background:var(--accent-soft);color:var(--accent);}
+  .chip-oct{background:var(--amber-soft);color:var(--amber);}
+  .chip-nov{background:var(--rule-soft);color:var(--ink-2);}
+
+  /* ---------- note ---------- */
+  .note{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-left:3px solid var(--accent);
+    padding:20px 22px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .note h3{font-size:17px;font-weight:600;}
+  .note p{color:var(--ink-2);max-width:64ch;}
+  .floors{display:flex;flex-direction:column;gap:9px;margin:0;padding:0;list-style:none;}
+  .floors li{padding-left:16px;position:relative;color:var(--ink-2);max-width:66ch;}
+  .floors li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height:1.5px;background:var(--clay);}
+  .floors strong{color:var(--ink);font-weight:600;}
+
+  code{font-family:var(--mono);font-size:.9em;color:var(--ink);}
+
+  footer{
+    border-top:1px solid var(--rule);padding-top:14px;
+    font-family:var(--mono);font-size:11.5px;color:var(--ink-3);line-height:1.7;
+  }
+
+  @media (max-width:640px){
+    .masthead h1{font-size:30px;}
+    .band{grid-template-columns:1fr;gap:14px;}
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Irreversible metadata scrubber · delivery forecast</div>
+    <h1>Runway to feature freeze</h1>
+    <p class="standfirst">Eight file types are working and tested. The media formats finish through September, every feature is complete and frozen by 31 October, and November is spent making the tool production-ready.</p>
+    <div class="dateline">17 September 2026</div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><span class="n">8</span><span class="k">file types working today</span></div>
+    <div class="stat"><span class="n">583</span><span class="k">automated tests, all passing</span></div>
+    <div class="stat"><span class="n">13</span><span class="k">file types at the freeze</span></div>
+    <div class="stat"><span class="n">31</span><span class="k">known limits written down</span></div>
+  </div>
+
+  <section>
+    <h2>Where we stand today</h2>
+    <p class="lede">Four of the six build phases are finished: the testing foundation, images, audio and documents. Photos, music, PDFs and Word files all scrub cleanly, and every result is backed by an automated test rather than a claim. Phase 4 — the camera and video formats — opened last week with iPhone photos.</p>
+  </section>
+
+  <section>
+    <h2>The three months</h2>
+    <div class="bands">
+
+      <div class="band">
+        <div class="when">
+          <span class="date">30 Sep</span>
+          <span class="span">Media formats</span>
+        </div>
+        <div class="body band-a">
+          <h3>iPhone photos finished, video added</h3>
+          <ul>
+            <li><strong>Finish iPhone photos.</strong> The remaining test coverage and the published results for HEIC.</li>
+            <li><strong>Add video.</strong> MP4 reuses most of the groundwork already laid during the audio phase, so it is the cheapest format left.</li>
+            <li><strong>Begin camera RAW</strong> with a survey of what the major camera makers actually put in their files, before any code is written.</li>
+          </ul>
+          <div class="outcome">9 file types · Phase 4 two-thirds done</div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="when">
+          <span class="date">31 Oct</span>
+          <span class="span">Feature complete</span>
+        </div>
+        <div class="body band-b">
+          <h3>Every format in, and the tool usable in bulk</h3>
+          <ul>
+            <li><strong>Camera RAW</strong> closes the media phase. The leak that matters is the full-size preview image hidden inside every RAW file, carrying its own copy of the camera and location data.</li>
+            <li><strong>Program files</strong> — Windows, Mac and Linux executables, which carry traces of the machine that built them. The rule here is that the program must still run afterwards.</li>
+            <li><strong>Archives and the remaining image types</strong> — ZIP, EPUB, TIFF, WebP, SVG, GIF. An archive is cleaned by cleaning everything inside it.</li>
+            <li><strong>Bulk use.</strong> Whole folders in one command, and a single published results sheet covering every supported format.</li>
+          </ul>
+          <div class="outcome">13 file types · every phase closed · feature freeze</div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="when">
+          <span class="date">30 Nov</span>
+          <span class="span">Hardening</span>
+        </div>
+        <div class="body band-c">
+          <h3>Production readiness</h3>
+          <ul>
+            <li><strong>Robustness.</strong> Make certain that broken or hostile files are refused safely rather than half-processed.</li>
+            <li><strong>Performance.</strong> Measure speed and memory on large files — nothing on that is measured today.</li>
+            <li><strong>Packaging.</strong> A proper install, and automated testing on Mac as well as Linux.</li>
+            <li><strong>Documentation and release.</strong> The final write-up of what the tool can and cannot do, and the release candidate.</li>
+          </ul>
+          <div class="outcome">Release candidate</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>What stays after November</h2>
+    <p class="lede">A few limits remain, and they are worth stating once rather than discovering later. Some traces live in the content itself rather than in the metadata — the faint noise a camera sensor leaves in every photograph, or the way a particular program arranged a page — and removing them would damage the file. These are recorded as documented limits rather than left standing as unfinished work.</p>
+  </section>
+
+  <footer>
+    Figures describing the current state are measured from the project. Dates are the plan; any slippage will be reported against this baseline as it occurs.
+  </footer>
+
+</div>
