@@ -1619,10 +1619,56 @@ One milestone numbering, `main`'s, with the branch's order inside it:
 
 | # | Deliverable |
 |---|---|
-| **M16** | Shared surgical TIFF-IFD writing in `standards/tiff_ifd.py`: the `IIRO`/`IIU` magics, `SubIFDs`, the vendor maker-note layouts (Canon plain, Nikon `Nikon\0` with its own TIFF header, Olympus `OLYMPUS\0II`), values blanked in place and size-preserving; a hand-built DNG so CI can test it |
+| **M16** ✅ (§10.1) | Shared surgical TIFF-IFD writing in `standards/tiff_ifd.py`: the `IIRO`/`IIU` magics, `SubIFDs`, the vendor maker-note layouts (Canon plain, Nikon `Nikon\0` with its own TIFF header, Olympus `OLYMPUS\0II`), values blanked in place and size-preserving; a hand-built DNG so CI can test it |
 | **M17** | RAW F1, **DNG first** (open spec, the GPS-bearing preview, the semantic matte), then ARW, then CR2/NEF/ORF. Acceptance: LibRaw `raw_image` bit-identical **and** the camera-WB render pixel-identical, every identity value absent from the bytes |
 | **M18** | RAF and RW2 (the two with a metadata-bearing preview, RAF its own container), then CR3 (brand ahead of MP4, Canon `uuid` walk, `CTMD` removal with `mdat` rebuilt as MP4 F1 does) |
 | **M19** | `RawPlugin`, matrices, A2; `limits.md` rows |
 
 The open decision stays open (§7.6): drop the previews or keep a cleaned copy, to be
 settled with viewer behaviour measured.
+
+### 10.1 M16 as built — the TIFF writer, and an owner's name ExifTool cannot see
+
+`standards/tiff_ifd.py` gained what raw needs, all of it size-preserving: the Olympus
+and Panasonic magics (opt-in, so a JPEG's EXIF is still held to 42), `SubIFDs` and
+IFD-typed pointers, `makernote()` for five layouts, and three writes on a mutable
+buffer -- blank a value, blank a span inside one, remove an entry from its directory
+in place. The maker-note layouts were read off the real files, not a reference:
+
+| maker | header | IFD at | offsets count from |
+|---|---|---|---|
+| Canon | none | +0 | the TIFF start |
+| Sony | none (or `SONY DSC `) | +0 / +12 | the TIFF start |
+| Nikon | `Nikon\0` + version, then a whole TIFF header | inner header's IFD0 | that inner header |
+| Olympus | `OLYMPUS\0II\x03\0` | +12, serials in the `Equipment` sub-IFD | the maker note |
+| Apple | `Apple iOS\0\0\x01MM` | +14, big-endian | the maker note |
+
+`formats/raw/identity.py` holds what is removed, per maker, with the two strategies
+the survey measured: blank fields in place (Canon, Nikon, Olympus) or remove the whole
+maker note (Sony, Apple). It is not registered with dispatch; F1 is M17.
+
+**On the five TIFF-family files** (DNG, CR2, NEF, ARW, ORF): length unchanged, LibRaw
+sensor data bit-identical, camera-white-balance render pixel-identical, and every
+identity value ExifTool read before is gone after -- from 28 changed bytes on the
+Nikon to Sony's whole 37 KB note.
+
+**And one it could not read.** A search of the BYTES after that still found the Canon
+80D's owner name: a third copy, 1,150 bytes into `CameraInfo` (0x000D), a 1,536-byte
+model-specific block ExifTool does not decode for that body -- so it reported the name
+gone. A per-model offset table cannot keep up with Canon's bodies, so every text value
+blanked is then searched for across the maker note and each further copy blanked:
+text of four characters or more, never outside the maker note, decode-checked like
+everything else. The rule that found it is the one §5.4 found the iPhone video's stale
+GPS with: the measuring stick reads fields, so the residual check reads bytes.
+
+**CI** runs on `tests/scrub/raw_corpus.py`: a TIFF writer importing nothing from
+`src`, building a DNG LibRaw decodes in each of the five layouts plus an unknown one,
+both byte orders, with the Canon-style hidden copy planted. 57 tests; two mutations
+(no copy search, no Nikon serial) each fail by name on the fixture and on the real
+files. Not yet: GPS, XMP, dates, the previews and their own EXIF (M17), RAF, RW2 and
+CR3 (M18).
+
+**Stated, not measured yet:** a blanked field keeps its length, so a run of zeros sits
+where every camera writes text -- limit #9's species, for the RAW A2 cell to measure.
+And Nikon's colour block stays enciphered under the ORIGINAL serial and count; whether
+that ciphertext is itself a linking channel is untested.
