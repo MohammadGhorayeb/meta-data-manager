@@ -388,3 +388,421 @@ the fix.
 Phase 4 continues to MP4 (cheap: `stco`/`co64` patching already exists and is proven)
 and then RAW, whose embedded full-size previews are the same "item with its own EXIF"
 shape HEIC establishes here.
+
+---
+
+## 5. MP4 and MOV — the opening spike (M7)
+
+The earlier sections call MP4 "cheap", and that word was an **inference, not a
+measurement**: it came from one ffmpeg-produced file whose two `stco` tables
+`shift_chunk_offsets()` already covered. ffmpeg is not what makes the videos people
+actually carry. Measured on real ones, the offset patching is reused as promised,
+and it is also the smallest part of the job. The spike found four things none of the
+earlier formats had.
+
+### 5.1 The corpus
+
+Thirteen real files from this machine, measured in place (a sixth iPhone clip, `IMG_0545`, was added after the first pass and confirmed its prediction; §5.4). They are personal videos:
+none is copied into the repository, and this document gives no coordinates, dates or
+identifiers from them, only whether each is present.
+
+| producer | files | container | brand | size |
+|---|--:|---|---|---|
+| iPhone 16 camera, iOS 18.6.2 and 18.7.8 (`IMG_9117`–`9121`, `IMG_0545`) | 6 | QuickTime | `qt  ` | 32 MB – 3.37 GB |
+| macOS capture on a MacBook Pro (AVFoundation; screen `pixeldensity` key) | 3 | QuickTime | `qt  ` | 56 – 160 MB |
+| macOS export from an editing timeline | 1 | QuickTime | `qt  ` | 251 MB |
+| WhatsApp's transcoder (x264 + libavcodec) | 2 | MP4 | `mp42` + `isom` | 6 – 25 MB |
+| Apple Core Media export, ISO flavour | 1 | MP4 | `mp42`, minor 1 | 221 MB |
+
+**The iPhone does not record MP4. It records QuickTime.** A handler scoped to the
+`isom`/`mp42` brands would leave out every video a phone camera made, which is the
+file this phase exists for. So the handler is **MP4 and MOV together**: the same box
+grammar, with the one dialect difference in §5.2.
+
+No file in the corpus is fragmented (`moof`/`mvex`/`sidx`), none has more than one
+`mdat`, and every data reference is self-contained (`alis` or `url ` with flag 1).
+
+### 5.2 The shared walker cannot parse an iPhone video
+
+`isobmff.parse()` fails on all eight QuickTime files, and fails closed, which is the
+correct behaviour:
+
+```
+ISOBMFF: box b'\x00\x00\x00\x00' at 8857 declares size 1751411826, which overruns its container
+```
+
+`1751411826` is `0x68646c72`, ASCII `hdlr`. In ISO 14496-12 `meta` is a **full box**,
+with 4 bytes of version and flags before its children, and `FULL_CONTAINERS` encodes
+exactly that. In QuickTime, `moov/meta` and `trak/meta` are **plain containers**. The
+walker skips 4 bytes into the first child's header and reads its type as a size.
+
+The fix belongs in `standards/isobmff.py`, and it must be decided **per box, from the
+bytes**, not per brand, because nothing forbids either layout in either brand. A
+QuickTime `meta` has a child box type at payload offset 4 (`hdlr`); an ISO `meta`
+has zero version and flags there. The serializer has to write back the dialect it
+read. M4A and HEIC depend on the ISO reading, so their suites are the regression
+test for the change.
+
+**Fixed (M8, first half).** `_quicktime_meta()` reads the first word of the body:
+zero means ISO; a non-zero size that fits, followed by a printable four-character
+type, means QuickTime; anything else takes the ISO path and fails closed there. A
+QuickTime `meta` is recorded with an empty payload, so `serialize()` writes back the
+dialect it read with no change to its own code. Measured on the corpus: **all twelve
+`moov` boxes parse and re-serialise byte-identically**, and every `meta` (two to
+three per Apple file, all QuickTime) resolves to `hdlr`/`keys`/`ilst`. Before the
+fix, eight of the twelve could not be parsed at all. CI covers it with hand-built
+boxes in `tests/scrub/test_isobmff_dialects.py`, including both dialects in one
+file. Five of its seven tests fail on the old walker. The ISO round-trip passes on
+both, which is the point. The full suite is unchanged: 617 passed.
+
+### 5.3 The leak surface, per locus
+
+| locus | measured | disposition |
+|---|---|---|
+| `moov/meta` (`mdta` keys) | iPhone: **GPS (ISO 6709) plus horizontal accuracy**, make, model, iOS version, and creation date **with its UTC offset**. Mac: make, model `MacBookPro18,1`, macOS build `14.6.1 (23G93)`, creation date | **drop** |
+| `trak/meta` | Video track: lens model (`iPhone 16 back camera 2.22mm f/2.2`), 35 mm focal length, the screen's `pixeldensity`. Audio track: the **microphone** (`MacBook Pro Microphone (Digital Mic)`, `Apple Inc.`) | **drop** |
+| timed-metadata tracks (`hdlr` `meta`, sample entry `mebx`) | **Six per iPhone clip**, with their samples in `mdat` next to the video: 149 KB to 13.5 MB per file. **Per-frame detected faces** (bounds, face-id, roll, yaw; 243 to 6,949 samples), live-photo info, scene illuminance, cinematic audio, video orientation, and `segment-identifier`, which is **a per-recording UUID in plain ASCII, different in every clip** | **drop** the track, its samples, and every `tref` that names it |
+| unreferenced bytes in `mdat`, and a trailing top-level `free` | §5.4. **The exact GPS coordinates, in every iPhone video: 6 of 6** | **excise** |
+| `mvhd`/`tkhd`/`mdhd` times | The recording time, to the second, on every track. WhatsApp alone zeroes them | **zero**, the M4A rule |
+| `hdlr` names | `Core Media Video`/`Audio`/`Metadata`/`Data Handler`: a Pascal string in QuickTime, a C string in the ISO export, empty from WhatsApp | muxer channel; decided in M10 |
+| top-level `wide`, `beam` | QuickTime's placeholder, and WhatsApp's own 16-byte box | **drop**. The top level is a keep-allowlist: `ftyp`, `moov`, `mdat` |
+| x264 SEI, inside the coded video | WhatsApp: `x264 - core 155 r2917 0a84d98 … options: cabac=1 ref=2 …` plus `Lavc58.54.100`, 21 copies in a 25 MB file | encoder channel; F2 candidate (§5.6) |
+| sample-entry children: `hvcC`/`avcC`, `dvvC`, `amve`, `colr`, `fiel`, `chrm` | Decoder configuration, Dolby Vision, HDR viewing environment, colour | **keep** (content) |
+| `apac` second audio track, linked by `tref/fall` | iPhone 16 spatial audio. **ffmpeg cannot decode it** | **keep** (content), verified by sample-byte identity because it cannot be decoded |
+
+### 5.4 The file keeps a second copy of its metadata where no table points
+
+This is the headline, and nothing in the M4A or HEIC work predicted it. The spike
+resolves every sample of every track to a byte range, from `stsc`, `stsz` and
+`stco`/`co64`, and then asks which bytes of `mdat` **no sample covers**:
+
+| file | unreferenced bytes | gaps | non-zero | what is in them |
+|---|--:|--:|--:|---|
+| IMG_9117 | 33,518 | 2 | 15,453 | **exact GPS**, make/model/software/creation-date keys, lens model, face-detection key table, a `bplist00`, stale `moof`/`traf` |
+| IMG_9118 | 49,024 | 2 | 23,509 | the same, **exact GPS** |
+| IMG_9119 (4.9 s) | 0 | 0 | — | none in `mdat`; the copy is in a trailing `free` box instead (below) |
+| IMG_0545 (5.9 s) | 0 | 0 | — | the same |
+| IMG_9120 | 1,198,025 | 50 | 574,075 | **exact GPS** |
+| IMG_9121 | 887,841 | 39 | 426,061 | **exact GPS** |
+| Mac capture 1 | 1,496,557 | 177 | 38,642 | model, macOS build, creation date with UTC offset |
+| Mac capture 2 | 7,817,961 | 956 | 128,408 | the same, plus the microphone name |
+| Mac capture 3 | 1,520,402 | 175 | 48,182 | the same |
+| timeline export, WhatsApp ×2, ISO export | 0 | 0 | — | — |
+
+"Exact" means the ISO 6709 string in `moov/meta`, byte for byte, found in the
+unreferenced region.
+
+**The cadence is fixed: one stale copy per 10.0 seconds of recording.** Mapping each
+gap back to the video sample in front of it puts them at t = 10.0, 20.0, 30.0 s … in
+every iPhone clip (15.8 s gives 2, 492 s gives 50). IMG_9119 is 4.9 s long, so it never
+reached the first one.
+
+**A short clip does not escape; the copy just moves.** Both clips under ten seconds
+end with a 2,352-byte top-level `free` box after `moov`, and it holds the same key
+table with **the exact GPS, the model, the iOS version and the creation date**. No
+clip longer than ten seconds has that box. So the count is **every iPhone video, 6
+of 6**: long clips carry the copy in `mdat` once every ten seconds, short ones in the
+trailing `free`. `IMG_0545` was added after the cadence was measured, and it is the
+confirmation: 5.9 s, no `mdat` gaps as predicted, GPS in the `free` box. On it,
+`exiftool -all=` again leaves the coordinates and then lists zero GPS tags, and MAT2
+again crashes with return code 234 and writes a 0-byte file.
+
+This is why the top level is a keep-allowlist (`ftyp`, `moov`, `mdat`) and not a
+drop-list. A drop-list only works if you already know every box you need to drop. The stale `moof`/`traf` headers are consistent with a camera
+that records as a fragmented movie for crash safety, then writes one final `moov` and
+leaves the fragment scaffolding where it was. That is an interpretation. The bytes
+are the measurement.
+
+This is PDF's incremental-update history in a new container: **data the file no
+longer points at, which every reader ignores and every byte-level reader finds.** It
+is invisible to any tool that works on the box tree.
+
+### 5.5 What the benchmark tools do with it
+
+MAT2 0.14.0 and ExifTool 13.55, on copies:
+
+| | iPhone `.mov` | Mac `.mov` | WhatsApp `.mp4` |
+|---|---|---|---|
+| **ExifTool `-all=`** | Succeeds. **The exact GPS is still in the file**, with model, lens, the face-detection keys and the creation date | Model and creation date survive | x264 string survives, all 21 copies |
+| **MAT2** | **Refused** (`video/quicktime` not supported). Renamed to `.mp4`, it **crashes (ffmpeg return code 234) and leaves a 0-byte output file** | Refused. Renamed, it cleans (an ffmpeg remux, which drops the slack) | x264 string survives. Output is 267 bytes **larger** |
+
+Two consequences, both of which change how this format is built:
+
+- **ExifTool cannot be the oracle for this locus.** Read back with `-ee`, ExifTool's
+  own output shows no GPS at all, while the coordinates are still in the bytes. It
+  still shows the recording time on every track and **every per-frame face bounding
+  box**, because it removes no tracks. The A1 check for MP4 has to work on bytes, and
+  "no unreferenced bytes in `mdat`" has to be a residual check of its own.
+- **ffmpeg cannot be the F1 engine.** MAT2's crash is ffmpeg failing to stream-copy
+  `apac`, a codec it does not know. Every iPhone 16 video has that track, so a
+  remux-based F1 fails on the most important input. F1 is our own box surgery, as it
+  was for M4A and HEIC.
+
+### 5.6 Design decisions the spike forces
+
+1. **F1 emits only what the kept sample tables reach.** `mdat` is rebuilt chunk by
+   chunk, in the original file order so the interleave is untouched, from the tables
+   of the tracks we keep. Every chunk offset is then **rewritten individually**, not
+   shifted by one delta. Slack and dropped tracks' samples leave by construction:
+   there is no deletion pass to get wrong, the principle PDF's M2 serializer was
+   built on. Zero-filling was the alternative. It keeps the offsets but also keeps
+   the gap layout (every Mac file opens `mdat` with the same all-zero 16,348-byte
+   gap, a producer tell) and the inflated size. So the new shared primitive is a
+   **sample-table resolver and a per-chunk remap**, next to `shift_chunk_offsets()`
+   in `standards/isobmff.py`.
+2. **Two independent content checks.** (a) Per-track sample identity: every kept
+   sample's bytes, in order, equal the source's. (b) A decode through ffmpeg
+   (`framemd5` of video and `mp4a` audio). A shared misreading of `stsc` could
+   cancel out in (a) alone, and ffmpeg is the independent implementation. `apac`
+   gets (a) only, and that is stated wherever the check is described.
+3. **Memory is a real constraint here, not a hardening detail.** The handler
+   interface is bytes in, bytes out, and the largest file in the corpus is 3.37 GB,
+   so about 7 GB would be resident. **Open, to be decided before M10:** refuse above
+   a size cap now and stream in the November hardening, or stream from the start.
+4. **x264's settings string is the LAME tag's analogue, and it may not need a
+   re-encode.** It lives in a user-data-unregistered SEI (payload type 5), a NAL unit
+   of its own and non-normative, so dropping it should leave the decoded frames
+   identical. That is a **hypothesis to measure, not a claim**. It changes sample
+   sizes, so it needs the per-chunk remap from (1), which is one more reason to build
+   the remap rather than zero-fill.
+5. **Refused, fail closed:** fragmented files, external data references, more than
+   one `mdat`, samples outside `mdat`, and overlapping sample ranges. None occurs in
+   the corpus, so each refusal gets a hand-built test rather than a real one.
+
+### 5.7 Milestones
+
+| # | Deliverable | Status |
+|---|---|---|
+| **M7** | Opening spike: this section | ✅ |
+| **M8** | Walker: the QuickTime `meta` dialect in `standards/isobmff.py`, read and written back as found; `claims()` for video (a `vide` handler and not a HEIC brand, the mirror of M4A's rule); the refusal list. M4A and HEIC routing unchanged | ✅ (§6) |
+| **M9** | Sample-table resolver and per-chunk remap (shared), with the resolver checked against ffmpeg's own packet positions on the real corpus | ✅ (§6): every sample of every track matches ffprobe's positions |
+| **M10** | MP4/MOV F1: drop the metadata boxes and tracks, rebuild `mdat` from the kept tables, zero the times, decide the handler names. Acceptance: sample identity **and** decode identity on all thirteen real files, zero unreferenced bytes, and GPS absent from the bytes, not only from ExifTool's view | ✅ (§6): real clips decode identically, GPS gone from the bytes |
+| **M11** | Hand-built corpus, byte by byte with no `src` imports: QuickTime `meta`, a `mebx` track with a `tref`, a stale `moov` fragment in the slack carrying a planted ISO 6709 string, `co64`, and interleaved chunks, so CI covers what real files do | ✅ (§6) |
+| **M12** | `Mp4Plugin`, matrix, and the A2 cell: the muxer channel (brand, top-level order, handler names, box inventory), with the encoder channel reported separately, as M4A does | |
+| **M13** | F2 candidate: SEI user-data removal, measured for decode identity | |
+| **M14** | `limits.md` rows, the benchmark row, README | 🟡 limits #34–#39 and README done; the benchmark row waits for M12 |
+| **M15** | Camera RAW opening survey: eight makers, before any code | ✅ (§7) |
+
+---
+
+## 6. M8–M11 as built
+
+**The handler is MP4 and MOV at F1**, `formats/mp4/`, registered after M4A and HEIC.
+`claims()` needs a known video brand **and** a `vide` track. The brand list is a
+keep-list, because Canon's CR3 is ISOBMFF with `vide` tracks too, and a camera raw
+scrubbed with video-shaped assumptions is the mistake M4A's handler exists to avoid.
+A test sets the brand to `crx ` and to an unknown code and requires both to be
+declined. M4A's `claims()` now parses `moov` alone instead of the whole file. It was
+copying a multi-gigabyte `mdat` just to learn the file was a video.
+
+**The shared primitives** are in `standards/isobmff.py`: `scan()` (top-level headers
+with no payload copy), `chunks()` (a sample table resolved into chunks and sample
+sizes, refusing `stz2` and any table that does not account for every sample), and
+`set_chunk_offsets()` (a per-chunk rewrite, the sibling of `shift_chunk_offsets()`).
+The resolver was checked before anything was built on it. **Every sample of every
+track in five real files matches ffprobe's own position and size**: video, both audio
+tracks including `apac`, and all six timed-metadata tracks, over 30,000 samples. The
+first comparison disagreed on two or three audio samples per clip and on one screen
+recording. Every difference was ffmpeg applying the **edit list** (hiding the AAC
+priming frames, repeating frames); with `-ignore_editlist 1` they match exactly. The
+lesson for anyone repeating it: compare against the demuxer with edit lists off, or
+the independent check disagrees for a reason that has nothing to do with the tables.
+
+**F1** is §5.6(1) as designed. It emits `ftyp`, `moov` and `mdat` in their original
+order, rebuilds `mdat` from the chunks of the kept tracks in file order, and writes
+each offset individually. Before returning, it re-resolves the output with the same
+primitives and requires every kept track's samples to hash identically. Three things
+were decided here rather than in the plan:
+
+- **Handler names and the `hdlr` reserved words are blanked.** QuickTime's `hdlr`
+  keeps the component manufacturer (`appl`) in words that ISO calls reserved and
+  QuickTime documents as "set to 0". The name is free text naming Apple's framework.
+  No decoder reads either. The component type (`mhlr`/`dhlr`) is kept: it is the
+  QuickTime dialect marker, not a name.
+- **Track IDs are not renumbered.** Dropping tracks 4–9 leaves IDs 1–3 and a
+  `next_track_ID` of 10. That is a structural trace of *how many* tracks there were.
+  It goes on the A2 list for M12 rather than being patched blind.
+- **`tref` is pruned per entry, not dropped.** The `apac` track's `fall` reference to
+  the AAC track is content (it is how a player picks a fallback), so it stays; any
+  entry naming a dropped track goes.
+
+**Measured on the real clips** (five readable; the WhatsApp files became unreadable to
+this process mid-session, a macOS permission on files downloaded by WhatsApp, and
+were not forced):
+
+| | before → after | decoded frames | residuals | stale bytes | ExifTool tags |
+|---|---|---|---|---|---|
+| IMG_9117 (15.8 s) | 54.2 → 53.9 MB | 473 video + 740 audio, **identical** | none | 33,518 → **0** | 7,405 → 118 (with `-ee`) |
+| IMG_0545 (5.9 s) | 42.3 → 42.3 MB | 355 + 278, **identical** | none | trailing `free` → **gone** | 301 → 103 |
+| IMG_9119 (4.9 s) | 32.2 → 32.0 MB | 293 + 229, **identical** | none | trailing `free` → **gone** | — |
+| Mac capture | 55.7 → 54.2 MB | 10,313, **identical** | none | 1,520,402 → **0** | — |
+| WhatsApp (x264) | 25.1 → 25.1 MB | 6,045 + 9,450, **identical** | none | 0 | encoder string **kept, reported** |
+
+The GPS string is absent from every output's bytes, not only from ExifTool's view.
+What ExifTool still lists on a scrubbed iPhone clip is structure: dimensions,
+durations, codec names, the brand, and dates of `0000:00:00`.
+
+**The report's cross-check raised one false alarm, and it was ExifTool's wording, not
+the file.** "Apple QuickTime (.MOV/QT)" is ExifTool's name for the brand code
+`qt  `. The file holds only those four bytes, so the removed `Make: Apple` appeared to
+survive. It is exempted as a single tag, `MajorBrand`, with the reason in the handler,
+the same way HEIC exempts `AuxiliaryImageType`.
+
+**The hand-built corpus** (`tests/scrub/mp4_corpus.py`, table in its docstring)
+carries every locus in §5.3, in four layouts (`moov` before or after `mdat`, `stco`
+or `co64`), with ffmpeg used only as an encoder. A libx264 variant covers the kept
+encoder string in CI, now that the real WhatsApp files cannot be read here. MP4 joins
+the fuzz, idempotence and cross-process determinism suites. **Seven refusals are
+tested**: fragmented, two `mdat`s, external data, a subtitle-type track, `stz2`, a
+sample outside `mdat`, and a sample count the file cannot hold. The last one is a bug
+found by reading the resolver, not by a test. A fixed-size `stsz` states its count
+as a bare 32-bit number, and `chunks()` built a list that long before checking it,
+so a damaged count of about four billion was an allocation, not a refusal. The count
+is now checked against the file's length first, and every MP4 caller passes it.
+
+One older test changed meaning rather than breaking.
+`test_m4a.py::test_dispatch_refuses_mp4_video` required dispatch to find **no**
+handler for an MP4 video, which was correct only while Phase 4 had none. Its real
+point, that the *audio* handler declines video, is kept. It now also requires that
+the video lands on this handler.
+
+**Speed:** 0.2 to 0.3 s per real clip. **Memory:** 203 MB peak for the 54 MB clip,
+about 3.7 times the file (limit #38). §5.6(3) is answered for now by stating it
+rather than capping it: nothing is refused for size, the cost is written down, and
+streaming is November's hardening work.
+
+**Suite after M8–M11: 703 passed, 1 skipped** (the long-standing M4A engine skip). Five
+of those tests need the real clips and skip on CI.
+
+**Still open for video:** M12 (plugin, matrix, the A2 cell, and the benchmark row)
+and M13 (the SEI experiment). F1 is the only tier offered, and the A2 cell is
+`not_tested` until M12 runs; limit #37 says so in plain words.
+
+---
+
+## 7. Camera RAW — the opening survey (M15)
+
+The schedule's rule for RAW was a survey of what the makers actually put in their
+files **before any code**. This is that survey. No RAW code exists yet.
+
+### 7.1 The corpus
+
+Eight files from eight makers, from raw.pixls.us (a public sample archive), kept
+outside the repository in `~/metadata-research/raw/` with a manifest of source URLs
+and SHA-256 hashes. All eight re-verified against the manifest before measuring.
+
+| file | container | our `tiff_ifd` today | `rawpy` (LibRaw) decodes |
+|---|---|---|---|
+| Apple iPhone 12 Pro `.DNG` | TIFF | parses | yes |
+| Canon EOS 80D `.CR2` | TIFF | parses | yes |
+| Nikon D750 `.NEF` | TIFF | parses | yes |
+| Sony A7 III `.ARW` | TIFF | parses | yes |
+| Olympus E-M10 IV `.ORF` | TIFF with magic `IIRO` | refused (magic) | yes |
+| Panasonic G9 `.RW2` | TIFF with magic `IIU` | refused (magic) | yes |
+| Fujifilm X-T4 `.RAF` | Fuji header, then JPEG and TIFF | refused | yes |
+| Canon EOS R6 III `.CR3` | ISOBMFF, brand `crx ` | n/a (the MP4 handler declines it by brand, tested) | yes |
+
+Four of eight are plain TIFF that the Phase 1 reader already walks. Two more are
+TIFF with a different magic number. RAF needs its own header parser. CR3 is the
+ISOBMFF walker again, with Canon's `uuid` boxes.
+
+### 7.2 What identifies the camera, and the person
+
+Measured with ExifTool as the measuring stick. The samples are public, but this
+document still does not repeat the names and email address found in them.
+
+| | body serial | internal serial | lens serial | owner / artist | usage counter | other |
+|---|---|---|---|---|---|---|
+| iPhone DNG | — | — | — | — | — | **GPS**, iOS version, `UniqueCameraModel` |
+| Canon CR2 | ✔ | ✔ | ✔ | **owner name + artist** | — | copyright line |
+| Canon CR3 | ✔ | ✔ | ✔ | (empty fields) | **image count 4,243** | **`ImageUniqueID`** |
+| Fuji RAF | ✔ | ✔ | ✔ | (empty) | image count | firmware |
+| Nikon NEF | ✔ | — | — | **an email address in `Artist`** | **shutter count** | firmware |
+| Olympus ORF | ✔ | ✔ | ✔ | (empty) | — | firmware |
+| Panasonic RW2 | — | ✔ | ✔ | — | — | firmware |
+| Sony ARW | — | ✔ (binary) | — | — | shutter count | firmware |
+
+A serial number is a stronger identifier than anything in the photo formats so far,
+because it is stable across every picture the camera ever takes. The usage counters
+are weaker per file but **order** a set of photos from one camera in time. Both live
+mostly inside the **maker note**, which is where the design problem is (§7.4).
+
+### 7.3 Every file carries a second picture, and some carry a second copy of the data
+
+Every file embeds full-size or near-full-size JPEG previews beside the raw data,
+from 1616×1080 up to 6016×4016, plus a thumbnail. Three of them carry **their own,
+independent copy of the metadata** inside the preview:
+
+| file | embedded preview | what the preview carries by itself |
+|---|---|---|
+| iPhone DNG | 4032×3024 JPEG, 5.4 MB | **GPS**, make, model, software, lens, host computer, date |
+| Fuji RAF | 4416×2944 JPEG, 4.2 MB | **body, internal and lens serials**, image count, make, model, date |
+| Panasonic RW2 | 1920×1440 JPEG, 0.7 MB | **internal and lens serials**, firmware, make, model, date |
+
+This is the "item with its own EXIF" shape HEIC established, and the Phase 1 thumbnail
+lesson at full size. A scrubber that cleans the RAW's tags and copies the preview
+leaves GPS in a DNG and every serial number in a RAF. Measured: `exiftool -all=` does
+exactly that to the DNG (§7.5). The other five previews carry no
+metadata of their own, and each is still a finished rendering of the photo, which the
+RAW decoder does not need.
+
+### 7.4 The maker note is not metadata you can drop
+
+The obvious F1 is to delete the maker note: it holds most of the serials. The test was
+to zero each maker note **in place** (same size, so no offset moves) and decode with
+LibRaw, both the raw sensor data and a rendering with the camera's white balance:
+
+| file | maker note | sensor data | rendered with camera white balance |
+|---|--:|---|---|
+| Canon CR2 | 41 KB | identical | **different**: white balance lost (`1771/1024/1827` → `0/1/0`) |
+| **Nikon NEF** | 148 KB | **does not decode** ("data corrupted") | — |
+| Sony ARW | 37 KB | identical | identical |
+| iPhone DNG | 1 KB | identical | identical |
+
+So "strip the maker note" **destroys a Nikon photo and discolours a Canon one**. The
+serial numbers share a block with the decompression curve and the colour data the
+decoder needs. **RAW F1 therefore edits inside the maker note, maker by maker**,
+blanking the identity fields in place without moving a byte. Every other maker-note
+tag is kept, and the per-maker list of what is blanked is the thing to build and test.
+Two decode oracles are required, sensor data and camera-white-balance rendering,
+because the Canon result shows one alone passes a file with its colours gone.
+
+### 7.5 The benchmark tools
+
+**MAT2 0.14.0 supports none of the eight formats** ("format (None) is not
+supported"). **`exiftool -all=`** runs on all eight, and:
+
+- **leaves text-stored serial numbers in the bytes in five of eight**: Canon CR2 (body,
+  internal and lens serials, **and the owner's name and the artist**), Canon CR3 (body,
+  internal, lens), Fuji RAF (body, lens), Nikon NEF (body serial, **and the email
+  address**), Olympus ORF (body, internal, lens). It cannot delete maker notes, and
+  it warns that it cannot delete IFD0 from a CR2, NEF, ORF, RW2, ARW or DNG;
+- **left the GPS in the DNG.** ExifTool's own listing of its output shows no GPS,
+  but the 4032×3024 preview inside the file still carries its own **exact position
+  and the phone model**. ExifTool does not read inside that preview, so it cannot
+  report what it left there. This is the video finding again (§5.5): the tool reads
+  its output as clean while a copy of the location remains. It *did* clean the
+  previews inside the Panasonic and Fuji files, and it removed Panasonic's text
+  serials;
+- **produced a Fuji RAF that LibRaw cannot open** (I/O error), which ExifTool cannot
+  read back to the end either ("Unexpected end of file"), 78 KB shorter. That is one
+  sample, and is stated as one sample.
+
+Values stored as binary (shutter and image counts, Canon's `ImageUniqueID`, Sony's
+internal serial) cannot be found by a byte search for their displayed text. So
+whether ExifTool removed them is **not measured here**, and the list above does not
+claim it.
+
+### 7.6 What this sets up
+
+| # | Next | Why |
+|---|---|---|
+| **M16** | Extend `tiff_ifd` to accept the `IIRO`/`IIU` magics, and model a maker note as a located, **size-preserving** region with per-maker tag tables | four TIFF files are walkable now, six with the magic fix; nothing may move |
+| **M17** | RAW F1 for the TIFF family: blank the identity tags in IFD0/ExifIFD and inside the maker note, and drop or clean each embedded preview; acceptance = LibRaw sensor data **and** camera-WB rendering identical, every identity value absent from the bytes | the two oracles from §7.4 |
+| **M18** | RAF (own header) and CR3 (ISOBMFF, Canon `uuid` boxes) | the two non-TIFF containers |
+
+**Open decision for M17: drop the previews, or keep a cleaned copy?** Dropping them is
+safest, but some viewers and OS thumbnails show the preview instead of rendering the
+raw. Stripping a preview's own EXIF keeps it, but it is still a finished rendering
+made by the camera's processing, which is its own fingerprint. To be settled with
+the viewer behaviour measured, not by taste, as HEIC's auxiliary images were.
