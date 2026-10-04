@@ -58,6 +58,13 @@ _OPTIONAL = {
     "cupsfilter": "macOS-only A2 peer producer; absent means a smaller peer set",
     "textutil": "macOS-only DOCX peer producer (the Cocoa text engine); absent "
                 "means a smaller peer set, never a pass",
+    "swiftc": "builds the macOS-only AVFoundation re-muxer, MP4's second muxer "
+              "implementation for the A2 peer set. Absent means a peer set of "
+              "ffmpeg configurations only, which still fails the cell -- verified, "
+              "not assumed -- so no published verdict depends on it. What IS lost "
+              "is resolution: ffmpeg writes the same handler names and the same "
+              "brand in every configuration, so two of the channels are invisible "
+              "to an ffmpeg-only peer set (limit #44)",
     "google-chrome": "one A2 peer producer; absent means a smaller peer set",
     "google-chrome-stable": "alias of google-chrome",
     "chromium-browser": "alias of google-chrome",

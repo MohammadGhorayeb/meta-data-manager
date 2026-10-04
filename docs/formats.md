@@ -23,6 +23,16 @@ Each block is delimited so the report can pull it out on its own. Adding a new
 format means adding a `FORMAT:<id>` block here; if a format publishes results
 with no block, the report says so instead of quietly omitting it.
 
+**The `<id>` must be the id the format's Pareto matrix is published under** — the
+`format` field written by `tests/scrub/gen_matrix_*.py`, which is also the
+filename stem in `tests/harness/results/`. Word documents were listed in the
+report's roadmap as `ooxml` (the name of the *shared package layer* in
+`src/scrub/formats/ooxml/`) while their matrix was published as `docx`, and the
+mismatch silently cost the report its entire Word section for a phase — the
+lookup missed, the loader skipped it, and the guard that should have caught it
+was comparing two lists that were both missing DOCX. The guard now reads the
+matrices off disk, so a name that does not line up fails a test instead.
+
 ---
 
 <!-- FORMAT:jpeg:BEGIN -->
@@ -195,6 +205,158 @@ print about who made the font; and the deep clean makes files about a **third
 larger**, which matters because file size is itself one of the clues we report as
 leaking.
 <!-- FORMAT:pdf:END -->
+
+<!-- FORMAT:docx:BEGIN -->
+**All three modes exist**, and every tick and cross beside them was measured on
+four programs writing the same document — LibreOffice, macOS `textutil`, MAT2's
+own output, and a synthetic writer built to differ on purpose.
+
+A Word file is not a document. It is a **zip archive of small files**, so it has
+two makers rather than one: the program that wrote the words, and the program
+that zipped them up. They leak separately, so we report them separately rather
+than averaging them into one number that would hide whichever half is worse.
+
+**What the light clean removes.** The author, the company, the editing time, the
+revision count, the template it came from, the little picture of the first page —
+and the **hidden identifiers Word stamps on every paragraph**. Those last ones
+matter more than they sound: a paragraph's id **travels with it when it is pasted
+into another document**, so two files that look unrelated can be tied back to one
+source. There is also a permanent id for the document itself, written twice in
+two different dialects. We remove all of them. And the zipping half is closed
+outright at this level: which computer zipped it, in what order, with what clock
+— none of that separates one program from another in our output any more.
+
+**A claim we had to correct.** This project inherited, from published research,
+that Word's hidden editing-session ids defeat every cleaning tool including the
+standard one. We measured it instead of repeating it, and **it is not true** — the
+standard tool removes the ids the research named. What it leaves is the family
+nobody names: the per-paragraph ids and the permanent document id above. So the
+honest version is sharper than the original claim, not weaker: a cleaner can
+close the channel that has a name and leave the one that does not.
+
+**What the deep clean adds.** With the tags gone, what still identifies the
+writing program is *how it spells the markup* — which shorthand names it uses for
+its vocabulary, whether it writes an empty tag one way or the other, how it
+punctuates the first line of each internal file. The deep clean rewrites every
+internal file through one single writer, and that half stops separating anyone.
+The document itself is untouched: all four programs' files render
+**byte-identically**, before and after, checked by rendering them to pictures
+rather than by trusting our own rule.
+
+**What the full rebuild adds, and this is the one file type where it earns its
+place.** For a PDF, the strongest mode photographs the page, which just moves the
+typesetter's signature into the pixels. A Word document is different: rebuilding
+it **re-types the document from scratch** through one program, so the program's
+own choices replace the original's. Seven separate clues collapse to **one**.
+
+**What is deliberately not fixed.**
+
+- **The deep clean cannot remove what a program's *choices* say about it** —
+  which internal files it bothers to write, which styles it defines, what it
+  records in its settings, how it builds a paragraph. Changing any of those
+  changes the document. It is a floor, not an unfinished job, and we say which
+  clues are left rather than reporting a bare failure.
+- **One clue survives even the full rebuild:** a document whose *original*
+  defined a style keeps that style. It describes where the document came from,
+  not which program handed it to us — the same kind of leftover as a re-recorded
+  song remembering its first recording's quality setting.
+- **The full rebuild's cost is reported as unmeasured, not as zero.** Our check
+  renders the document before and after and gets identical pictures — but the
+  program doing the rendering is the same one that rebuilt it, which is a program
+  grading its own homework. The real cost shows up on opening the file in Word,
+  and **Word cannot be driven by a script on any platform**. For the same reason
+  Word is **not in the comparison set** at all, and the result says so out loud
+  instead of quietly comparing three programs and calling it four.
+- **Tracked changes and comments are refused by the light clean and resolved by
+  the deeper two.** With markup switched on a reader *sees* them, so they are
+  content, and deleting them silently would change what the document says. The
+  light clean therefore stops and explains rather than touching such a file; the
+  deeper modes accept the changes as the author intended and tell you so. The
+  review history cannot be recovered afterwards.
+- **Bookmark names and links stay.** A table of contents, a cross-reference and a
+  hyperlink all find their destination *by name*, so deleting the name turns a
+  working document into a broken one. Anything that survives for this reason is
+  **listed back to you by name**. The one exception we do remove is the invisible
+  marker recording where the cursor was when the file was last saved, because
+  nothing points at it.
+- **File size still separates the programs**, at every mode. It is not a tag and
+  there is nothing inside the file to delete to fix it.
+<!-- FORMAT:docx:END -->
+
+<!-- FORMAT:mp4:BEGIN -->
+Video, and the file type where the standard tool can hand a file back **unchanged**
+and call it clean.
+
+**What the light clean removes.** Where the video was shot, the make and model of
+whatever shot it, the title and comments, the name of the program that encoded it,
+and the date and time — in all *ten* places a two-track file writes them. It also
+removes two things no ordinary tool touches, and they are the reason this format
+was worth doing properly.
+
+**The same coordinate, written three times.** Ask a program to put a location in a
+video once, and it writes that coordinate into a dedicated location box *and*, in
+some modes, three more times into the tag list under three different names. A
+cleaner that knows about the tag list and not the location box leaves your position
+sitting in the file. We measured all of them and remove all of them.
+
+**The label that says which software made the file.** Every track carries a short
+name for itself. Apple's software writes `Core Media Video`; the common open-source
+tool writes `VideoHandler`. It is not a tag — it is a structural field — so
+tag-oriented tools walk straight past it. **We measured what the standard tool does
+with an Apple-made video: it reports the file "unchanged" and hands back a
+byte-identical copy**, still carrying that label and still carrying the
+wall-clock second the file was written. A user who runs it and is told nothing
+changed has been told the file was already clean.
+
+**The iPhone keeps a second copy where no player looks.** Every iPhone video we
+measured writes its location, phone model, software version and recording time a
+second time — once every ten seconds of filming, into a part of the file no video
+player reads; shorter clips put it at the very end instead. The standard tool's clean
+leaves that copy in place **and then reads its own output as having no location at
+all**. So we do not delete the fields we know about and copy the rest: we rebuild the
+video data from only what the player actually uses, and the leftover copy is never
+written. An iPhone video also carries six hidden tracks beside the picture and sound
+— among them, frame by frame, where each detected face is and an ID that follows it
+— and those go too.
+
+**What it costs you: nothing.** The picture and the sound are copied through
+untouched, and we check that by *decoding* the result and comparing frames, not by
+checking the file still opens. That distinction is not pedantry — it is the only
+reason we found a bug of our own that had been shipping for two phases, where a
+cleaned audio file kept perfect sound, opened correctly, reported the right length,
+and played as static because the pointers into it were eight bytes out.
+
+**What it does not do yet.** A cleaned video still shows **which program wrote the
+container** — not which camera, not which person, and none of your content. Four
+things give it away and we name them rather than rounding the result up: the
+four-letter brand the program stamps at the front, the list of standards it claims
+compatibility with, the order it writes the file's major sections in, and whether it
+puts the index before or after the video data so the file can start playing before
+it finishes downloading. Every one of those is a choice about *structure*, not a
+piece of hidden data, so a mode that only deletes cannot touch them.
+
+Measured against four producers, one of which is a genuinely different program
+rather than another setting of the same one. Five other clues that *did* separate
+them — the padding, which sections exist, the track labels, the width of one length
+field, and whether timestamps were written at all — are **closed**. The four that
+remain are the exact specification for the deeper mode, which would rewrite the
+container through one single writer so every file comes out looking the same. That
+mode is not built, and its row says *not tested* rather than guessing.
+
+Those four producers are desktop programs; how far apart different phones and apps
+are after cleaning has not been compared yet. The deeper mode would also renumber the
+tracks that remain, because the file's next-track number still counts the hidden
+tracks that were removed.
+
+**Some encoders sign the video itself.** WhatsApp's writes its name, version and every
+setting inside the coded picture. The light clean keeps the picture bit for bit, so
+that signature stays — and the report says so by name rather than calling the file
+clean.
+
+**File size also still separates producers**, as it does for every format here: a
+video encoded at a higher quality is a bigger file, and nothing in the metadata can
+change that.
+<!-- FORMAT:mp4:END -->
 
 <!-- FORMAT:heic:BEGIN -->
 The photos on your phone, and the first format where "delete the tag" is not

@@ -8,6 +8,7 @@ of this" is the part of the report a reader cannot get from ExifTool.
 from __future__ import annotations
 
 import re
+import struct
 
 from ...standards import isobmff as iso
 from ..m4a.inspect import _mvhd_times
@@ -15,6 +16,15 @@ from . import f1
 
 _PREFIX = "com.apple.quicktime."
 _ENCODERS = (b"x264 - core", b"x265 (build", b"Lavc")
+
+# iTunes-style atoms, as they appear in a `mdir`-namespace `ilst` (named by fourcc).
+_ILST = {
+    b"\xa9nam": "Title", b"\xa9ART": "Artist", b"\xa9alb": "Album",
+    b"\xa9day": "Year", b"\xa9cmt": "Comment", b"\xa9gen": "Genre",
+    b"\xa9too": "Encoder", b"\xa9cpy": "Copyright", b"\xa9swr": "Software",
+    b"\xa9mak": "Camera make", b"\xa9mod": "Camera model",
+    b"\xa9xyz": "GPS position", b"desc": "Description", b"covr": "Cover art",
+}
 
 
 def _keys(meta: iso.Box) -> list[str]:
@@ -32,8 +42,10 @@ def _keys(meta: iso.Box) -> list[str]:
 
 
 def _mdta(meta: iso.Box, where: str) -> dict[str, str]:
-    """QuickTime metadata: a `keys` table, and an `ilst` whose entries are typed by
-    1-based key INDEX rather than by a four-character code."""
+    """Both `ilst` flavours. In the `mdta` (Keys) namespace an entry's type is a
+    1-based INDEX into the `keys` table, so a reader matching four-character codes
+    finds nothing there, GPS included. In the iTunes `mdir` namespace, which is what
+    ffmpeg writes into `udta/meta`, the entry's type is the fourcc itself."""
     names = _keys(meta)
     ilst = next((c for c in meta.children if c.type == b"ilst"), None)
     out: dict[str, str] = {}
@@ -41,7 +53,7 @@ def _mdta(meta: iso.Box, where: str) -> dict[str, str]:
         return out
     for entry in ilst.children:
         index = int.from_bytes(entry.type, "big")
-        if not 1 <= index <= len(names):
+        if names and not 1 <= index <= len(names):
             continue
         try:
             data = next((b for b in iso.parse(entry.payload) if b.type == b"data"),
@@ -51,11 +63,24 @@ def _mdta(meta: iso.Box, where: str) -> dict[str, str]:
         if data is None:
             continue
         kind, value = int.from_bytes(data.payload[:4], "big"), data.payload[8:]
-        name = names[index - 1].removeprefix(_PREFIX)
+        name = (names[index - 1].removeprefix(_PREFIX) if names else
+                _ILST.get(entry.type, entry.type.decode("latin-1", "replace")))
         text = (value.decode("utf-8", "replace").strip()
                 if kind == 1 and value else f"({len(value)} bytes)")
         out[f"{where}:{name}"] = text
     return out
+
+
+def _loci(payload: bytes) -> str | None:
+    """The 3GPP location box: version/flags, language(2), name, role(1), then
+    LONGITUDE, latitude, altitude as 16.16 fixed point. Longitude first, the reverse
+    of how a coordinate is spoken."""
+    at = 4 + 2
+    end = payload.find(b"\x00", at)
+    if end == -1 or len(payload) < end + 2 + 12:
+        return None
+    lon, lat, _alt = struct.unpack_from(">iii", payload, end + 2)
+    return f"{lat / 65536:.5f}, {lon / 65536:.5f}"
 
 
 def _handler_name(payload: bytes) -> bytes:
@@ -81,14 +106,20 @@ def describe(data: bytes) -> dict[str, str]:
     moov = iso.parse(data[moov_hdr.offset:moov_hdr.end])[0]
 
     for node in moov.walk():
-        if node.type in f1.TIMESTAMP_BOXES:
+        if node.type in iso.TIMESTAMP_BOXES:
             out.update(_mvhd_times(node))
     meta = moov.find(b"meta")
     if meta is not None:
         out.update(_mdta(meta, "QuickTime"))
     udta = moov.find(b"udta")
     for atom in udta.children if udta is not None else ():
-        if atom.type[:1] == b"\xa9":
+        if atom.type == b"meta":
+            out.update(_mdta(atom, "udta"))
+        elif atom.type == b"loci":
+            where = _loci(atom.payload)
+            if where:
+                out["udta:loci"] = where
+        elif atom.type[:1] == b"\xa9":
             out[f"udta:{atom.type[1:].decode('latin-1')}"] = \
                 atom.payload[4:].decode("utf-8", "replace").strip() \
                 or f"({len(atom.payload)} bytes)"

@@ -57,11 +57,28 @@ def _build(kind: str, tmpdir: str) -> str | None:
     if kind == "m4a":
         return mc.torture_m4a(p) if mc.HAVE_FFMPEG else None
     if kind == "mp4":
+        # The QuickTime build: every locus an iPhone movie carries, including the
+        # stale copy in mdat, so the rebuild has the most order-dependent work to do.
         from . import mp4_corpus as vc  # noqa: PLC0415
         return vc.build(p) if vc.HAVE_FFMPEG else None
     if kind == "pdf":
         return pc.torture_pdf(p)
-    raise AssertionError(kind)
+    if kind == "docx":
+        # `synthetic`, NOT `torture`: the DOCX torture package exists to be
+        # REFUSED (tracked changes, an OLE object, a macro), so using it here
+        # turned all three DOCX tiers into skips -- coverage that reads as green
+        # while measuring nothing, which is the failure this whole change is
+        # about. A synthetic package is scrubbable and still carries every locus
+        # the census names.
+        from . import docx_corpus as dc  # noqa: PLC0415
+        return dc.synthetic(p)
+    if kind == "heic":
+        from . import heic_corpus as hc  # noqa: PLC0415
+        return hc.handbuilt(p)
+    raise AssertionError(
+        f"no builder for {kind!r}. CASES is derived from the dispatcher now, so a "
+        "newly registered format arrives here automatically -- add its builder "
+        "rather than removing it from the list")
 
 
 def _scrub_subprocess(src: str, dst: str, fidelity: str, seed: str) -> bytes:
@@ -77,15 +94,57 @@ def _scrub_subprocess(src: str, dst: str, fidelity: str, seed: str) -> bytes:
 # Every (format, fidelity) the tool currently offers. F3 tiers are included rather
 # than excused: they run our Python code too, and "an external encoder does the work"
 # is a reason to check the surrounding code, not to skip it.
-CASES = [
-    ("jpeg", "F1"), ("jpeg", "F2"), ("jpeg", "F3"),
-    ("png", "F1"), ("png", "F2"),
-    ("mp3", "F1"), ("mp3", "F3"),
-    ("flac", "F1"), ("flac", "F2"),
-    ("m4a", "F1"), ("m4a", "F2"), ("m4a", "F3"),
-    ("mp4", "F1"),
-    ("pdf", "F1"), ("pdf", "F2"), ("pdf", "F3"),
-]
+# Tiers deliberately outside this check, each with the reason it is outside.
+# NOT a convenience list: the completeness test below requires every offered tier
+# to be either covered or named here, so an exclusion is a statement someone has
+# to write down rather than a gap that appears by itself.
+EXCLUDED = {
+    ("docx", "F3"): (
+        "the bytes are produced by LibreOffice, not by us, so this would measure "
+        "soffice's determinism rather than our own hash-seed independence -- and "
+        "each run spawns two more headless soffice processes, which flaked the "
+        "DOCX F3 suite once when it was included"),
+}
+
+
+def _offered() -> list[tuple[str, str]]:
+    """Every (format, fidelity) the tool actually offers, read from dispatch.
+
+    Hand-maintained before Phase 4 M4, and it had gone stale exactly the way a
+    hand-maintained list does: DOCX's three tiers and HEIC's one were never added
+    after those formats landed, so the check covered 15 of 20 while README said it
+    covered "every (format, fidelity) the tool offers". Deriving it means a newly
+    registered format shows up here on its own -- and lands in `_build()` with no
+    builder, which fails loudly and says what to do.
+    """
+    from src.scrub.dispatch import default_dispatcher  # noqa: PLC0415
+    return sorted((h.format_id, f)
+                  for h in default_dispatcher()._handlers for f in h.fidelities
+                  if (h.format_id, f) not in EXCLUDED)
+
+
+CASES = _offered()
+
+
+def test_this_check_covers_every_tier_the_tool_offers():
+    """The claim README makes about this file, enforced rather than repeated.
+
+    A determinism check that silently skips a format is worse than none: the hole
+    it leaves is exactly where an unordered iteration would hide, and the report
+    still reads as full coverage.
+    """
+    from src.scrub.dispatch import default_dispatcher  # noqa: PLC0415
+    offered = {(h.format_id, f)
+               for h in default_dispatcher()._handlers for f in h.fidelities}
+    unaccounted = offered - set(CASES) - set(EXCLUDED)
+    assert not unaccounted, (
+        "these tiers are offered by the tool but neither checked here nor listed "
+        f"in EXCLUDED with a reason: {sorted(unaccounted)}")
+    # And an exclusion must name something real, so the list cannot rot either.
+    assert set(EXCLUDED) <= offered, \
+        f"EXCLUDED names tiers that do not exist: {sorted(set(EXCLUDED) - offered)}"
+    for reason in EXCLUDED.values():
+        assert len(reason) > 40, "an exclusion needs a reason, not a label"
 
 
 @pytest.mark.parametrize("kind,fidelity", CASES,

@@ -19,6 +19,7 @@ from src.scrub import cli
 from src.scrub.dispatch import default_dispatcher
 from src.scrub.errors import ParseError, ScrubError
 from src.scrub.formats.m4a import f1, f3
+from src.scrub.formats.m4a.handler import M4aHandler
 from src.scrub.standards import isobmff as iso
 from tests.scrub import m4a_corpus as mc
 
@@ -223,7 +224,6 @@ def test_the_audio_handler_declines_mp4_video(tmp_path):
     Phase 4 measured). So this handler declines it. Until Phase 4 this test also
     required dispatch to find NO handler; video now has its own, and the test asserts
     it is that one rather than this one."""
-    from src.scrub.formats.m4a.handler import M4aHandler
     p = str(tmp_path / "v.mp4")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
                     "testsrc=duration=1:size=64x64:rate=10", "-f", "lavfi", "-i",

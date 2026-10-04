@@ -55,7 +55,10 @@ def default_dispatcher() -> Dispatcher:
     # MP4/MOV after both: M4A keeps audio-only files and HEIC keeps the still-image
     # brands, so what reaches this handler is a known video brand with a `vide`
     # track -- and its brand list is a keep-list, so Canon's CR3 (also ISOBMFF, also
-    # `vide`) is declined rather than scrubbed as a movie.
+    # `vide`) is declined rather than scrubbed as a movie. Order is belt-and-braces
+    # rather than the mechanism: M4A declines any file with a `vide` track and this
+    # requires one, so the two claims are mutually exclusive whatever order they run
+    # in, and a test asserts that.
     from .formats.mp4.handler import Mp4Handler
     d.register(Mp4Handler())
     # DOCX last: its magic (`PK\x03\x04`) is the weakest of any handler here -- it

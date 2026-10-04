@@ -240,10 +240,10 @@ def test_capabilities_come_from_the_measured_matrices_not_a_hardcoded_list():
     assert caps, "no Pareto matrices found under tests/harness/results/"
     fmts = {c["fmt"] for c in caps}
     assert {"jpeg", "png", "mp3"} <= fmts
-    # Nothing may be claimed for a format with no matrix on disk. Was `pdf` until
-    # Phase 3 published one; `docx` is the next format with nothing measured yet, so
-    # this line moves again when OOXML lands. That churn is the test working.
-    assert "docx" not in fmts
+    # Nothing may be claimed for a format with no matrix on disk. This line has
+    # named `pdf`, then `docx`, then `mp4`, and moves again with each phase —
+    # that churn is the test working. `raw` is the last one with nothing measured.
+    assert "raw" not in fmts
     md = qr.section_capabilities(_run())
     assert "MP3" in md
 
@@ -372,14 +372,101 @@ def test_a_format_with_no_measured_win_is_not_dressed_up():
     assert not any("Untraceable" in w for w in works)
 
 
+def test_every_published_matrix_is_claimed_by_the_roadmap():
+    """The gap that hid Word documents for a whole phase.
+
+    The matrix was published as `docx`; the roadmap listed it as `ooxml`; the
+    lookup missed and `load_capabilities()` skipped it with a bare `continue`.
+    Nothing in the report or the build log said a format had gone missing, and
+    the story test below agreed with it because DOCX was absent from both sides
+    of that comparison. So the fixed point has to be the files on disk, which
+    exist whether or not any list in this script happens to name them.
+    """
+    assert not qr.unclaimed_matrices(), (
+        "these formats publish a Pareto matrix under tests/harness/results/ but "
+        "no ROADMAP entry claims that id, so the report cannot show them: "
+        + ", ".join(qr.unclaimed_matrices()))
+    # And the roadmap's claim must actually have produced a row.
+    assert set(qr.published_matrices()) == {c["fmt"] for c in qr.load_capabilities()}
+
+
+def test_an_unclaimed_matrix_is_loud_rather_than_skipped(monkeypatch, capsys):
+    """Drop DOCX from the roadmap and the report must say it is incomplete —
+    on stderr for the build log, and in the document a human reads."""
+    monkeypatch.setattr(qr, "ROADMAP",
+                        [r for r in qr.ROADMAP if r[0] != "docx"])
+    assert qr.unclaimed_matrices() == ["docx"]
+    qr.load_capabilities()
+    assert "no ROADMAP entry claims" in capsys.readouterr().err
+    md = qr.section_formats(_run())
+    assert "This report is incomplete" in md
+    assert "`docx`" in md
+
+
 def test_every_published_format_has_a_plain_language_story():
     """A format that publishes results but has no docs/formats.md block would
-    render measurements with no explanation — the report must flag that."""
+    render measurements with no explanation — the report must flag that.
+
+    Read from disk, not from `load_capabilities()`: a format the loader failed
+    to pick up is missing from the stories too, so comparing the two would have
+    them agree by being wrong together. That is exactly how DOCX slipped past.
+    """
     stories = qr.load_format_stories()
-    published = {c["fmt"] for c in qr.load_capabilities()}
-    missing = published - set(stories)
+    missing = set(qr.published_matrices()) - set(stories)
     assert not missing, (
         f"no FORMAT block in docs/formats.md for: {', '.join(sorted(missing))}")
+
+
+def test_the_word_modes_do_not_advertise_costs_they_never_measured():
+    """Word's two strongest modes both cost something the generic legend denies.
+
+    The deep clean accepts tracked changes and drops comments (limits.md #24),
+    and the full rebuild's re-typesetting cost cannot be measured at all, since
+    our own before/after render is done by the program that did the rebuild
+    (limits.md #26). Printed with the generic wording, those cells read "nothing
+    at all" and "a tiny, invisible amount" — the second being precisely the
+    number this project has said out loud that it does not have.
+    """
+    caps = {c["fmt"]: c for c in qr.load_capabilities()}
+    table = qr._format_mode_table(caps["docx"])
+    assert "Not measured" in table
+    assert "tiny, invisible" not in table
+    # And limit #24: the deep clean resolves tracked changes, so the same cell
+    # must not tell a reviewer their document costs them "nothing at all".
+    assert "tracked changes are accepted" in table.lower()
+    assert "Nothing at all — rebuilt from scratch" not in table
+    # The generic wording must still be the default everywhere else.
+    jpeg = qr._format_mode_table(caps["jpeg"])
+    assert "tiny, invisible" in jpeg
+    assert "Nothing at all — rebuilt from scratch" in jpeg
+
+
+def test_no_mode_table_cell_contradicts_a_documented_limit():
+    """The generic mode legend is a default, not a measurement.
+
+    Wherever docs/limits.md records a real cost for one (format, mode), the
+    table cell must not print the generic line instead — a reader who reads
+    only the table would get the opposite of what the limits section says one
+    screen down. PDF's full rebuild flattens the page to a picture (#17); the
+    generic wording calls that "a tiny, invisible amount".
+    """
+    caps = {c["fmt"]: c for c in qr.load_capabilities()}
+    pdf = qr._format_mode_table(caps["pdf"])
+    assert "becomes a picture" in pdf
+    assert "tiny, invisible" not in pdf
+    # Every override must name a format/tier that actually has a matrix, or it
+    # is dead prose nobody will ever see fail.
+    for fmt, tier in qr.COST_OVERRIDE:
+        assert fmt in caps, f"COST_OVERRIDE names {fmt!r}, which has no matrix"
+        assert tier in ("F1", "F2", "F3"), tier
+
+
+def test_word_documents_actually_reach_the_report():
+    """The regression itself, named after what a reader would notice: the
+    capability table and the per-format story both had no Word row at all."""
+    md = qr.render_full(_run(legs=["3.14"]))
+    assert "Word (.docx)" in md
+    assert "zip archive of small files" in md, "the DOCX story did not render"
 
 
 def test_a_missing_format_story_is_reported_not_silently_skipped(monkeypatch):
@@ -393,3 +480,20 @@ def test_empty_run_still_renders_a_report():
     md = qr.render_full(_run())
     assert qr.MARKER in md
     assert "{{" not in md
+
+
+def test_a_mode_that_was_never_built_does_not_advertise_a_cost():
+    """MP4 and HEIC are light-clean-only. Before this, their table rows still read
+    "Deep clean — costs you: nothing at all", which invites a reader to pick a mode
+    the tool does not offer for that file type."""
+    caps = {c["fmt"]: c for c in qr.load_capabilities()}
+    for fmt in ("mp4", "heic"):
+        if fmt not in caps:
+            continue
+        table = qr._format_mode_table(caps[fmt])
+        deep = next(r for r in table.splitlines() if "Deep clean" in r)
+        assert "Not built" in deep, f"{fmt}: {deep}"
+        assert "Nothing at all" not in deep
+    # A format that HAS the mode must still state its real cost.
+    jpeg = qr._format_mode_table(caps["jpeg"])
+    assert "Not built" not in jpeg

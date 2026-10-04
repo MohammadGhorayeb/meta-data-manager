@@ -24,102 +24,39 @@ returning. Fail closed if any of that does not hold.
 """
 from __future__ import annotations
 
-from ...errors import ParseError, ScrubError
 from ...standards import isobmff as iso
 
 # Dropped wherever they appear.
 DROP_TYPES = {b"udta", b"meta", b"free", b"skip", b"uuid"}
 
-# Boxes whose first fields are creation/modification times (after version+flags).
-TIMESTAMP_BOXES = {b"mvhd", b"tkhd", b"mdhd"}
-
-
-def _strip(boxes: list[iso.Box]) -> list[iso.Box]:
-    kept = []
-    for b in boxes:
-        if b.type in DROP_TYPES:
-            continue
-        if b.children:
-            b.children = _strip(b.children)
-        if b.type in TIMESTAMP_BOXES:
-            b.payload = _zero_timestamps(b.payload, b.type)
-        kept.append(b)
-    return kept
-
-
-def _zero_timestamps(payload: bytes, btype: bytes) -> bytes:
-    """Zero creation_time and modification_time, keeping every other field.
-
-    Version 0 stores them as 32-bit, version 1 as 64-bit, and both sit immediately
-    after the 4-byte version+flags — so the width depends on a byte we must read
-    rather than assume.
-    """
-    if len(payload) < 4:
-        raise ParseError(f"ISOBMFF: short {btype!r}")
-    version = payload[0]
-    width = 8 if version == 1 else 4
-    if len(payload) < 4 + width * 2:
-        raise ParseError(f"ISOBMFF: {btype!r} too short for its timestamps")
-    return payload[:4] + b"\x00" * (width * 2) + payload[4 + width * 2:]
-
-
-def _mdat_offset(boxes: list[iso.Box]) -> int | None:
-    """Offset of the mdat PAYLOAD in a serialized tree (audio lives there)."""
-    pos = 0
-    for b in boxes:
-        if b.type == b"mdat":
-            header = iso.HEADER_MIN
-            if header + len(b.payload) > 0xFFFFFFFF:
-                header += 8                      # largesize form
-            return pos + header
-        pos += len(iso.serialize([b]))
-    return None
+# Kept as a module-level name because `residuals()` below reports against it and
+# because tests import it. The set itself now lives in `standards/isobmff.py`,
+# shared with MP4 -- see the note there about why this engine was moved.
+TIMESTAMP_BOXES = iso.TIMESTAMP_BOXES
 
 
 def scrub(data: bytes) -> bytes:
-    boxes = iso.parse(data)
-    if not any(b.type == b"ftyp" for b in boxes):
-        raise ParseError("M4A: no ftyp box")
-    mdat = next((b for b in boxes if b.type == b"mdat"), None)
-    if mdat is None:
-        raise ParseError("M4A: no mdat box (no audio to preserve)")
-    old_audio_offset = _mdat_offset(boxes)
-    audio = mdat.payload
+    """Strip an M4A through the shared ISOBMFF engine.
 
-    stripped = _strip(boxes)
-    new_audio_offset = _mdat_offset(stripped)
-    if new_audio_offset is None:
-        raise ScrubError("M4A: mdat vanished during strip")
-
-    delta = new_audio_offset - old_audio_offset
-    if delta:
-        patched = iso.shift_chunk_offsets(stripped, delta)
-        if patched == 0:
-            # No table to patch, yet the audio moved: every chunk offset that does
-            # exist is now wrong, and we cannot know there were none. Refuse.
-            raise ScrubError(
-                f"M4A: audio moved by {delta} bytes but no stco/co64 table was "
-                "found to patch — refusing to emit a file whose sample tables "
-                "may point at the wrong bytes")
-        # Patching cannot change table sizes (same entry count and width), so the
-        # offset measured above still holds. Assert it rather than assume it.
-        if _mdat_offset(stripped) != new_audio_offset:
-            raise ScrubError("M4A: patching chunk offsets moved mdat again")
-
-    out = iso.serialize(stripped)
-
-    # The promise of this tier: the audio bytes are the same bytes.
-    check = iso.parse(out)
-    out_mdat = next((b for b in check if b.type == b"mdat"), None)
-    if out_mdat is None or out_mdat.payload != audio:
-        raise ScrubError("M4A F1 altered the audio samples")
-    return out
+    `blank_handler_names=True` is not cosmetic and was not here originally. An
+    AVFoundation-muxed M4A carries `Core Media Audio` in its `hdlr` name, and this
+    tier used to leave it: the name is not a tag, so nothing tag-oriented removes
+    it -- `exiftool -all=` reports such a file unchanged. Measured while building
+    MP4 (docs/p4_media_plan.md section 5), and fixed here rather than only there,
+    because the leak was in the shipped format too.
+    """
+    return iso.strip_and_repack(data, DROP_TYPES, label="M4A",
+                                blank_handler_names=True)
 
 
 def residuals(data: bytes) -> list[str]:
     """Re-walk scrubbed output; anything but a clean audio-only file is a leak."""
     out: list[str] = []
     boxes = iso.parse(data)
+    for b in boxes:
+        if b.type not in iso.TOP_LEVEL_KEEP:
+            out.append(f"top-level {b.type.decode('latin-1', 'replace')!r} box "
+                       f"survived at {b.offset} -- outside the keep list")
     for root in boxes:
         for box in root.walk():
             if box.type in DROP_TYPES:
@@ -130,8 +67,15 @@ def residuals(data: bytes) -> list[str]:
                 stamps = box.payload[4:4 + width * 2]
                 if stamps.strip(b"\x00"):
                     out.append(f"{box.type.decode('latin-1')} timestamps survived")
+            if box.type == b"hdlr":
+                name = box.payload[iso.HDLR_NAME_AT:].rstrip(b"\x00")
+                if name:
+                    out.append(
+                        f"hdlr name {name.decode('latin-1', 'replace')!r} survived")
+                elif box.payload[12:iso.HDLR_NAME_AT].strip(b"\x00"):
+                    out.append("hdlr component manufacturer survived")
     # Defense in depth: iTunes atom names and art magics must not survive. Scanned
-    # over the METADATA region only, never the audio payload — coded AAC is dense
+    # over the METADATA region only, never the audio payload -- coded AAC is dense
     # binary and contains short markers like JPEG's `FF D8 FF` by pure chance, so a
     # whole-file scan reports art in every clean file it is handed.
     meta_only = b"".join(iso.serialize([b]) for b in boxes if b.type != b"mdat")

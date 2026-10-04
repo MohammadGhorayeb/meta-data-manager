@@ -54,8 +54,17 @@ class M4aPlugin:
 
     def mandatory_constants(self) -> list[bytes]:
         # Every ISOBMFF file carries these; they are format-required, not our mark.
-        return [b"ftyp", b"moov", b"mdat", b"mvhd", b"trak", b"mdia", b"minf",
-                b"stbl", b"stsd", b"mp4a"]
+        names = [b"ftyp", b"moov", b"mdat", b"mvhd", b"trak", b"mdia", b"minf",
+                 b"stbl", b"stsd", b"mp4a"]
+        # Plus the exact `hdlr` boxes a blanked-name strip emits. The guard was
+        # right to flag them -- they are a constant this tool introduces -- and
+        # this declaration is the DOCX `_rels` answer rather than a suppression:
+        # GENERATED from the same code that writes them, so it cannot drift, and
+        # narrow enough that a test can assert it carries no locus at all.
+        # Keeping the names instead would leak `Core Media Audio`, i.e. "a Mac
+        # made this", which is strictly worse than limit #9's "something
+        # canonically rewrote this".
+        return names + iso.canonical_handler_boxes()
 
     def structural_features(self, path: str) -> dict:
         """A2 structural channel. Returns {} on parse failure."""

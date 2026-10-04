@@ -20,18 +20,37 @@ import pytest
 
 from src.scrub.dispatch import default_dispatcher
 
+
 # (format, tier) pairs whose output must be a fixed point: every bit-preserving and
 # every lossless tier the tool offers.
-LOSSLESS_CASES = [
-    ("jpeg", "F1"), ("jpeg", "F2"),
-    ("png", "F1"), ("png", "F2"),
-    ("pdf", "F1"), ("pdf", "F2"),
-    ("docx", "F1"), ("docx", "F2"),
-    ("mp3", "F1"),
-    ("flac", "F1"), ("flac", "F2"),
-    ("m4a", "F1"), ("m4a", "F2"),
-    ("mp4", "F1"),
-]
+def _lossless_cases() -> list[tuple[str, str]]:
+    """Every bit-preserving and lossless tier the tool offers, read from dispatch.
+
+    F3 is excluded on purpose and not by omission: a lossy re-encode run twice is
+    a second generation, so F3 is deliberately NOT a fixed point on any format
+    (limit #29). Everything else must be one.
+
+    Derived rather than hand-listed for the reason the determinism matrix is:
+    the hand-maintained version silently missed HEIC F1 and MP4 F1, and a
+    coverage list that goes stale reads as full coverage while measuring less.
+    """
+    return sorted((h.format_id, f)
+                  for h in default_dispatcher()._handlers
+                  for f in h.fidelities if f in ("F1", "F2"))
+
+
+LOSSLESS_CASES = _lossless_cases()
+
+
+def test_every_lossless_tier_is_checked_for_idempotence():
+    """The completeness claim, enforced. A format that lands without arriving
+    here would publish `scrub(scrub(x)) == scrub(x)` on the strength of the
+    formats that happened to be listed."""
+    expected = {(h.format_id, f)
+                for h in default_dispatcher()._handlers
+                for f in h.fidelities if f in ("F1", "F2")}
+    assert set(LOSSLESS_CASES) == expected, \
+        f"not checked: {sorted(expected - set(LOSSLESS_CASES))}"
 
 
 def _sample(fmt: str, tmp_path) -> bytes | None:
@@ -61,10 +80,16 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "m4a":
         return (open(mc.torture_m4a(str(tmp_path / "t.m4a")), "rb").read()
                 if mc.HAVE_FFMPEG else None)
+    if fmt == "heic":
+        from . import heic_corpus as hc  # noqa: PLC0415
+        return open(hc.handbuilt(str(tmp_path / "t.heic")), "rb").read()
     if fmt == "mp4":
         return (open(vc.build(str(tmp_path / "t.mov")), "rb").read()
                 if vc.HAVE_FFMPEG else None)
-    raise AssertionError(fmt)
+    raise AssertionError(
+        f"no sample for {fmt!r}. LOSSLESS_CASES is derived from the dispatcher, "
+        "so a newly registered format arrives here on its own -- add a builder "
+        "rather than dropping it from the list")
 
 
 @pytest.mark.parametrize("fmt,fidelity", LOSSLESS_CASES,

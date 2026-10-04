@@ -38,7 +38,13 @@ KEEP_TOP = {b"ftyp", b"moov", b"mdat"}
 # Movie fragments put sample tables outside `moov`; nothing here models them.
 FRAGMENT_TOP = {b"moof", b"mfra", b"sidx", b"styp", b"ssix", b"emsg"}
 DROP_IN_MOOV = {b"udta", b"meta", b"uuid", b"free", b"skip", b"wide"}
-TIMESTAMP_BOXES = {b"mvhd", b"tkhd", b"mdhd"}
+# Encryption. A protected track cannot be decoded to prove the picture survived,
+# and the boxes that say so (`sinf`, `pssh`, a key ID in `tenc`) are refused rather
+# than kept or dropped: dropping them leaves samples nothing can decrypt. The sample
+# entries matter separately, because a scan for boxes walks straight past an
+# `encv` that is only visible as the first four bytes of an `stsd` entry.
+PROTECTION_BOXES = {b"sinf", b"pssh", b"schm", b"frma", b"senc", b"tenc"}
+PROTECTED_SAMPLE_ENTRIES = {b"encv", b"enca", b"encs", b"drms", b"drmi"}
 
 KEEP_HANDLERS = {b"vide", b"soun"}
 # Measured: Apple's timed metadata (`mebx`). A handler in neither set is refused
@@ -62,6 +68,9 @@ def _u32(b: bytes, at: int) -> int:
 
 def _track_id(tkhd: iso.Box) -> int:
     p = tkhd.payload
+    if not p or p[0] not in (0, 1):
+        # Read as version 0, a later version yields a plausible wrong track ID.
+        raise ParseError(f"MP4: tkhd version {p[0] if p else '?'} not modelled")
     at = 4 + (16 if p[0] == 1 else 8)          # after version/flags + two times
     return _u32(p, at)
 
@@ -96,38 +105,21 @@ def _check_self_contained(trak: iso.Box) -> None:
         at += size
 
 
-def _strip(boxes: list[iso.Box]) -> list[iso.Box]:
-    kept = []
-    for b in boxes:
-        if b.type in DROP_IN_MOOV:
-            continue
-        if b.children:
-            b.children = _strip(b.children)
-        if b.type in TIMESTAMP_BOXES:
-            b.payload = _zero_times(b.payload, b.type)
-        elif b.type == b"hdlr":
-            b.payload = _blank_handler(b.payload)
-        kept.append(b)
-    return kept
-
-
-def _zero_times(payload: bytes, btype: bytes) -> bytes:
-    if len(payload) < 4:
-        raise ParseError(f"MP4: short {btype!r}")
-    width = 8 if payload[0] == 1 else 4
-    if len(payload) < 4 + 2 * width:
-        raise ParseError(f"MP4: {btype!r} too short for its timestamps")
-    return payload[:4] + b"\x00" * (2 * width) + payload[4 + 2 * width:]
-
-
-def _blank_handler(payload: bytes) -> bytes:
-    """Keep version/flags, pre_defined (QuickTime's component type, `mhlr`/`dhlr`)
-    and the handler type; zero the three reserved words (QuickTime's component
-    manufacturer, `appl`, lives there) and empty the name. An empty name is one zero
-    byte in both dialects: a zero-length Pascal string, or a bare C terminator."""
-    if len(payload) < 24:
-        raise ParseError("MP4: short hdlr")
-    return payload[:12] + b"\x00" * 12 + b"\x00"
+def _check_unprotected(moov: iso.Box) -> None:
+    for box in moov.walk():
+        if box.type in PROTECTION_BOXES:
+            raise ParseError(f"MP4: {box.type.decode('latin-1')} box -- the file "
+                             "is encrypted, refusing")
+        if box.type == b"stsd":
+            p, at = box.payload, 8
+            for _ in range(_u32(p, 4) if len(p) >= 8 else 0):
+                size, entry = _u32(p, at), p[at + 4:at + 8]
+                if entry in PROTECTED_SAMPLE_ENTRIES:
+                    raise ParseError(f"MP4: {entry.decode('latin-1')} sample "
+                                     "entry -- the track is encrypted, refusing")
+                if size < 8 or at + size > len(p):
+                    raise ParseError("MP4: malformed sample description")
+                at += size
 
 
 def _prune_tref(trak: iso.Box, dropped: set[int]) -> None:
@@ -171,6 +163,7 @@ def scrub(data: bytes) -> bytes:
     moov = iso.parse(data[moov_hdr.offset:moov_hdr.end])[0]
     if moov.find(b"mvex") is not None:
         raise ParseError("MP4: fragmented file (mvex) -- not modelled")
+    _check_unprotected(moov)
 
     tracks = _tracks(moov)
     unknown = {t.handler for t in tracks} - KEEP_HANDLERS - DROP_HANDLERS
@@ -208,7 +201,8 @@ def scrub(data: bytes) -> bytes:
                                      if t.handler in DROP_HANDLERS))]
     for t in kept:
         _prune_tref(t.box, dropped_ids)
-    moov.children = _strip(moov.children)
+    moov.children = iso.strip_tree(moov.children, DROP_IN_MOOV,
+                                   blank_handler_names=True)
 
     # Sizes first, offsets second: every table has a fixed width, so moov's size
     # does not depend on the values written into it, and the two never chase.
@@ -276,7 +270,8 @@ def _track_digests(data: bytes, per_track: list[list[iso.Chunk]]) -> list[str]:
 # Strings that must not appear outside `mdat` in a scrubbed file. Inside `mdat` they
 # may occur by chance in coded video, so the scan is restricted to the container.
 _MARKERS = ((b"com.apple.quicktime", "QuickTime metadata key"),
-            (b"\xa9xyz", "location atom"), (b"\xa9too", "encoder atom"),
+            (b"\xa9xyz", "location atom"), (b"loci", "3GPP location box"),
+            (b"\xa9too", "encoder atom"),
             (b"Core Media", "Apple muxer handler name"))
 _ISO6709 = re.compile(rb"[+-]\d{2}\.\d{3,}[+-]\d{3}\.\d{3,}")
 
@@ -292,7 +287,7 @@ def residuals(data: bytes) -> list[str]:
     for box in moov.walk():
         if box.type in DROP_IN_MOOV:
             out.append(f"{box.type.decode('latin-1')} box survived in moov")
-        elif box.type in TIMESTAMP_BOXES:
+        elif box.type in iso.TIMESTAMP_BOXES:
             width = 8 if box.payload[0] == 1 else 4
             if box.payload[4:4 + 2 * width].strip(b"\x00"):
                 out.append(f"{box.type.decode()} timestamps survived")

@@ -33,6 +33,10 @@ _Comparison against the tools the field already uses (W9). Findings were reprodu
 | **A PDF clean that is neither an append nor a re-render** | ✅ F1/F2 | ❌ appends | ❌ both paths re-render | n/a |
 | Collapses a PDF's revision history with the text intact | ✅ | ❌ **adds a revision** | ⚠️ default path destroys the text | n/a |
 | Warns that text is still hiding under a black box | ✅ advisory | ❌ | ❌ | n/a |
+| **Removes the stale GPS copy an iPhone video keeps where no player looks** | ✅ F1 | ❌ **leaves it, then reads its own output as GPS-free** | ❌ **refuses `.mov`**; renamed, crashes and leaves a 0-byte file | n/a |
+| Removes an iPhone video's per-frame face-detection track | ✅ F1 | ❌ leaves every face box | ❌ refuses `.mov` | n/a |
+| Clears video track handler names (`Core Media Video`) | ✅ F1 | ❌ **reports the file unchanged** | ⚠️ swaps in ffmpeg's names (a re-mux) | n/a |
+| Removes an encoder's settings string from inside the coded video (x264) | ⚠️ kept at F1, named in the report | ❌ leaves it | ❌ leaves it | n/a |
 
 **The one-line takeaway:** every tool deletes tags. Only ours lets you keep the picture *pixel-perfect* when you want fidelity, become *untraceable* when you want anonymity, and backs both with a measured, verified matrix.
 
@@ -178,6 +182,67 @@ _Corpus: a 3-revision document. Revision 1 is confidential, revision 3 is the pu
 _The one thing this table does **not** show is the harder question: with every tag gone, does the file still say which program made it? For PDF the answer is yes at all three tiers, and it is published as a failing cell with the reason — see `docs/limits.md` #16 and #17._
 
 _Regenerate this section with `./.venv/bin/python -m tests.scrub.e_pdf_history`; the assertions behind it are in `tests/scrub/test_e_pdf_history.py`._
+
+## Evidence 7 — MP4, where the measuring stick reports success and changes nothing (Phase 4 M0)
+
+Measured **before** this project handled MP4 at all, which is why it is recorded as a
+finding about the measuring stick rather than as a comparison we win. MP4 F1 has since
+landed and its Pareto matrix is published (`tests/harness/results/mp4_*.json`): A1 passes
+at F1, and A2 fails with the four surviving muxer features named.
+
+On the ffmpeg-muxed files both standard tools do the job: `exiftool -all=` and
+`mat2 0.14.0` each clear the GPS from all three loci it is written to, and every
+identity tag with it.
+
+On an **AVFoundation-muxed** MP4 — a pass-through re-mux through Apple's own
+muxer, no encoder change — `exiftool -all=` behaves differently:
+
+| tool | outcome | `mvhd`/`tkhd` creation time | track `hdlr` name |
+|---|---|---|---|
+| *(original)* | — | `2026-09-19 18:50:47` | `Core Media Video` |
+| **ExifTool 13.55** | `1 image files unchanged`, output **byte-identical** | **unchanged** | **unchanged** |
+| **MAT2 0.14.0** | re-muxed, 76 224 → 76 577 bytes | zeroed | `VideoHandler` (ffmpeg's) |
+| **Ours, F1** | container rebuilt, coded video byte-identical | zeroed | blank |
+
+ExifTool lists **71 tags** for that file, so this is not a parsing failure — the
+wall-clock second the file was written and the name of Apple's media framework
+simply are not in a box it will write. A user who runs the measuring stick over
+an Apple-muxed video and is told *unchanged* has been told the file was already
+clean.
+
+MAT2 does remove both, and the mechanism is worth naming: it re-muxes through
+ffmpeg. The output is 353 bytes larger and its handlers come out with ffmpeg's
+names, so what looks like a deletion is a **producer substitution** — an
+F2-tier act in this project's vocabulary. It also leaves `udta/meta/hdlr` with
+an **empty `ilst`**, scaffolding a never-tagged file does not have (the
+AVFoundation original has no `udta` at all), so its output is distinguishable
+from a file that never carried tags. That is an A2 observation, not an A1
+failure, and it is recorded as one.
+
+_Measured in `docs/p4_media_plan.md` §8.1._
+
+
+## Evidence 8 — iPhone video: the copy no player reads (Phase 4 M7)
+
+Every iPhone video measured carries a **stale second copy of its metadata, exact GPS
+included**, in bytes no sample table points at: inside `mdat` once every ten seconds of
+recording, or in a trailing `free` box on shorter clips. MAT2 0.14.0 and ExifTool 13.55,
+on copies:
+
+| | iPhone `.mov` | Mac `.mov` | WhatsApp `.mp4` |
+|---|---|---|---|
+| **ExifTool `-all=`** | Succeeds. **The exact GPS is still in the file**, with model, lens, the face-detection keys and the creation date | Model and creation date survive | x264 string survives, all 21 copies |
+| **MAT2** | **Refused** (`video/quicktime` not supported). Renamed to `.mp4`, it **crashes and leaves a 0-byte output file** | Refused. Renamed, it cleans (an ffmpeg remux) | x264 string survives. Output is 267 bytes **larger** |
+| **Ours, F1** | GPS gone **from the bytes**; face, Live Photo and per-recording tracks dropped; decodes frame-identically | Model and date gone; decodes frame-identically | x264 string **kept and named in the report** (limit #36) |
+
+Read back with `-ee`, ExifTool's own output shows **no GPS at all** while the coordinates
+are still in the bytes, which is why our A1 check for video works on bytes rather than
+on ExifTool. MAT2's crash is ffmpeg failing to stream-copy `apac`, the spatial-audio
+track every iPhone 16 video has, so a remux-based clean fails on the most important
+input. Ours rebuilds `mdat` from the chunks the kept tracks reference, so the stale
+copy is never written at all.
+
+_Measured in `docs/p4_media_plan.md` §5.4–§5.5 (limits #34, #35)._
 
 ---
 _Generated by `scripts/benchmark.py`. Findings adversarially verified. MAT2's fingerprint normalization is a *side effect* of its forced lossy re-encode, not a tunable guarantee; ExifTool and jpegtran are lossless but leave the fingerprint intact._

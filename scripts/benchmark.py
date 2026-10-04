@@ -285,6 +285,77 @@ def audio_gap():
       "images.\n")
 
 
+def video_section():
+    """Video: the two measured findings about the standard tools.
+
+    Static prose, measured by hand -- Evidence 7 on ffmpeg and AVFoundation muxers
+    at Phase 4 M0, Evidence 8 on real iPhone and Mac clips at M7. It lives here
+    rather than only in the rendered document for the reason `audio_gap()` does:
+    Evidence 7 was first written into the document alone, where the next
+    regeneration would have deleted it.
+    """
+    P("\n## Evidence 7 — MP4, where the measuring stick reports success and changes "
+      "nothing (Phase 4 M0)\n")
+    P("Measured **before** this project handled MP4 at all, which is why it is "
+      "recorded as a\nfinding about the measuring stick rather than as a comparison "
+      "we win. MP4 F1 has since\nlanded and its Pareto matrix is published "
+      "(`tests/harness/results/mp4_*.json`): A1 passes\nat F1, and A2 fails with the "
+      "four surviving muxer features named.\n")
+    P("On the ffmpeg-muxed files both standard tools do the job: `exiftool -all=` "
+      "and\n`mat2 0.14.0` each clear the GPS from all three loci it is written to, "
+      "and every\nidentity tag with it.\n")
+    P("On an **AVFoundation-muxed** MP4 — a pass-through re-mux through Apple's own\n"
+      "muxer, no encoder change — `exiftool -all=` behaves differently:\n")
+    P("| tool | outcome | `mvhd`/`tkhd` creation time | track `hdlr` name |")
+    P("|---|---|---|---|")
+    P("| *(original)* | — | `2026-09-19 18:50:47` | `Core Media Video` |")
+    P("| **ExifTool 13.55** | `1 image files unchanged`, output **byte-identical** | "
+      "**unchanged** | **unchanged** |")
+    P("| **MAT2 0.14.0** | re-muxed, 76 224 → 76 577 bytes | zeroed | `VideoHandler` "
+      "(ffmpeg's) |")
+    P("| **Ours, F1** | container rebuilt, coded video byte-identical | zeroed | "
+      "blank |")
+    P("\nExifTool lists **71 tags** for that file, so this is not a parsing failure — "
+      "the\nwall-clock second the file was written and the name of Apple's media "
+      "framework\nsimply are not in a box it will write. A user who runs the measuring "
+      "stick over\nan Apple-muxed video and is told *unchanged* has been told the file "
+      "was already\nclean.\n")
+    P("MAT2 does remove both, and the mechanism is worth naming: it re-muxes through\n"
+      "ffmpeg. The output is 353 bytes larger and its handlers come out with ffmpeg's\n"
+      "names, so what looks like a deletion is a **producer substitution** — an\n"
+      "F2-tier act in this project's vocabulary. It also leaves `udta/meta/hdlr` with\n"
+      "an **empty `ilst`**, scaffolding a never-tagged file does not have (the\n"
+      "AVFoundation original has no `udta` at all), so its output is distinguishable\n"
+      "from a file that never carried tags. That is an A2 observation, not an A1\n"
+      "failure, and it is recorded as one.\n")
+    P("_Measured in `docs/p4_media_plan.md` §8.1._\n")
+
+    P("\n## Evidence 8 — iPhone video: the copy no player reads (Phase 4 M7)\n")
+    P("Every iPhone video measured carries a **stale second copy of its metadata, "
+      "exact GPS\nincluded**, in bytes no sample table points at: inside `mdat` once "
+      "every ten seconds of\nrecording, or in a trailing `free` box on shorter clips. "
+      "MAT2 0.14.0 and ExifTool 13.55,\non copies:\n")
+    P("| | iPhone `.mov` | Mac `.mov` | WhatsApp `.mp4` |")
+    P("|---|---|---|---|")
+    P("| **ExifTool `-all=`** | Succeeds. **The exact GPS is still in the file**, with "
+      "model, lens, the face-detection keys and the creation date | Model and creation "
+      "date survive | x264 string survives, all 21 copies |")
+    P("| **MAT2** | **Refused** (`video/quicktime` not supported). Renamed to `.mp4`, "
+      "it **crashes and leaves a 0-byte output file** | Refused. Renamed, it cleans "
+      "(an ffmpeg remux) | x264 string survives. Output is 267 bytes **larger** |")
+    P("| **Ours, F1** | GPS gone **from the bytes**; face, Live Photo and per-recording "
+      "tracks dropped; decodes frame-identically | Model and date gone; decodes "
+      "frame-identically | x264 string **kept and named in the report** "
+      "(limit #36) |")
+    P("\nRead back with `-ee`, ExifTool's own output shows **no GPS at all** while the "
+      "coordinates\nare still in the bytes, which is why our A1 check for video works on "
+      "bytes rather than\non ExifTool. MAT2's crash is ffmpeg failing to stream-copy "
+      "`apac`, the spatial-audio\ntrack every iPhone 16 video has, so a remux-based "
+      "clean fails on the most important\ninput. Ours rebuilds `mdat` from the chunks "
+      "the kept tracks reference, so the stale\ncopy is never written at all.\n")
+    P("_Measured in `docs/p4_media_plan.md` §5.4–§5.5 (limits #34, #35)._\n")
+
+
 def main():
     P("# Benchmark — Irreversible Metadata Scrubber vs standard tools\n")
     P("_Comparison against the tools the field already uses (W9). Findings were "
@@ -345,6 +416,18 @@ def main():
          "❌ **adds a revision**", "⚠️ default path destroys the text", "n/a"),
         ("Warns that text is still hiding under a black box", "✅ advisory", "❌",
          "❌", "n/a"),
+        # Video. Measured by hand on real iPhone/Mac clips and ffmpeg/AVFoundation
+        # producers (docs/p4_media_plan.md §5.5 and §8.1); see video_section().
+        ("**Removes the stale GPS copy an iPhone video keeps where no player looks**",
+         "✅ F1", "❌ **leaves it, then reads its own output as GPS-free**",
+         "❌ **refuses `.mov`**; renamed, crashes and leaves a 0-byte file", "n/a"),
+        ("Removes an iPhone video's per-frame face-detection track", "✅ F1",
+         "❌ leaves every face box", "❌ refuses `.mov`", "n/a"),
+        ("Clears video track handler names (`Core Media Video`)", "✅ F1",
+         "❌ **reports the file unchanged**", "⚠️ swaps in ffmpeg's names (a re-mux)",
+         "n/a"),
+        ("Removes an encoder's settings string from inside the coded video (x264)",
+         "⚠️ kept at F1, named in the report", "❌ leaves it", "❌ leaves it", "n/a"),
     ]
     for r in rows:
         P("| " + " | ".join(r) + " |")
@@ -456,6 +539,9 @@ def main():
 
     # ---------------- evidence 6: PDF revision history ----------------
     pdf_history_section()
+
+    # ---------------- evidence 7 and 8: video ----------------
+    video_section()
 
     P("\n---\n_Generated by `scripts/benchmark.py`. Findings adversarially verified. "
       "MAT2's fingerprint normalization is a *side effect* of its forced lossy "
