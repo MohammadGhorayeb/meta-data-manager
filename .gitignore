@@ -57,6 +57,14 @@ tests/corpus/**/*.dng
 *.tiff
 *.webp
 *.gif
+# Real videos (P4 M7): personal clips with genuine GPS, symlinked into
+# metadata-research/step2/video/ for local-only tests. Never committed.
+*.mov
+*.MOV
+*.mp4
+*.MP4
+*.m4v
+*.M4V
 # Ad-hoc scrub scratch files at the repo root (test_*.JPG, *_clean.jpg, etc.)
 /test_*
 *_clean.*

@@ -52,6 +52,12 @@ def default_dispatcher() -> Dispatcher:
     # (brand `M4A `) run first.
     from .formats.heic.handler import HeicHandler
     d.register(HeicHandler())
+    # MP4/MOV after both: M4A keeps audio-only files and HEIC keeps the still-image
+    # brands, so what reaches this handler is a known video brand with a `vide`
+    # track -- and its brand list is a keep-list, so Canon's CR3 (also ISOBMFF, also
+    # `vide`) is declined rather than scrubbed as a movie.
+    from .formats.mp4.handler import Mp4Handler
+    d.register(Mp4Handler())
     # DOCX last: its magic (`PK\x03\x04`) is the weakest of any handler here -- it
     # is shared with every ZIP ever made -- so it gets asked only after every format
     # with a distinctive prefix has declined.

@@ -42,9 +42,13 @@ class M4aHandler(BaseHandler):
         """
         try:
             from ...standards import isobmff as iso
-            boxes = iso.parse(data)
+            # Only `moov` is parsed. `parse()` on the whole file would copy `mdat`
+            # just to learn the file is a video -- 3.37 GB on a real iPhone clip.
+            moov = next((b for b in iso.scan(data) if b.type == b"moov"), None)
+            if moov is None:
+                return False
             types = set()
-            for root in boxes:
+            for root in iso.parse(data[moov.offset:moov.end]):
                 for box in root.walk():
                     if box.type == b"hdlr" and len(box.payload) >= 12:
                         types.add(box.payload[8:12])

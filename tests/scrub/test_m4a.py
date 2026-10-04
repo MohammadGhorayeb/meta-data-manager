@@ -217,15 +217,18 @@ def test_dispatch_claims_m4a_audio(tmp_path):
     assert default_dispatcher().resolve(open(p, "rb").read()).format_id == "m4a"
 
 
-def test_dispatch_refuses_mp4_video(tmp_path):
-    """MP4 video is the same container but belongs to Phase 4. Claiming it here would
-    strip it with audio-shaped assumptions, so the handler must decline and dispatch
-    must fail closed rather than guess."""
-    from src.scrub.errors import UnsupportedFormatError
+def test_the_audio_handler_declines_mp4_video(tmp_path):
+    """MP4 video is the same container, but claiming it here would strip it with
+    audio-shaped assumptions (and copy `mdat` whole, keeping the stale metadata copy
+    Phase 4 measured). So this handler declines it. Until Phase 4 this test also
+    required dispatch to find NO handler; video now has its own, and the test asserts
+    it is that one rather than this one."""
+    from src.scrub.formats.m4a.handler import M4aHandler
     p = str(tmp_path / "v.mp4")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
                     "testsrc=duration=1:size=64x64:rate=10", "-f", "lavfi", "-i",
                     "sine=frequency=440:duration=1", "-c:v", "libx264", "-c:a",
                     "aac", "-shortest", p], check=True)
-    with pytest.raises(UnsupportedFormatError):
-        default_dispatcher().resolve(open(p, "rb").read())
+    data = open(p, "rb").read()
+    assert not M4aHandler().claims(data)
+    assert default_dispatcher().resolve(data).format_id == "mp4"

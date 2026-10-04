@@ -56,6 +56,9 @@ def _build(kind: str, tmpdir: str) -> str | None:
         return fc.torture_flac(p) if fc.HAVE_FFMPEG else None
     if kind == "m4a":
         return mc.torture_m4a(p) if mc.HAVE_FFMPEG else None
+    if kind == "mp4":
+        from . import mp4_corpus as vc  # noqa: PLC0415
+        return vc.build(p) if vc.HAVE_FFMPEG else None
     if kind == "pdf":
         return pc.torture_pdf(p)
     raise AssertionError(kind)
@@ -80,6 +83,7 @@ CASES = [
     ("mp3", "F1"), ("mp3", "F3"),
     ("flac", "F1"), ("flac", "F2"),
     ("m4a", "F1"), ("m4a", "F2"), ("m4a", "F3"),
+    ("mp4", "F1"),
     ("pdf", "F1"), ("pdf", "F2"), ("pdf", "F3"),
 ]
 

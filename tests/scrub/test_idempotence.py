@@ -30,6 +30,7 @@ LOSSLESS_CASES = [
     ("mp3", "F1"),
     ("flac", "F1"), ("flac", "F2"),
     ("m4a", "F1"), ("m4a", "F2"),
+    ("mp4", "F1"),
 ]
 
 
@@ -39,6 +40,7 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     from . import flac_corpus as fc
     from . import m4a_corpus as mc
     from . import mp3_corpus as m3c
+    from . import mp4_corpus as vc
     from . import pdf_corpus as pc
     from .test_png import _png
 
@@ -59,6 +61,9 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "m4a":
         return (open(mc.torture_m4a(str(tmp_path / "t.m4a")), "rb").read()
                 if mc.HAVE_FFMPEG else None)
+    if fmt == "mp4":
+        return (open(vc.build(str(tmp_path / "t.mov")), "rb").read()
+                if vc.HAVE_FFMPEG else None)
     raise AssertionError(fmt)
 
 

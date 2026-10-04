@@ -79,6 +79,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import flac_corpus as fc
     from . import m4a_corpus as mc
     from . import mp3_corpus as m3c
+    from . import mp4_corpus as vc
     from . import pdf_corpus as pc
     from .test_png import _png
 
@@ -99,6 +100,8 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     if mc.HAVE_FFMPEG:
         out["m4a"] = (open(mc.torture_m4a(str(tmp_path / "t.m4a")), "rb").read(),
                       ("F1", "F2", "F3"))
+    if vc.HAVE_FFMPEG:
+        out["mp4"] = (open(vc.build(str(tmp_path / "t.mov")), "rb").read(), ("F1",))
     return out
 
 
