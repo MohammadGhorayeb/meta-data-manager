@@ -65,6 +65,9 @@ _OPTIONAL = {
               "is resolution: ffmpeg writes the same handler names and the same "
               "brand in every configuration, so two of the channels are invisible "
               "to an ffmpeg-only peer set (limit #44)",
+    "sysctl": "macOS-only source of free memory for the memory preflight (limit "
+              "#38); Linux reads /proc/meminfo instead, and a platform where neither "
+              "answers skips the check rather than refusing every scrub",
     "google-chrome": "one A2 peer producer; absent means a smaller peer set",
     "google-chrome-stable": "alias of google-chrome",
     "chromium-browser": "alias of google-chrome",

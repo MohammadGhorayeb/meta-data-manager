@@ -25,6 +25,10 @@ AUDIO_BRANDS = (b"M4A ", b"M4B ", b"mp42", b"isom", b"M4P ")
 
 class M4aHandler(BaseHandler):
     format_id = "m4a"
+    # Measured 4.04x on a 58 MB hour-long file: the shared strip parses the whole
+    # file (copying the audio), serializes, then parses its own output to verify it.
+    # Declared rather than optimised; streaming is November's work (limit #38).
+    memory_factor = 4.5
     magic = ()                     # no leading magic; see matches()
     fidelities = ("F1", "F2", "F3")
 

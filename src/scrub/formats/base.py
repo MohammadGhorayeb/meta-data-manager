@@ -28,6 +28,10 @@ class BaseHandler:
     format_id: str = "base"
     magic: tuple[bytes, ...] = ()
     fidelities: tuple[str, ...] = ()
+    # Peak memory of one scrub as a multiple of the file size, MEASURED and held to
+    # that measurement by a test; None means "never large enough to check".
+    # See resources.py and limit #38.
+    memory_factor: float | None = None
 
     def matches(self, header: bytes) -> bool:
         return any(header.startswith(m) for m in self.magic)

@@ -230,20 +230,23 @@ def scrub(data: bytes) -> bytes:
     if len(moov_bytes) != moov_len:
         raise ScrubError("MP4: moov changed size when offsets were filled in")
 
+    # Assembled as a list of views and joined ONCE: a bytearray grown chunk by
+    # chunk and then copied into `bytes` holds the whole output twice at its peak,
+    # which was a third full copy of the video beside the input (limit #38).
     view = memoryview(data)
-    out = bytearray()
+    parts: list = []
     for btype in out_order:
         if btype == b"ftyp":
-            out += ftyp_bytes
+            parts.append(ftyp_bytes)
         elif btype == b"moov":
-            out += moov_bytes
+            parts.append(moov_bytes)
         else:
             total = mdat_header + payload_len
-            out += (total.to_bytes(4, "big") + b"mdat" if mdat_header == 8 else
-                    (1).to_bytes(4, "big") + b"mdat" + total.to_bytes(8, "big"))
-            for _, _, c in order:
-                out += view[c.offset:c.end]
-    result = bytes(out)
+            parts.append(total.to_bytes(4, "big") + b"mdat" if mdat_header == 8 else
+                         (1).to_bytes(4, "big") + b"mdat" + total.to_bytes(8, "big"))
+            parts.extend(view[c.offset:c.end] for _, _, c in order)
+    result = b"".join(parts)
+    del parts, view
 
     # The promise of this tier, checked on the output as a reader would find it:
     # every kept track's samples are the same bytes, in the same order.

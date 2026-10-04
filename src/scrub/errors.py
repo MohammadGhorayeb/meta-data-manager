@@ -27,6 +27,12 @@ class FidelityError(ScrubError):
     fidelity string is not one of F1/F2/F3."""
 
 
+class ResourceError(ScrubError):
+    """The machine does not have the memory this file needs, checked before it is
+    read (limit #38). Refusing up front beats failing after minutes of swapping:
+    nothing has been read or written, and the message says how much is needed."""
+
+
 class ContentError(ScrubError):
     """Scrubbing would alter perceptual content beyond the fidelity contract
     (e.g. dropping a transform-critical APP14 or a render-affecting PNG chunk).

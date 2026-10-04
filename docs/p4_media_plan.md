@@ -1582,6 +1582,28 @@ passes with the declaration unchanged.
 across iPhone models and apps needs real clips from more than one device, which this
 machine does not have.
 
+### 9.1 The memory preflight (limit #38)
+
+§6 stated the memory cost rather than capping it, and the user then chose between a
+fixed size cap, a check against the machine, and doing nothing. The answer was the
+check, measured first. A video scrub peaked at **3.1×** the file over the
+interpreter's baseline: the input, the output grown in a `bytearray`, and the
+`bytes()` copy of it. Assembling the output as a list of views joined once took it
+to **2.07–2.13×** on the four real clips, which is input plus output and the floor
+without streaming. M4A measured **4.04×** on an hour-long file (its shared strip
+parses the whole file, serializes, and parses its output again to verify) and is
+declared, not optimised.
+
+The check runs before the file is read, since reading a file that does not fit is
+the failure. The prefix alone gives only an upper bound — every ISOBMFF format
+starts `....ftyp`, so it would price a video at M4A's 4.5× — so an ISOBMFF file is
+identified from its **skeleton**: the top-level boxes except `mdat`, read with
+seeks. Available memory on macOS is the kernel's own free percentage
+(`kern.memorystatus_level`); summing `vm_stat`'s free and inactive pages read 8.9 GB
+on a Mac the kernel called 50% free, and would have refused videos it handles
+comfortably. A test scrubs a 40 MB file in a fresh process and holds each declared
+factor (2.5×, 4.5×) between the measured peak and 1.5× of it.
+
 ---
 
 ## 10. Camera RAW: two surveys, one plan

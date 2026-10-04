@@ -37,6 +37,10 @@ class Mp4Handler(BaseHandler):
     format_id = "mp4"
     magic = ()                         # no leading magic; see matches()
     fidelities = ("F1",)
+    # Measured 2.07-2.13x peak over the interpreter's baseline on real clips (32-56
+    # MB): the input plus the output, nothing else. 2.5 leaves room; the test in
+    # test_memory_preflight.py holds the declaration to a fresh measurement.
+    memory_factor = 2.5
 
     def matches(self, header: bytes) -> bool:
         return len(header) >= 12 and header[4:8] == b"ftyp"

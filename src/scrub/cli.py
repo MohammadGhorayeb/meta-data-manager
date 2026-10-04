@@ -26,9 +26,12 @@ implementation reading the same file, since a handler bug that failed to remove 
 field would also fail to report it. It can disagree, and says so loudly when it does.
 `--no-verify` skips it. See `crosscheck.py`.
 
+Before the input is read, a **memory preflight** refuses a file the machine cannot
+hold (limit #38; see `resources.py`). `--skip-memory-check` overrides it.
+
 Exit codes (stable, so the harness/tests can assert on them):
   0 ok · 2 usage · 3 unsupported format · 4 parse error · 5 fidelity error
-  6 content/residual error · 1 unexpected
+  6 content/residual error · 7 not enough memory · 1 unexpected
 """
 from __future__ import annotations
 
@@ -37,17 +40,25 @@ import os
 import sys
 import tempfile
 
-from . import crosscheck
+from . import crosscheck, resources
 from . import fidelity as fid
 from . import report as rep
 from .dispatch import default_dispatcher
-from .errors import ContentError, FidelityError, ParseError, ScrubError, UnsupportedFormatError
+from .errors import (
+    ContentError,
+    FidelityError,
+    ParseError,
+    ResourceError,
+    ScrubError,
+    UnsupportedFormatError,
+)
 
 _EXIT = {
     UnsupportedFormatError: 3,
     ParseError: 4,
     FidelityError: 5,
     ContentError: 6,
+    ResourceError: 7,
 }
 
 
@@ -67,18 +78,20 @@ def _write_atomic(path: str, data: bytes) -> None:
 
 
 def scrub_file(in_path: str, out_path: str, fidelity: str,
-               dispatcher=None) -> list[str]:
+               dispatcher=None, check_memory: bool = True) -> list[str]:
     """Scrub in_path -> out_path at the given fidelity. Raises ScrubError
     (fail-closed) on any problem; writes output only on full success.
 
     Returns any **advisories about the input** — things the caller should be told
     that are not failures of the scrub. See the module docstring.
     """
-    return scrub_file_reported(in_path, out_path, fidelity, dispatcher)[0]
+    return scrub_file_reported(in_path, out_path, fidelity, dispatcher,
+                               check_memory=check_memory)[0]
 
 
 def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
-                        dispatcher=None, verify_with_exiftool: bool = False
+                        dispatcher=None, verify_with_exiftool: bool = False,
+                        check_memory: bool = True
                         ) -> tuple[list[str], rep.Report]:
     """The same scrub, also returning a before/after account of the metadata.
 
@@ -88,10 +101,14 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
     for a feature none of them use.
     """
     fid.validate(fidelity)
+    dispatcher = dispatcher or default_dispatcher()
+    if check_memory:
+        # Before the read: loading a file the machine cannot hold is itself the
+        # failure this check exists to prevent.
+        resources.preflight(in_path, resources.factor_for(in_path, dispatcher))
     with open(in_path, "rb") as f:
         data = f.read()
 
-    dispatcher = dispatcher or default_dispatcher()
     handler = dispatcher.resolve(data)          # raises UnsupportedFormatError
     advisories = _advise(handler, data)
     scrubbed = handler.scrub(data, fidelity)    # raises ParseError/FidelityError
@@ -162,6 +179,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="do not print the before/after metadata report. The report "
                         "echoes the values it removed, which is useful on a terminal "
                         "and a disclosure in a log or a shared session")
+    p.add_argument("--skip-memory-check", action="store_true",
+                   help="scrub even if this machine appears to lack the memory the "
+                        "file needs. It may swap heavily or fail, but never writes a "
+                        "partial file")
     p.add_argument("--no-verify", action="store_true",
                    help="skip the independent exiftool check at the end of the "
                         "report (it reads the file twice, which costs a moment)")
@@ -170,7 +191,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         advisories, report = scrub_file_reported(
             args.input, args.output, args.fidelity,
-            verify_with_exiftool=not (args.no_report or args.no_verify))
+            verify_with_exiftool=not (args.no_report or args.no_verify),
+            check_memory=not args.skip_memory_check)
     except ScrubError as e:
         print(f"scrub: {type(e).__name__}: {e}", file=sys.stderr)
         return _EXIT.get(type(e), 1)

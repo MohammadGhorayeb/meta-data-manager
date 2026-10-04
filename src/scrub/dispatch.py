@@ -19,6 +19,16 @@ class Dispatcher:
     def register(self, handler) -> None:
         self._handlers.append(handler)
 
+    def memory_factor(self, header: bytes) -> float | None:
+        """An UPPER BOUND on the memory a file with this header may need, as a
+        multiple of its size: the largest factor among the handlers whose prefix
+        matches. Every ISOBMFF format shares `....ftyp`, so for those it is
+        `resources.factor_for()` that narrows it to the handler that will actually
+        run, without reading the media."""
+        factors = [h.memory_factor for h in self._handlers
+                   if getattr(h, "memory_factor", None) and h.matches(header)]
+        return max(factors) if factors else None
+
     def resolve(self, data: bytes):
         header = data[:_HEADER_BYTES]
         for h in self._handlers:
