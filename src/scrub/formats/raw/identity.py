@@ -72,6 +72,11 @@ MAKERNOTE_FIELDS = {
         Field("MakerNote", 0x001D, "SerialNumber"),
         Field("MakerNote", 0x00A7, "ShutterCount"),
     ),
+    "fujifilm": (
+        Field("MakerNote", 0x0010, "InternalSerialNumber"),
+        Field("MakerNote", 0x1032, "ExposureCount"),
+        Field("MakerNote", 0x1438, "ImageCount"),
+    ),
     "olympus": (
         Field("MakerNote/Equipment", 0x0101, "SerialNumber"),
         Field("MakerNote/Equipment", 0x0102, "InternalSerialNumber"),

@@ -1621,7 +1621,7 @@ One milestone numbering, `main`'s, with the branch's order inside it:
 |---|---|
 | **M16** ✅ (§10.1) | Shared surgical TIFF-IFD writing in `standards/tiff_ifd.py`: the `IIRO`/`IIU` magics, `SubIFDs`, the vendor maker-note layouts (Canon plain, Nikon `Nikon\0` with its own TIFF header, Olympus `OLYMPUS\0II`), values blanked in place and size-preserving; a hand-built DNG so CI can test it |
 | **M17** ✅ (§10.2) | RAW F1, **DNG first** (open spec, the GPS-bearing preview, the semantic matte), then ARW, then CR2/NEF/ORF. Acceptance: LibRaw `raw_image` bit-identical **and** the camera-WB render pixel-identical, every identity value absent from the bytes |
-| **M18** | RAF and RW2 (the two with a metadata-bearing preview, RAF its own container), then CR3 (brand ahead of MP4, Canon `uuid` walk, `CTMD` removal with `mdat` rebuilt as MP4 F1 does) |
+| **M18** ✅ (§10.3-10.5) | RAF and RW2 (the two with a metadata-bearing preview, RAF its own container), then CR3 (brand ahead of MP4, Canon `uuid` walk, `CTMD` removal with `mdat` rebuilt as MP4 F1 does) |
 | **M19** | `RawPlugin`, matrices, A2; `limits.md` rows |
 
 The open decision (§7.6), drop the previews or keep a cleaned copy, was settled by
@@ -1782,3 +1782,36 @@ two mutations (no CTMD edit, no CameraInfo) fail 4 and 3. CR3 joins the fuzz sui
 as its own entry. Two test bugs were caught on the way: a test that matched
 TimeInfo's values as a CTMD header and passed for the wrong reason, and the report
 calling an emptied XMP box "kept".
+
+### 10.5 M18, part 3 — Fujifilm RAF
+
+Fujifilm's own header ("FUJIFILMCCD-RAW ") with an offset table to three regions: a
+JPEG preview, a Fuji header block of records, and the sensor data. Every identity
+value -- body and lens serials, the internal serial, image and exposure counts,
+owner, copyright, dates -- is in the preview JPEG's EXIF, Fujifilm's maker note
+included (`FUJIFILM` + a little-endian offset; offsets from the note).
+
+**The preview's EXIF cannot be dropped.** Stripped with the preview cleaner, LibRaw
+reported "Unexpected end of file" and decoded nothing -- the failure the survey saw
+from `exiftool -all=`. So it is cleaned in place: the TIFF-level part of F1 was
+factored out as `f1.clean_tiff`, which works on a writable view of a TIFF embedded
+anywhere, and RAF calls it on the EXIF block; the EXIF thumbnail goes through the
+preview cleaner and the XMP packet is rewritten empty at its length.
+
+**Then the bytes disagreed with ExifTool again.** With the EXIF clean by ExifTool's
+reading, the body serial and a date were still in the file, inside the Fuji header
+block's record 0xC000 (22 KB ExifTool does not decode). That block carries what the
+decoder needs, so it is not zeroed: every text value the EXIF pass removed -- read
+off the before/after difference, so no second field list -- is searched for there
+and each copy blanked (3 on the X-T4). On the real file: length unchanged, sensor
+data, camera white balance and render identical, residuals clean, and no original
+text value anywhere in the bytes.
+
+CI: a hand-built RAF with the header table, a preview whose EXIF is a real TIFF with
+a Fujifilm maker note, XMP, a Fuji block carrying geometry that must survive beside
+an unnamed serial and date copy, and the sensor data. 7 tests; two mutations (no
+Fuji-block search, no EXIF cleaning) fail 3 and 4. RAF is fuzzed as its own entry.
+
+**M18 closes the camera RAW formats**: all eight surveyed containers are handled at
+F1, and a maker note in a layout not measured is refused (limit #46). Next is M19:
+the harness plugin, the matrix and the A2 cell.

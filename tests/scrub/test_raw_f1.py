@@ -222,8 +222,3 @@ def test_real_raw_files_lose_dates_and_places_and_decode_identically(name, tmp_p
     assert np.array_equal(a[1], b[1]), "the camera-white-balance render changed"
 
 
-@pytest.mark.parametrize("name", ["fuji_xt4.RAF"])
-def test_raf_is_not_claimed_yet(name):
-    with pytest.raises(UnsupportedFormatError):
-        default_dispatcher().resolve(open(_real(name), "rb").read())
-

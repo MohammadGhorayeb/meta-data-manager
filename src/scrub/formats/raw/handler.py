@@ -1,5 +1,5 @@
-"""Camera RAW handler: the TIFF family (DNG, CR2, NEF, ARW, ORF, RW2) and Canon's
-ISOBMFF-based CR3 (F1 only).
+"""Camera RAW handler: the TIFF family (DNG, CR2, NEF, ARW, ORF, RW2), Canon's
+ISOBMFF-based CR3 and Fujifilm's RAF (F1 only).
 
 `II*\\0` and `MM\\0*` open every TIFF, so the prefix is only a gate. A file is
 claimed as a raw when it says so: the Olympus or Panasonic magic, a DNGVersion
@@ -13,10 +13,10 @@ from __future__ import annotations
 from ...errors import FidelityError
 from ...standards import tiff_ifd as t
 from ..base import BaseHandler
-from . import cr3, f1
+from . import cr3, f1, raf
 from . import inspect as _inspect
 
-_PREFIXES = (b"II*\x00", b"MM\x00*", b"IIRO", b"IIRS", b"IIU\x00")
+_PREFIXES = (b"II*\x00", b"MM\x00*", b"IIRO", b"IIRS", b"IIU\x00", raf.MAGIC)
 
 
 class RawHandler(BaseHandler):
@@ -29,7 +29,7 @@ class RawHandler(BaseHandler):
         return super().matches(header) or cr3.is_cr3(header)
 
     def claims(self, data: bytes) -> bool:
-        if cr3.is_cr3(data):
+        if cr3.is_cr3(data) or raf.is_raf(data):
             return True
         try:
             tree = t.parse(data, strict=False, magics=t.RAW_MAGICS)
@@ -45,7 +45,7 @@ class RawHandler(BaseHandler):
             return False
 
     def scrub_f1(self, data: bytes) -> bytes:
-        return cr3.scrub(data) if cr3.is_cr3(data) else f1.scrub(data)
+        return self._module(data).scrub(data)
 
     def scrub_f2(self, data: bytes) -> bytes:
         raise FidelityError("raw F2 is not built: there is no lossless re-encode of "
@@ -54,10 +54,17 @@ class RawHandler(BaseHandler):
     def verify(self, data: bytes, fidelity: str) -> list[str]:
         if fidelity != "F1":
             return []
-        return cr3.residuals(data) if cr3.is_cr3(data) else f1.residuals(data)
+        return self._module(data).residuals(data)
 
     def describe(self, data: bytes) -> dict[str, str]:
-        return cr3.describe(data) if cr3.is_cr3(data) else _inspect.describe(data)
+        if cr3.is_cr3(data) or raf.is_raf(data):
+            return self._module(data).describe(data)
+        return _inspect.describe(data)
+
+    @staticmethod
+    def _module(data: bytes):
+        """Which container: Canon's ISOBMFF, Fujifilm's own, or TIFF."""
+        return cr3 if cr3.is_cr3(data) else raf if raf.is_raf(data) else f1
 
     def kept(self, data: bytes, fidelity: str) -> list[str]:
         return ["Make, model and lens model stay: the decoder selects the camera's "

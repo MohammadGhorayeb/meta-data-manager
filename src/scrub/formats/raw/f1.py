@@ -244,19 +244,14 @@ def scrub_with_report(data: bytes) -> tuple[bytes, list[str]]:
         raise ParseError(f"RAW: malformed file ({type(e).__name__}: {e})") from None
 
 
-def _scrub(data: bytes, report: bool = False):
-    tree = t.parse(data, strict=True, magics=t.RAW_MAGICS)
-    is_dng = tree.ifd("IFD0") is not None and \
-        tree.ifd("IFD0").get(TAG_DNG_VERSION) is not None
-    note = t.makernote(data, tree)
-    before = {i.offset: _data_regions(data, i) for i in tree.ifds}
-    previews = _previews(data, tree, note)
-
-    buf = bytearray(data)
-    removed = identity.blank_identity(buf)
-
+def clean_tiff(buf, *, is_dng: bool = False, magics=t.RAW_MAGICS) -> list[str]:
+    """Everything F1 removes from ONE TIFF structure, in place: identity, dates, the
+    maker note's dates and hidden copies, XMP/IPTC/Photoshop, the GPS IFD. `buf` is
+    a mutable buffer or a writable memoryview over a TIFF embedded somewhere else --
+    a Fujifilm preview's EXIF, say. Nothing moves."""
+    removed = identity.blank_identity(buf, magics=magics)
     # Re-read: the identity pass may have removed a maker note.
-    tree = t.parse(bytes(buf), strict=True, magics=t.RAW_MAGICS)
+    tree = t.parse(bytes(buf), strict=True, magics=magics)
     note = t.makernote(bytes(buf), tree)
     ifds = {i.name: i for i in tree.ifds}
     fields = [Field(i.name, tag, name) for i in tree.ifds
@@ -270,7 +265,6 @@ def _scrub(data: bytes, report: bool = False):
         if copies:
             removed.append(f"{copies} further cop{'y' if copies == 1 else 'ies'} of a "
                            "removed date or name inside the maker note")
-
     remove = dict(_REMOVE_ANYWHERE)
     if is_dng:
         remove.update(_REMOVE_IN_DNG)
@@ -278,8 +272,20 @@ def _scrub(data: bytes, report: bool = False):
         for tag, name in remove.items():
             if t.remove_entry(buf, ifd, tag):
                 removed.append(name)
-
     _drop_gps(buf, tree, removed)
+    return removed
+
+
+def _scrub(data: bytes, report: bool = False):
+    tree = t.parse(data, strict=True, magics=t.RAW_MAGICS)
+    is_dng = tree.ifd("IFD0") is not None and \
+        tree.ifd("IFD0").get(TAG_DNG_VERSION) is not None
+    note = t.makernote(data, tree)
+    before = {i.offset: _data_regions(data, i) for i in tree.ifds}
+    previews = _previews(data, tree, note)
+
+    buf = bytearray(data)
+    removed = clean_tiff(buf, is_dng=is_dng)
     tree = t.parse(bytes(buf), strict=True, magics=t.RAW_MAGICS)
     dropped = _drop_semantic_masks(buf, tree, removed)
 
@@ -312,10 +318,10 @@ def _check_image_data_untouched(data: bytes, buf: bytearray,
                 raise ScrubError(f"RAW F1 altered image data at {a} ({n} bytes)")
 
 
-def residuals(data: bytes) -> list[str]:
+def residuals(data: bytes, magics=t.RAW_MAGICS) -> list[str]:
     """Re-walk the output. Anything below is a leak we would have shipped."""
     out: list[str] = []
-    tree = t.parse(data, strict=True, magics=t.RAW_MAGICS)
+    tree = t.parse(data, strict=True, magics=magics)
     note = t.makernote(data, tree)
     for ifd in tree.ifds:
         if ifd.name == "GPSIFD" or ifd.get(TAG_GPS) is not None:

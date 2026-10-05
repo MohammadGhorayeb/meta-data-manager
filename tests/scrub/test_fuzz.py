@@ -87,6 +87,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     out: dict[str, tuple[bytes, tuple[str, ...]]] = {
         "raw": (rc.build("olympus"), ("F1",)),
         "raw-cr3": (rc.cr3(), ("F1",)),
+        "raw-raf": (rc.raf(), ("F1",)),
         "jpeg": (imgc.build_torture_jpeg(), ("F1", "F2", "F3")),
         "png": (_png(), ("F1", "F2")),
         "pdf": (open(pc.torture_pdf(str(tmp_path / "t.pdf")), "rb").read(),

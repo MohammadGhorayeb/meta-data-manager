@@ -144,6 +144,8 @@ class MakerNote:
       nikon    "Nikon\0" + version, then its OWN TIFF header at +10, offsets from it
       olympus  "OLYMPUS\0II\3\0", IFD at +12, offsets from the maker note, sub-IFDs
       apple    "Apple iOS\0\0\1MM", big-endian IFD at +14, offsets from the note
+      fujifilm "FUJIFILM" + a little-endian offset to the IFD, offsets from the note
+               (always little-endian, whatever the file's own byte order)
     """
     vendor: str
     offset: int                 # of the maker-note value, from TIFF start
@@ -415,6 +417,9 @@ def makernote(tiff: bytes, tree: IfdTree) -> MakerNote | None:
         return note("olympus", _order_of(head[8:10]), off + 12, off)
     if head.startswith(b"Apple iOS\x00") and _order_of(head[12:14]):
         return note("apple", _order_of(head[12:14]), off + 14, off)
+    if head.startswith(b"FUJIFILM"):
+        (ifd_at,) = struct.unpack_from("<I", tiff, off + 8)
+        return note("fujifilm", "<", off + ifd_at, off)
     if head.startswith((b"SONY DSC ", b"SONY CAM ", b"SONY MOBILE")):
         return note("sony", tree.byte_order, off + 12, 0)
     if make.startswith(b"SONY"):

@@ -434,3 +434,49 @@ def cr3() -> bytes:
     assert len(body) == len(probe)
     return (head + body + xmp + prvw + free
             + ic.box(b"mdat", CR3_RAW + sample))
+
+
+# --------------------------------------------------------------------------- #
+# Fujifilm RAF: the metadata lives in the preview, and copies in the Fuji block
+# --------------------------------------------------------------------------- #
+RAF_GEOMETRY = b"FUJI-GEOMETRY-THE-DECODER-NEEDS" * 4
+RAF_SENSOR = bytes(range(255, -1, -1)) * 64
+RAF_IMAGE_COUNT = 0x0DEC0DE1
+
+
+def _app1(payload: bytes) -> bytes:
+    return b"\xff\xe1" + struct.pack(">H", 2 + len(payload)) + payload
+
+
+def raf() -> bytes:
+    fuji_note = b"FUJIFILM" + struct.pack("<I", 12) + Tiff(
+        "<", header=False, start=12).ifd("fuji", [
+            (0x0000, 7, b"0130"),
+            (0x0010, *ascii_(MN_INTERNAL)),
+            (0x1438, 4, RAF_IMAGE_COUNT),
+        ]).build()
+    exif = Tiff("<")
+    exif.ifd("ifd0", [(0x010F, *ascii_(b"FUJIFILM")), (0x0132, *ascii_(DATE)),
+                      (0x013B, *ascii_(ARTIST)), (0x8769, 4, Ref("exif"))])
+    exif.ifd("exif", [(0x9003, *ascii_(DATE)), (0x927C, 7, Span("note")),
+                      (0xA431, *ascii_(BODY_SERIAL))])
+    exif.blob("note", fuji_note)
+    jpg = preview_jpeg((120, 60, 200))
+    jpg = (jpg[:2] + _app1(b"Exif\x00\x00" + exif.build())
+           + _app1(b"http://ns.adobe.com/xap/1.0/\x00" + XMP + b" " * 32)
+           + jpg[2:])
+    jpg = jpg[:jpg.index(PREVIEW_TRAILER)]          # a RAF preview has no trailer
+    # The Fuji header block: records of (tag, size, data); 0xC000 carries the
+    # geometry the decoder needs AND, unnamed, a copy of the serial and the date.
+    record = RAF_GEOMETRY + BODY_SERIAL + bytes(8) + DATE + bytes(8)
+    block = struct.pack(">I", 2) + struct.pack(">HHI", 0x0100, 4, 0x01000200) \
+        + struct.pack(">HH", 0xC000, len(record)) + record
+    at_jpg = 148
+    at_hdr = at_jpg + len(jpg)
+    at_cfa = at_hdr + len(block)
+    head = (b"FUJIFILMCCD-RAW " + b"0201FF159505" + b"X-T4".ljust(32, b"\x00")
+            + bytes(84 - 60)
+            + struct.pack(">IIIIII", at_jpg, len(jpg), at_hdr, len(block), at_cfa,
+                          len(RAF_SENSOR)))
+    head += bytes(at_jpg - len(head))
+    return head + jpg + block + RAF_SENSOR
