@@ -358,6 +358,51 @@ video encoded at a higher quality is a bigger file, and nothing in the metadata 
 change that.
 <!-- FORMAT:mp4:END -->
 
+<!-- FORMAT:raw:BEGIN -->
+The files a camera saves when you choose RAW — Canon, Nikon, Sony, Fujifilm, Olympus,
+Panasonic, and Apple's ProRAW — and the format where nothing inside the file is
+allowed to move.
+
+**Why nothing can move.** A raw file is the camera's sensor reading, stored at
+positions the file's own index records. The camera's private notes — where the
+serial numbers are — sit in the same block as information the developing software
+needs to get the colours right. Delete that block and a Nikon file stops opening and
+a Canon one loses its colour balance. So we never delete or shift anything: we
+overwrite exactly the bytes that identify you, with zeros, maker by maker.
+
+**What goes.** Serial numbers of the camera body, the lens, the extender and the
+flash; the owner's name and copyright the camera was set up with (one of our samples
+carried an email address); the shot counter, which links photos to one camera even
+without a serial; every date and time, including time zones — one Canon file named
+the **city**; the GPS position, altitude and direction; the software version; and
+the extra copy of all of this that some cameras put inside the preview picture,
+including the iPhone's preview, which carries its **own copy of the location**.
+
+**Copies the standard tool cannot see.** Three times while building this we cleaned
+everything ExifTool could name, searched the file's raw bytes anyway, and found
+something still there: an owner's name inside a Canon block ExifTool does not
+decode, a Fujifilm serial and date inside Fujifilm's own header, and Canon's shot
+counter in two places at a position that differs per camera. All are removed. That
+is why our final check reads the bytes, not just the tags.
+
+**What it costs you: nothing you can see.** The sensor data comes out **bit for bit
+identical**, and the photo developed with the camera's own colour settings comes out
+**pixel for pixel identical** — checked with an independent decoder on real files
+from every maker. Previews stay, cleaned, so your photo viewer still shows a
+thumbnail; we checked that the thumbnail macOS draws is unchanged.
+
+**What stays, on purpose.** The camera make and model, and the lens model: the
+software that develops a raw file uses them to pick the right colour profile, and
+without them your photo would develop wrongly. They say which *kind* of camera took
+the photo, never which one. Because nothing can move, each removed detail leaves
+zeros of the same length behind, and a blanked time zone reads as UTC.
+
+**What is not measured yet.** Whether a cleaned file can still be traced to one
+particular camera *body* — beyond the sensor's own noise, which no metadata tool can
+remove. That needs many photos from two cameras of the same model, which we do not
+have yet, so we do not claim it either way.
+<!-- FORMAT:raw:END -->
+
 <!-- FORMAT:heic:BEGIN -->
 The photos on your phone, and the first format where "delete the tag" is not
 even half the job.

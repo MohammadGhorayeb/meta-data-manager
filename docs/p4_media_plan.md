@@ -1622,7 +1622,7 @@ One milestone numbering, `main`'s, with the branch's order inside it:
 | **M16** ✅ (§10.1) | Shared surgical TIFF-IFD writing in `standards/tiff_ifd.py`: the `IIRO`/`IIU` magics, `SubIFDs`, the vendor maker-note layouts (Canon plain, Nikon `Nikon\0` with its own TIFF header, Olympus `OLYMPUS\0II`), values blanked in place and size-preserving; a hand-built DNG so CI can test it |
 | **M17** ✅ (§10.2) | RAW F1, **DNG first** (open spec, the GPS-bearing preview, the semantic matte), then ARW, then CR2/NEF/ORF. Acceptance: LibRaw `raw_image` bit-identical **and** the camera-WB render pixel-identical, every identity value absent from the bytes |
 | **M18** ✅ (§10.3-10.5) | RAF and RW2 (the two with a metadata-bearing preview, RAF its own container), then CR3 (brand ahead of MP4, Canon `uuid` walk, `CTMD` removal with `mdat` rebuilt as MP4 F1 does) |
-| **M19** | `RawPlugin`, matrices, A2; `limits.md` rows |
+| **M19** ✅ (§10.6) | `RawPlugin`, matrices, A2; `limits.md` rows |
 
 The open decision (§7.6), drop the previews or keep a cleaned copy, was settled by
 measuring a viewer: see §10.2.
@@ -1815,3 +1815,39 @@ Fuji-block search, no EXIF cleaning) fail 3 and 4. RAF is fuzzed as its own entr
 **M18 closes the camera RAW formats**: all eight surveyed containers are handled at
 F1, and a maker note in a layout not measured is refused (limit #46). Next is M19:
 the harness plugin, the matrix and the A2 cell.
+
+### 10.6 M19 as built — the RAW matrix
+
+`RawPlugin` (content identity decoded by LibRaw -- sensor data and a camera-white-
+balance render -- never parsed) and `gen_matrix_raw.py`, which `check_evidence.py`
+picks up on its own.
+
+- **A1@F1 passes in all five maker-note layouts** (Canon, Nikon, Olympus, Apple,
+  Sony): fixtures whose planted metadata differs only in content, length kept --
+  `raw_corpus.build(variant=i)` swaps every `SENTINEL` for an 8-character token and
+  the date for another of the same length, so the layout is byte-identical across
+  variants and any difference after F1 is metadata left behind. Same-length on
+  purpose: in-place cleaning keeps each field's length (limit #45), so variants of
+  different lengths would differ in layout, which is that stated residual rather
+  than a new one.
+- **A2 is stated, not run.** Make, model and lens model are kept because the
+  decoder needs them, so "which model" survives by design; "which BODY" needs
+  several files from two bodies of one model, which the corpus does not have
+  (limit #47).
+- **F2/F3 not built**: there is no lossless re-encode of a sensor mosaic every raw
+  decoder reads, and a lossy one stops being a raw.
+
+**The fingerprint guard, five rounds.** The first four were the corpus, the lesson
+DOCX, M4A and MP4 each paid for: every fixture shared a model name, a thumbnail, an
+ICC profile size and an adjacency that fused a preview's padding with a dropped
+mask's zeros. Varied with a `seed` -- model, thumbnail, sensor data, preview colour,
+one profile size per camera, an ImageDescription only where Sony and Olympus write
+one, varying neighbours either side of the preview. What remained is the tool's, and
+is declared, generated from `f1.py`: zeros where a value was blanked or an image
+dropped, a cleaned preview's EOI followed by its padding, and SOI followed directly
+by a kept colour profile once EXIF is gone. A test holds the declarations to zeros
+and those four marker bytes. The guard passes.
+
+The CI report's roadmap gained Phases 5 and 6 so its "coming next" section does not
+go quiet now that every Phase 4 format is measured. README: RAW joins the formats
+badge, which it could not before.

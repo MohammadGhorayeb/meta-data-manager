@@ -124,6 +124,12 @@ ROADMAP = [
     ("pdf", "PDF documents"), ("docx", "Word documents"),
     ("mp4", "MP4 video"), ("heic", "HEIC iPhone photos"),
     ("raw", "camera RAW files"),
+    # Phases 5 and 6 (docs/schedule_report.pdf). Named here so the report says
+    # what is coming rather than going quiet once Phase 4 is measured.
+    ("exe", "program files (Windows, Mac and Linux)"),
+    ("zip", "ZIP archives and EPUB books"),
+    ("tiff", "TIFF images"), ("webp", "WebP images"),
+    ("svg", "SVG graphics"), ("gif", "GIF animations"),
 ]
 
 FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
@@ -131,7 +137,8 @@ FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
                 "m4a": "M4A (Apple / AAC audio)",
                 "pdf": "PDF (documents)", "docx": "Word (.docx)",
                 "mp4": "MP4 (video)", "heic": "HEIC (iPhone photos)",
-                "raw": "Camera RAW"}
+                "raw": "Camera RAW", "exe": "Programs", "zip": "ZIP / EPUB",
+                "tiff": "TIFF", "webp": "WebP", "svg": "SVG", "gif": "GIF"}
 
 # The three cleaning strengths, in words a reader can act on. "F1/F2/F3" is the
 # project's internal shorthand and stays in the technical docs; nobody outside

@@ -169,7 +169,7 @@ def ascii_(text: bytes) -> tuple[int, bytes]:
 # --------------------------------------------------------------------------- #
 # Maker notes, one per layout M16 models
 # --------------------------------------------------------------------------- #
-def preview_jpeg(colour=(200, 120, 40)) -> bytes:
+def preview_jpeg(colour=(200, 120, 40), icc: bytes = ICC) -> bytes:
     """A small real JPEG carrying what an iPhone DNG's preview carries: its own
     EXIF (here a sentinel standing in for the GPS), a colour profile that must
     SURVIVE, and a trailing secondary image after EOI."""
@@ -181,7 +181,7 @@ def preview_jpeg(colour=(200, 120, 40)) -> bytes:
     jpg = buf.getvalue()
     exif = b"Exif\x00\x00" + PREVIEW_EXIF
     app1 = b"\xff\xe1" + struct.pack(">H", 2 + len(exif)) + exif
-    app2 = b"\xff\xe2" + struct.pack(">H", 2 + len(ICC)) + ICC
+    app2 = b"\xff\xe2" + struct.pack(">H", 2 + len(icc)) + icc
     return jpg[:2] + app1 + app2 + jpg[2:] + PREVIEW_TRAILER
 
 
@@ -210,7 +210,7 @@ def canon_note(order: str) -> Callable[[int], bytes]:
     return at
 
 
-def nikon_note() -> bytes:
+def nikon_note(icc: bytes = ICC) -> bytes:
     """"Nikon\\0" + version, then a complete TIFF of its own."""
     inner = Tiff("<").ifd("nikon", [
         (0x0001, 7, b"0211"),
@@ -222,13 +222,13 @@ def nikon_note() -> bytes:
         (0x00B6, 7, MN_DATE[:8]),                       # PowerUpTime
     ])
     inner.ifd("preview_ifd", [(0x0201, 4, Ref("preview")),
-                              (0x0202, 4, len(preview_jpeg((10, 200, 10))))])
-    inner.blob("preview", preview_jpeg((10, 200, 10)))
+                              (0x0202, 4, len(preview_jpeg((10, 200, 10), icc)))])
+    inner.blob("preview", preview_jpeg((10, 200, 10), icc))
     inner = inner.build()
     return b"Nikon\x00\x02\x11\x00\x00" + inner
 
 
-def olympus_note() -> bytes:
+def olympus_note(icc: bytes = ICC) -> bytes:
     """IFD at +12, offsets from the note's start, serials one level down."""
     body = Tiff("<", header=False, start=12)
     body.ifd("olympus", [(0x0000, 7, b"0100"), (0x2010, 13, Ref("equipment")),
@@ -238,7 +238,7 @@ def olympus_note() -> bytes:
         (0x0102, *ascii_(MN_INTERNAL)),
         (0x0202, *ascii_(LENS_SERIAL)),
     ])
-    preview = preview_jpeg((40, 40, 220))
+    preview = preview_jpeg((40, 40, 220), icc)
     body.ifd("settings", [(0x0100, 4, 1), (0x0101, 4, Ref("preview")),
                           (0x0102, 4, len(preview)), (0x0908, *ascii_(MN_DATE))])
     body.blob("preview", preview)
@@ -272,15 +272,32 @@ MAKES = {"canon": b"Canon", "nikon": b"NIKON CORPORATION", "olympus": b"OLYMPUS"
 W, H = 32, 24                                       # raw CFA size
 
 
-def raw_pixels(order: str) -> bytes:
+def raw_pixels(order: str, seed: int = 0) -> bytes:
     """A deterministic 16-bit RGGB mosaic with structure in it, so a decode that
     went wrong shows up as different pixels, not as the same flat grey."""
-    return b"".join(struct.pack(order + "H", 600 + ((x * 37 + y * 91) % 2400))
+    return b"".join(struct.pack(order + "H",
+                                600 + ((x * 37 + y * 91 + seed * 977) % 2400))
                     for y in range(H) for x in range(W))
 
 
 def build(note: str = "canon", order: str = "<", magic: int = 42,
-          dng: bool = True) -> bytes:
+          dng: bool = True, variant: int | None = None, seed: int = 0) -> bytes:
+    """See `_build`. `variant=i` gives the same file with every planted value's
+    CONTENT changed and its length kept -- the A1 differential's input: the layout is
+    byte-identical across variants, so anything a scrubbed pair still differs in is
+    metadata the scrub left behind."""
+    data = _build(note, order, magic, dng, seed)
+    if variant is None:
+        return data
+    token = f"VARIANT{chr(65 + variant)}".encode()
+    assert len(token) == len(b"SENTINEL")
+    date = f"200{variant + 2}:02:03 04:05:06".encode()
+    assert len(date) == len(DATE)
+    return data.replace(b"SENTINEL", token).replace(DATE, date)
+
+
+def _build(note: str = "canon", order: str = "<", magic: int = 42,
+           dng: bool = True, seed: int = 0) -> bytes:
     """A DNG LibRaw decodes: IFD0 an 8x8 RGB thumbnail carrying the DNG colour tags
     and IFD0's identity fields; SubIFD0 the raw mosaic; SubIFD1 a JPEG preview with
     its own EXIF; SubIFD2 a semantic mask; ExifIFD the EXIF identity fields, dates
@@ -290,17 +307,24 @@ def build(note: str = "canon", order: str = "<", magic: int = 42,
     in a Sony ARW is the enciphered white balance the decoder needs, and must
     survive. LibRaw cannot decode that variant (no camera it knows), so it is for
     structure tests only."""
-    thumb = bytes(range(64)) * 3                    # 8x8 RGB, 8-bit
-    raw = raw_pixels(order)
-    payload = {"canon": canon_note(order), "nikon": nikon_note(),
-               "olympus": olympus_note(), "apple": apple_note(),
+    # `seed` varies everything a CAMERA would vary -- model name, thumbnail, sensor
+    # data, preview -- so the fingerprint guard can tell a constant the tool writes
+    # from one this corpus never varied (the DOCX M11 lesson, and MP4's, and M4A's).
+    model = (b"TestModel", b"EOS 80D", b"D750", b"E-M10 Mark IV", b"DC-G9",
+             b"X-T4")[seed % 6]
+    thumb = bytes((i * 7 + seed * 31) % 256 for i in range(192))   # 8x8 RGB
+    icc = ICC + bytes([seed]) * (256 * seed)               # one profile per camera
+    raw = raw_pixels(order, seed)
+    payload = {"canon": canon_note(order), "nikon": nikon_note(icc),
+               "olympus": olympus_note(icc), "apple": apple_note(),
                "sony": sony_note(order), "unknown": b"ACME\x00" + MN_SERIAL,
                "panasonic": None}[note]
     # Panasonic: no ExifIFD maker note; its maker note (and serials) ride inside the
     # EXIF of a preview stored as an UNDEFINED IFD0 value, tag 0x002E.
     rw2 = [(0x002E, 7, Span("rw2_preview"))] if note == "panasonic" else []
     t = Tiff(order, magic=magic)
-    preview, mask = preview_jpeg(), preview_jpeg((90, 160, 230))
+    preview = preview_jpeg((200 - seed * 40, 120 + seed * 20, 40 + seed * 30), icc)
+    mask = preview_jpeg((90, 160, 230 - seed * 50))
     dng_only = [(0xC612, 1, [1, 4, 0, 0]),                     # DNGVersion
                 (0xC68B, *ascii_(RAW_NAME)),                  # OriginalRawFileName
                 (0xC68C, 7, RAW_DATA)] if dng else []         # OriginalRawFileData
@@ -308,8 +332,9 @@ def build(note: str = "canon", order: str = "<", magic: int = 42,
         (0x00FE, 4, 1),                                         # NewSubFileType
         (0x0100, 4, 8), (0x0101, 4, 8), (0x0102, 3, [8, 8, 8]),
         (0x0103, 3, 1), (0x0106, 3, 2),
-        (0x010E, *ascii_(DESCRIPTION)),
-        (0x010F, *ascii_(MAKES[note])), (0x0110, *ascii_(b"TestModel")),
+        # Sony and Olympus write an ImageDescription; Canon and Nikon do not.
+        *([(0x010E, *ascii_(DESCRIPTION))] if seed % 2 == 0 else []),
+        (0x010F, *ascii_(MAKES[note])), (0x0110, *ascii_(model)),
         (0x0111, 4, Ref("thumb")), (0x0115, 3, 3), (0x0116, 4, 8),
         (0x0117, 4, len(thumb)), (0x011C, 3, 1),
         (0x0131, *ascii_(SOFTWARE)), (0x0132, *ascii_(DATE)),
@@ -319,7 +344,7 @@ def build(note: str = "canon", order: str = "<", magic: int = 42,
         (0x8298, *ascii_(COPYRIGHT)),
         (0x8769, 4, Ref("exif")),
         (0x8825, 4, Ref("gps")),
-        (0xC614, *ascii_(b"TestModel")),                        # UniqueCameraModel
+        (0xC614, *ascii_(model)),                               # UniqueCameraModel
         (0xC634, 1, PRIVATE),                                   # DNGPrivateData
         (0xC621, 10, [(1, 1), (0, 1), (0, 1), (0, 1), (1, 1), (0, 1),
                       (0, 1), (0, 1), (1, 1)]),                 # ColorMatrix1
@@ -359,11 +384,14 @@ def build(note: str = "canon", order: str = "<", magic: int = 42,
     if payload is not None:
         t.blob("note", payload)
     if note == "panasonic":
-        t.blob("rw2_preview", preview_jpeg((220, 220, 30)))
+        t.blob("rw2_preview", preview_jpeg((220, 220, 30), icc))
+    # Varying neighbours on both sides of the preview (thumbnail before, sensor data
+    # after), so a cleaned preview's marks do not fuse with an adjacent blanked
+    # region into one run: an adjacency of this fixture's layout, not of every raw.
     t.blob("thumb", thumb)
     t.blob("preview", preview)
-    t.blob("mask", mask)
     t.blob("raw", raw)
+    t.blob("mask", mask)
     return t.build()
 
 

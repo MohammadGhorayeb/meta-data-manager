@@ -241,9 +241,9 @@ def test_capabilities_come_from_the_measured_matrices_not_a_hardcoded_list():
     fmts = {c["fmt"] for c in caps}
     assert {"jpeg", "png", "mp3"} <= fmts
     # Nothing may be claimed for a format with no matrix on disk. This line has
-    # named `pdf`, then `docx`, then `mp4`, and moves again with each phase —
-    # that churn is the test working. `raw` is the last one with nothing measured.
-    assert "raw" not in fmts
+    # named `pdf`, then `docx`, then `mp4`, then `raw`, and moves again with each
+    # phase — that churn is the test working. Programs are next.
+    assert "raw" in fmts and "exe" not in fmts
     md = qr.section_capabilities(_run())
     assert "MP3" in md
 

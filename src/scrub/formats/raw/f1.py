@@ -83,6 +83,12 @@ _DATA_TAGS = ((0x0111, 0x0117), (0x0144, 0x0145), (0x0201, 0x0202))
 # whose rewrites the image-data check is told to allow.
 _PREVIEW_FRAMES = {"sof0", "sof1", "sof2"}
 _RAW_PHOTOMETRIC = {32803, 34892}          # CFA, LinearRaw
+# Marks a cleaned preview leaves, declared to the scrubber-fingerprint guard (see
+# RawPlugin.mandatory_constants): EOI then the zero padding that keeps the preview's
+# length, and SOI followed directly by a kept ICC segment once EXIF is gone.
+PREVIEW_PAD_MARK = b"\xff\xd9" + bytes(254)
+PREVIEW_ICC_FIRST = b"\xff\xd8\xff\xe2"
+BLANKED_RUN = bytes(1024)                  # what a blanked value or dropped mask is
 TAG_CR2_SLICE = 0xC640
 
 
