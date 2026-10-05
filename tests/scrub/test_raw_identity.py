@@ -180,7 +180,7 @@ def test_a_hidden_copy_in_a_binary_block_is_found_by_its_value():
     """The Canon 80D finding: a second copy of the owner's name inside CameraInfo,
     at an offset no table names. The fixture plants one; ExifTool cannot see it."""
     data = rc.build("canon")
-    assert data.count(rc.OWNER) == 3                  # EXIF, MakerNote, CameraInfo
+    assert data.count(rc.OWNER) == 4      # EXIF, MakerNote, CameraInfo, 0x0099
     buf = bytearray(data)
     removed = identity.blank_identity(buf)
     assert rc.OWNER not in buf

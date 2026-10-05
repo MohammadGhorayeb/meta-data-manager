@@ -186,8 +186,10 @@ def preview_jpeg(colour=(200, 120, 40)) -> bytes:
 
 
 def camera_info_block() -> bytes:
-    """A model-specific binary block carrying a second copy of the owner's name at
-    an offset no table names -- the shape found in the Canon 80D's CameraInfo."""
+    """A model-specific binary block carrying a copy of the owner's name at an
+    offset no table names -- the shape found in the Canon 80D's CameraInfo. Planted
+    twice: in CameraInfo (0x000D, now blanked whole) and in a block no table names
+    (0x0099), which only the value search can find."""
     return bytes(64) + OWNER + bytes(32 - len(OWNER)) + bytes(range(64))
 
 
@@ -201,6 +203,7 @@ def canon_note(order: str) -> Callable[[int], bytes]:
             (0x000D, 7, camera_info_block()),           # CameraInfo
             (0x0035, 4, [16, 120, 24, 1]),              # TimeInfo: zone, city, DST
             (0x0096, *ascii_(MN_INTERNAL)),
+            (0x0099, 7, camera_info_block()),           # a block NO table names
             (0x4001, 7, bytes(range(200))),             # colour data: must survive
             (0x4019, 7, LENS_SERIAL[:5] + bytes(25)),   # LensInfo: serial in 0..5
         ]).build()
@@ -362,3 +365,72 @@ def build(note: str = "canon", order: str = "<", magic: int = 42,
     t.blob("mask", mask)
     t.blob("raw", raw)
     return t.build()
+
+
+# --------------------------------------------------------------------------- #
+# Canon CR3: the MP4 container around a still photo (M18)
+# --------------------------------------------------------------------------- #
+CR3_CANON_UUID = bytes.fromhex("85c0b687820f11e08111f4ce462b6a48")
+CR3_XMP_UUID = bytes.fromhex("be7acfcb97a942e89c71999491e3afac")
+CR3_PRVW_UUID = bytes.fromhex("eaf42b5e1c984b88b9fbb7dc406e4d16")
+CR3_STAMP = 0xE0000000                       # a nonzero movie-header time
+CTMD_TIME = b"CTMD-TIME!!!"                  # 12 bytes: the timestamp record body
+COLOR_DATA = b"COLORDATA-THE-DECODER-NEEDS" * 4
+CR3_RAW = bytes(range(256)) * 64             # the "sensor data": must not change
+
+
+def _cmt(entries: list) -> bytes:
+    """One CMT block: a complete little TIFF whose IFD0 holds `entries`."""
+    return Tiff("<").ifd("ifd0", entries).build()
+
+
+def _ctmd_sample() -> bytes:
+    """Two CTMD records: a timestamp (type 1), and a maker-note TIFF (type 8) whose
+    CameraInfo carries the shot count and an owner copy beside ColorData -- where
+    LibRaw reads a CR3's white balance, so it must survive."""
+    def record(kind: int, body: bytes) -> bytes:
+        return struct.pack("<IH", 12 + len(body), kind) + b"\x00\x00\x00\x01\xff\xff" + body
+    tiff = _cmt([(0x000D, 7, struct.pack("<I", SHUTTER_COUNT) + OWNER + bytes(40)),
+                 (0x4001, 7, COLOR_DATA)])
+    tiff_record = struct.pack("<II", 8 + len(tiff), 0x927C) + tiff
+    return record(1, CTMD_TIME) + record(8, tiff_record)
+
+
+def cr3() -> bytes:
+    from . import mp4_iso_corpus as ic
+    canon = (ic.box(b"CNCV", b"CanonCR3_001/00.10.00/00.00.00")
+             + ic.box(b"CMT1", _cmt([(0x0132, *ascii_(DATE)),
+                                     (0x013B, *ascii_(ARTIST)),
+                                     (0x8298, *ascii_(COPYRIGHT))]))
+             + ic.box(b"CMT2", _cmt([(0x9003, *ascii_(DATE)),
+                                     (0xA430, *ascii_(OWNER)),
+                                     (0xA431, *ascii_(BODY_SERIAL)),
+                                     (0xA435, *ascii_(LENS_SERIAL))]))
+             + ic.box(b"CMT3", _cmt([(0x0009, *ascii_(OWNER)),
+                                     (0x000D, 7, camera_info_block()),
+                                     (0x0028, 7, UNIQUE_ID[:16]),
+                                     (0x0035, 4, [16, 120, 24, 1]),
+                                     (0x0096, *ascii_(MN_INTERNAL)),
+                                     (0x4001, 7, COLOR_DATA)]))
+             + ic.box(b"CMT4", _cmt([(0x0000, 1, [2, 3, 0, 0]),
+                                     (0x001D, *ascii_(GPS_DATE))]))
+             + ic.box(b"THMB", bytes(16) + preview_jpeg((5, 5, 5))))
+    xmp = ic.box(b"uuid", CR3_XMP_UUID + XMP + b" " * 64)
+    prvw = ic.box(b"uuid", CR3_PRVW_UUID + bytes(16) + preview_jpeg())
+    free = ic.box(b"free", bytes(32))
+    sample = _ctmd_sample()
+
+    def moov(raw_at: int, ctmd_at: int) -> bytes:
+        return ic.box(b"moov", ic.box(b"uuid", CR3_CANON_UUID + canon)
+                      + ic.mvhd(CR3_STAMP, CR3_STAMP, 3)
+                      + ic.trak(1, b"vide", "", (raw_at,), CR3_STAMP, CR3_STAMP,
+                                fmt=b"CRAW", sizes=(len(CR3_RAW),))
+                      + ic.trak(2, b"meta", "", (ctmd_at,), CR3_STAMP, CR3_STAMP,
+                                fmt=b"CTMD", sizes=(len(sample),)))
+    head = ic.ftyp(b"crx ", (b"crx ", b"isom"))
+    probe = moov(0, 0)
+    data_at = len(head) + len(probe) + len(xmp) + len(prvw) + len(free) + 8
+    body = moov(data_at, data_at + len(CR3_RAW))
+    assert len(body) == len(probe)
+    return (head + body + xmp + prvw + free
+            + ic.box(b"mdat", CR3_RAW + sample))

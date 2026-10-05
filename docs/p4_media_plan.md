@@ -1745,3 +1745,40 @@ EXIF whole. On the real file LibRaw's sensor data and camera-WB render are
 identical, so the decoder never used the preview's maker note; ExifTool finds no
 identity, date or GPS value surviving and no original text is left in the bytes.
 The fixture gained a Panasonic variant (no ExifIFD maker note, preview in 0x002E).
+
+### 10.4 M18, part 2 — Canon CR3
+
+ISOBMFF, brand `crx `, claimed by the RAW handler (the MP4 handler already declines
+the brand). Measured on the R6 Mark III file before writing anything:
+
+- `moov/uuid(85c0b687...)` holds `CMT1`..`CMT4`, four complete TIFF files -- IFD0,
+  EXIF, the Canon maker note and GPS, each as its own IFD0 -- beside a thumbnail and
+  `CTBO`, a table of absolute offsets. So F1 edits in place: the TIFF tables apply
+  block by block (EXIF fields to CMT2's IFD0, the Canon maker-note tables to
+  CMT3's), the GPS block becomes a valid TIFF with no entries, and the XMP `uuid`
+  is rewritten as an empty packet padded to its length.
+- four tracks: a full-size JPEG, two `CRAW` raw images, and `CTMD`. The CTMD sample
+  is a list of records -- a timestamp (type 1), focus and exposure (3-5), TIFF
+  records (7-9), and a curve (14). **Zeroed whole, LibRaw's camera white balance
+  became [0, 1, 0, 0] and the render lost its colour**: record 8 is a Canon maker
+  note whose ColorData is where a CR3's white balance comes from. So CTMD is edited
+  record by record: the timestamp zeroed, the maker-note tables applied inside.
+- **ImageCount is a number inside CameraInfo** (0x000D, at 0x086D on this body), in
+  both CMT3 and CTMD -- the block that held the 80D's hidden owner-name copy.
+  Offsets differ per body and a number cannot be found by value, so CameraInfo is
+  blanked whole. Measured first on both Canon files: sensor data, camera white
+  balance and render identical without it. `ImageUniqueID` (0x0028) joined the
+  Canon table too, for CR2 as well.
+- header times (mvhd, tkhd, mdhd) were wall-clock and are zeroed in place; handler
+  names were empty; the thumbnail, preview and full-size JPEG carry no metadata
+  segments but go through the preview cleaner anyway.
+
+On the real file: length unchanged, sensor data, camera white balance and render
+identical, residuals clean, ImageCount (both copies), ImageUniqueID and every serial
+gone by ExifTool's reading, no original text left in the bytes, no ExifTool
+warnings. CI runs on a hand-built CR3 (structure only; no fixture can carry Canon's
+codec) with every locus planted and a ColorData block that must survive; 8 tests,
+two mutations (no CTMD edit, no CameraInfo) fail 4 and 3. CR3 joins the fuzz suite
+as its own entry. Two test bugs were caught on the way: a test that matched
+TimeInfo's values as a CTMD header and passed for the wrong reason, and the report
+calling an emptied XMP box "kept".

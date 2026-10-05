@@ -173,13 +173,20 @@ def test_an_audio_only_m4a_still_routes_to_m4a(tmp_path):
 @needs_ffmpeg
 @pytest.mark.parametrize("brand", [b"crx ", b"abcd"], ids=["canon-cr3", "unknown"])
 def test_a_video_track_under_the_wrong_brand_is_declined(torture, brand):
-    """CR3 is ISOBMFF with `vide` tracks. The brand list is a keep-list."""
+    """CR3 is ISOBMFF with `vide` tracks. The brand list is a keep-list.
+
+    Until M18 this also required dispatch to find NO handler for `crx `, true only
+    while CR3 had none. The video handler still declines it; the camera-RAW handler
+    now claims it, and an unknown brand still lands nowhere."""
     data = bytearray(open(torture, "rb").read())
     data[8:12] = brand
     data[16:20] = brand
     assert not Mp4Handler().claims(bytes(data))
-    with pytest.raises(UnsupportedFormatError):
-        default_dispatcher().resolve(bytes(data))
+    if brand == b"crx ":
+        assert default_dispatcher().resolve(bytes(data)).format_id == "raw"
+    else:
+        with pytest.raises(UnsupportedFormatError):
+            default_dispatcher().resolve(bytes(data))
 
 
 # --------------------------------------------------------------------------- #

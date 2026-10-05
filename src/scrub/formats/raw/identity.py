@@ -59,6 +59,12 @@ MAKERNOTE_FIELDS = {
     "canon": (
         Field("MakerNote", 0x0009, "OwnerName"),
         Field("MakerNote", 0x000C, "SerialNumber"),
+        # CameraInfo: a model-specific binary block. On the 80D it held a third copy
+        # of the owner's name, on the R6 Mark III the shutter count -- at offsets
+        # that differ per body. Zeroed whole: LibRaw's sensor data, camera white
+        # balance and render are identical without it on both (measured, M18).
+        Field("MakerNote", 0x000D, "CameraInfo (shot count, owner-name copy)"),
+        Field("MakerNote", 0x0028, "ImageUniqueID"),
         Field("MakerNote", 0x0096, "InternalSerialNumber"),
         Field("MakerNote", 0x4019, "LensSerialNumber", (0, 5)),     # LensInfo
     ),
