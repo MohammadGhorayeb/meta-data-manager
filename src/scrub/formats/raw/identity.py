@@ -104,6 +104,19 @@ def blank_identity(buf: bytearray, magics=t.RAW_MAGICS) -> list[str]:
             raise ParseError(f"RAW: maker note in an unmodelled layout "
                              f"({note.length} bytes) -- its serials cannot be found")
 
+    texts = apply_fields(buf, ifds, fields, removed)
+    if note is not None and note.vendor in MAKERNOTE_FIELDS:
+        copies = blank_copies(buf, note.offset, note.length, texts)
+        if copies:
+            removed.append(f"{copies} further cop{'y' if copies == 1 else 'ies'} "
+                           "of a removed value inside the maker note")
+    return removed
+
+
+def apply_fields(buf: bytearray, ifds: dict, fields, removed: list[str]
+                 ) -> set[bytes]:
+    """Blank each field present in `ifds` (name -> Ifd), recording its name in
+    `removed`. Returns the text values blanked, for `blank_copies`."""
     texts: set[bytes] = set()
     for f in fields:
         ifd = ifds.get(f.ifd)
@@ -119,16 +132,10 @@ def blank_identity(buf: bytearray, magics=t.RAW_MAGICS) -> list[str]:
         else:
             t.blank_span(buf, entry, *f.span)
         removed.append(f.name)
-
-    if note is not None and note.vendor in MAKERNOTE_FIELDS:
-        copies = _blank_copies(buf, note.offset, note.length, texts)
-        if copies:
-            removed.append(f"{copies} further cop{'y' if copies == 1 else 'ies'} "
-                           "of a removed value inside the maker note")
-    return removed
+    return texts
 
 
-def _blank_copies(buf: bytearray, offset: int, length: int,
+def blank_copies(buf: bytearray, offset: int, length: int,
                   texts: set[bytes]) -> int:
     """Zero every remaining occurrence of each text inside [offset, offset+length)."""
     region = memoryview(buf)[offset:offset + length]

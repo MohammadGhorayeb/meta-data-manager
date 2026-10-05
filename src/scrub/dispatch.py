@@ -71,6 +71,10 @@ def default_dispatcher() -> Dispatcher:
     # in, and a test asserts that.
     from .formats.mp4.handler import Mp4Handler
     d.register(Mp4Handler())
+    # Camera RAW (TIFF family). Its prefix is TIFF's, shared with plain TIFF
+    # pictures, so `claims()` requires the file to say it is a raw.
+    from .formats.raw.handler import RawHandler
+    d.register(RawHandler())
     # DOCX last: its magic (`PK\x03\x04`) is the weakest of any handler here -- it
     # is shared with every ZIP ever made -- so it gets asked only after every format
     # with a distinctive prefix has declined.

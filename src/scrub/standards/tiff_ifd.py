@@ -355,12 +355,16 @@ def summarize(tree: IfdTree) -> dict:
 # --------------------------------------------------------------------------- #
 # Maker notes
 # --------------------------------------------------------------------------- #
-# Olympus keeps its serials one level down, in sub-IFDs the note points at with an
-# UNDEFINED or IFD-typed entry counted from the note's own start.
-_OLYMPUS_SUBIFDS = {0x2010: "Equipment", 0x2020: "CameraSettings",
-                    0x2030: "RawDevelopment", 0x2031: "RawDevelopment2",
-                    0x2040: "ImageProcessing", 0x2050: "FocusInfo",
-                    0x3000: "RawInfo"}
+# Sub-IFDs a maker note points at, counted from the note's own base. Olympus keeps
+# its serials one level down (Equipment) and its preview pointers in CameraSettings;
+# Nikon keeps a preview JPEG's location in a PreviewIFD.
+_MAKERNOTE_SUBIFDS = {
+    "olympus": {0x2010: "Equipment", 0x2020: "CameraSettings",
+                0x2030: "RawDevelopment", 0x2031: "RawDevelopment2",
+                0x2040: "ImageProcessing", 0x2050: "FocusInfo",
+                0x3000: "RawInfo"},
+    "nikon": {0x0011: "PreviewIFD"},
+}
 
 
 def _order_of(mark: bytes) -> str | None:
@@ -390,9 +394,10 @@ def makernote(tiff: bytes, tree: IfdTree) -> MakerNote | None:
         mn = MakerNote(vendor=vendor, offset=off, length=length)
         root = _parse_ifd(tiff, order, ifd_at, "MakerNote", base=base)
         mn.ifds.append(root)
-        if vendor == "olympus":
+        subs = _MAKERNOTE_SUBIFDS.get(vendor, {})
+        if subs:
             for e in root.entries:
-                name = _OLYMPUS_SUBIFDS.get(e.tag)
+                name = subs.get(e.tag)
                 if name is None or e.type not in (4, 7, TYPE_IFD):
                     continue
                 # A pointer (IFD/LONG) counts from the note's base; an UNDEFINED
@@ -478,3 +483,32 @@ def blank_span(buf, entry: IfdEntry, start: int, length: int) -> None:
                          f"its {entry.data_length}-byte value")
     at = entry.entry_offset + 8 if entry.inline else entry.data_offset
     zero(buf, at + start, length)
+
+
+def remove_from_array(buf, ifd: Ifd, tag: int, value: int) -> bool:
+    """Remove one LONG from an entry's array value (a SubIFDs pointer, say), in
+    place. The entry's count drops by one; if one value is left it moves inline,
+    as TIFF requires, and the out-of-line bytes it leaves are zeroed. Returns False
+    if the value was not in the array."""
+    entry = ifd.get(tag)
+    if entry is None or entry.type not in (4, TYPE_IFD):
+        return False
+    order = ifd.order or "<"
+    values = list(struct.unpack(f"{order}{entry.count}I", value_bytes(buf, entry)))
+    if value not in values:
+        return False
+    values.remove(value)
+    count_at, field_at = entry.entry_offset + 4, entry.entry_offset + 8
+    if len(values) <= 1:
+        if not entry.inline:
+            zero(buf, entry.data_offset, entry.data_length)
+        buf[field_at:field_at + 4] = struct.pack(order + "I", values[0] if values else 0)
+        entry.inline, entry.data_offset = True, None
+    else:
+        packed = struct.pack(f"{order}{len(values)}I", *values)
+        buf[entry.data_offset:entry.data_offset + entry.data_length] = (
+            packed + bytes(entry.data_length - len(packed)))
+    buf[count_at:count_at + 4] = struct.pack(order + "I", len(values))
+    entry.count, entry.data_length = len(values), 4 * len(values)
+    entry.raw_value = struct.unpack_from(order + "I", buf, field_at)[0]
+    return True

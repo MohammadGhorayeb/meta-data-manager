@@ -405,6 +405,8 @@ FORMAT_TEST_PATTERNS = [
     # be the deeper fix, and is not worth it for a table this small.
     ("docx", ["docx", "ooxml", "e_session_id"]),
     ("heic", ["heic"]),
+    # RAW before JPEG: `test_raw_f1.py` would otherwise match JPEG's "test_f1".
+    ("raw", ["test_raw_", "raw_corpus"]),
     # MP4 before M4A, and the choice is a coin-flip made on a count rather than a
     # principle: the two formats' tests name each other (MP4's prove they did not
     # steal audio from M4A; M4A's prove it declines video), so whichever is

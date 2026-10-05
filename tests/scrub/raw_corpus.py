@@ -11,8 +11,11 @@ TIFF cannot cancel itself out between the corpus and the scrubber.
 """
 from __future__ import annotations
 
+import io
 import struct
 from collections.abc import Callable
+
+from PIL import Image
 
 # Planted identity values. Each is distinctive, so finding it in a file's bytes
 # means exactly one thing.
@@ -27,6 +30,27 @@ MN_INTERNAL = b"MNINTERNAL-SENTINEL"
 SHUTTER_COUNT = 0x5EC12E7
 SECRETS = (ARTIST, COPYRIGHT, OWNER, BODY_SERIAL, LENS_SERIAL, UNIQUE_ID, MN_SERIAL,
            MN_INTERNAL)
+
+# What F1 removes beyond identity (M17): when, where, and what wrote it.
+DATE = b"2001:02:03 04:05:06"
+SUBSEC, OFFSET = b"789", b"+05:45"
+SOFTWARE = b"SOFTWARE-SENTINEL"
+HOST = b"HOST-SENTINEL"
+DESCRIPTION = b"DESCRIPTION-SENTINEL"
+XMP = (b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF>XMP-SENTINEL</rdf:RDF>'
+       b"</x:xmpmeta>")
+GPS_DATE = b"GPSDATE-SENT"
+RAW_NAME = b"RAWFILENAME-SENTINEL.CR2"
+RAW_DATA = b"ORIGINAL-RAW-FILE-SENTINEL" * 4
+PRIVATE = b"Adobe\x00MakN" + b"PRIVATE-MAKERNOTE-SENTINEL"
+PREVIEW_EXIF = b"PREVIEW-EXIF-GPS-SENTINEL"
+PREVIEW_TRAILER = b"PREVIEW-TRAILER-SENTINEL"
+MASK = b"SEMANTIC-MASK-SENTINEL"
+MN_DATE = b"MNDATE-SENTINEL"
+F1_SECRETS = (DATE, SOFTWARE, HOST, DESCRIPTION, b"XMP-SENTINEL", GPS_DATE,
+              PREVIEW_EXIF, PREVIEW_TRAILER, MASK)
+DNG_SECRETS = (RAW_NAME, RAW_DATA, PRIVATE)
+ICC = b"ICC_PROFILE\x00\x01\x01" + b"ICC-PROFILE-BODY" * 8
 
 _SIZE = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 8: 2, 9: 4, 10: 8, 13: 4}
 _CODE = {1: "B", 3: "H", 4: "I", 8: "h", 9: "i", 13: "I"}
@@ -145,6 +169,22 @@ def ascii_(text: bytes) -> tuple[int, bytes]:
 # --------------------------------------------------------------------------- #
 # Maker notes, one per layout M16 models
 # --------------------------------------------------------------------------- #
+def preview_jpeg(colour=(200, 120, 40)) -> bytes:
+    """A small real JPEG carrying what an iPhone DNG's preview carries: its own
+    EXIF (here a sentinel standing in for the GPS), a colour profile that must
+    SURVIVE, and a trailing secondary image after EOI."""
+    img = Image.new("RGB", (16, 12), colour)
+    for x in range(16):
+        img.putpixel((x, x % 12), (x * 15, 255 - x * 15, 90))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=90)
+    jpg = buf.getvalue()
+    exif = b"Exif\x00\x00" + PREVIEW_EXIF
+    app1 = b"\xff\xe1" + struct.pack(">H", 2 + len(exif)) + exif
+    app2 = b"\xff\xe2" + struct.pack(">H", 2 + len(ICC)) + ICC
+    return jpg[:2] + app1 + app2 + jpg[2:] + PREVIEW_TRAILER
+
+
 def camera_info_block() -> bytes:
     """A model-specific binary block carrying a second copy of the owner's name at
     an offset no table names -- the shape found in the Canon 80D's CameraInfo."""
@@ -159,6 +199,7 @@ def canon_note(order: str) -> Callable[[int], bytes]:
             (0x0009, *ascii_(OWNER)),
             (0x000C, 4, 123456789),                     # SerialNumber (LONG)
             (0x000D, 7, camera_info_block()),           # CameraInfo
+            (0x0035, 4, [16, 120, 24, 1]),              # TimeInfo: zone, city, DST
             (0x0096, *ascii_(MN_INTERNAL)),
             (0x4001, 7, bytes(range(200))),             # colour data: must survive
             (0x4019, 7, LENS_SERIAL[:5] + bytes(25)),   # LensInfo: serial in 0..5
@@ -170,22 +211,34 @@ def nikon_note() -> bytes:
     """"Nikon\\0" + version, then a complete TIFF of its own."""
     inner = Tiff("<").ifd("nikon", [
         (0x0001, 7, b"0211"),
+        (0x0011, 4, Ref("preview_ifd")),                # PreviewIFD
         (0x001D, *ascii_(MN_SERIAL)),
+        (0x0024, 7, b"\x00\x3c\x01\x00"),               # WorldTime: +60 min, DST
         (0x0097, 7, bytes(range(140))),                 # enciphered colour: survives
         (0x00A7, 4, SHUTTER_COUNT),
-    ]).build()
+        (0x00B6, 7, MN_DATE[:8]),                       # PowerUpTime
+    ])
+    inner.ifd("preview_ifd", [(0x0201, 4, Ref("preview")),
+                              (0x0202, 4, len(preview_jpeg((10, 200, 10))))])
+    inner.blob("preview", preview_jpeg((10, 200, 10)))
+    inner = inner.build()
     return b"Nikon\x00\x02\x11\x00\x00" + inner
 
 
 def olympus_note() -> bytes:
     """IFD at +12, offsets from the note's start, serials one level down."""
     body = Tiff("<", header=False, start=12)
-    body.ifd("olympus", [(0x0000, 7, b"0100"), (0x2010, 13, Ref("equipment"))])
+    body.ifd("olympus", [(0x0000, 7, b"0100"), (0x2010, 13, Ref("equipment")),
+                         (0x2020, 13, Ref("settings"))])
     body.ifd("equipment", [
         (0x0101, *ascii_(MN_SERIAL)),
         (0x0102, *ascii_(MN_INTERNAL)),
         (0x0202, *ascii_(LENS_SERIAL)),
     ])
+    preview = preview_jpeg((40, 40, 220))
+    body.ifd("settings", [(0x0100, 4, 1), (0x0101, 4, Ref("preview")),
+                          (0x0102, 4, len(preview)), (0x0908, *ascii_(MN_DATE))])
+    body.blob("preview", preview)
     return b"OLYMPUS\x00II\x03\x00" + body.build()
 
 
@@ -222,29 +275,44 @@ def raw_pixels(order: str) -> bytes:
                     for y in range(H) for x in range(W))
 
 
-def build(note: str = "canon", order: str = "<", magic: int = 42) -> bytes:
+def build(note: str = "canon", order: str = "<", magic: int = 42,
+          dng: bool = True) -> bytes:
     """A DNG LibRaw decodes: IFD0 an 8x8 RGB thumbnail carrying the DNG colour tags
-    and IFD0's identity fields; SubIFD0 the raw mosaic; ExifIFD the EXIF identity
-    fields and a maker note in `note`'s layout."""
+    and IFD0's identity fields; SubIFD0 the raw mosaic; SubIFD1 a JPEG preview with
+    its own EXIF; SubIFD2 a semantic mask; ExifIFD the EXIF identity fields, dates
+    and a maker note in `note`'s layout; a GPS IFD.
+
+    `dng=False` drops DNGVersion and the DNG-only blocks but keeps 0xC634 -- which
+    in a Sony ARW is the enciphered white balance the decoder needs, and must
+    survive. LibRaw cannot decode that variant (no camera it knows), so it is for
+    structure tests only."""
     thumb = bytes(range(64)) * 3                    # 8x8 RGB, 8-bit
     raw = raw_pixels(order)
     payload = {"canon": canon_note(order), "nikon": nikon_note(),
                "olympus": olympus_note(), "apple": apple_note(),
                "sony": sony_note(order), "unknown": b"ACME\x00" + MN_SERIAL}[note]
     t = Tiff(order, magic=magic)
-    t.ifd("ifd0", [
+    preview, mask = preview_jpeg(), preview_jpeg((90, 160, 230))
+    dng_only = [(0xC612, 1, [1, 4, 0, 0]),                     # DNGVersion
+                (0xC68B, *ascii_(RAW_NAME)),                  # OriginalRawFileName
+                (0xC68C, 7, RAW_DATA)] if dng else []         # OriginalRawFileData
+    t.ifd("ifd0", dng_only + [
         (0x00FE, 4, 1),                                         # NewSubFileType
         (0x0100, 4, 8), (0x0101, 4, 8), (0x0102, 3, [8, 8, 8]),
         (0x0103, 3, 1), (0x0106, 3, 2),
+        (0x010E, *ascii_(DESCRIPTION)),
         (0x010F, *ascii_(MAKES[note])), (0x0110, *ascii_(b"TestModel")),
         (0x0111, 4, Ref("thumb")), (0x0115, 3, 3), (0x0116, 4, 8),
         (0x0117, 4, len(thumb)), (0x011C, 3, 1),
-        (0x013B, *ascii_(ARTIST)),
-        (0x014A, 4, [Ref("raw_ifd")]),                          # SubIFDs
+        (0x0131, *ascii_(SOFTWARE)), (0x0132, *ascii_(DATE)),
+        (0x013B, *ascii_(ARTIST)), (0x013C, *ascii_(HOST)),
+        (0x014A, 4, [Ref("raw_ifd"), Ref("preview_ifd"), Ref("mask_ifd")]),
+        (0x02BC, 1, XMP),
         (0x8298, *ascii_(COPYRIGHT)),
         (0x8769, 4, Ref("exif")),
-        (0xC612, 1, [1, 4, 0, 0]),                              # DNGVersion
+        (0x8825, 4, Ref("gps")),
         (0xC614, *ascii_(b"TestModel")),                        # UniqueCameraModel
+        (0xC634, 1, PRIVATE),                                   # DNGPrivateData
         (0xC621, 10, [(1, 1), (0, 1), (0, 1), (0, 1), (1, 1), (0, 1),
                       (0, 1), (0, 1), (1, 1)]),                 # ColorMatrix1
         (0xC628, 5, [(5, 10), (10, 10), (7, 10)]),              # AsShotNeutral
@@ -258,14 +326,32 @@ def build(note: str = "canon", order: str = "<", magic: int = 42) -> bytes:
         (0x828D, 3, [2, 2]), (0x828E, 1, [0, 1, 1, 2]),         # CFA, RGGB
         (0xC61A, 3, 512), (0xC61D, 3, 4095),                    # Black/WhiteLevel
     ])
+    t.ifd("preview_ifd", [
+        (0x00FE, 4, 1), (0x0100, 4, 16), (0x0101, 4, 12), (0x0103, 3, 7),
+        (0x0106, 3, 6), (0x0111, 4, Ref("preview")), (0x0117, 4, len(preview)),
+    ])
+    t.ifd("mask_ifd", [
+        (0x00FE, 4, 4), (0x0100, 4, 16), (0x0101, 4, 12), (0x0103, 3, 7),
+        (0x0111, 4, Ref("mask")), (0x0117, 4, len(mask)),
+        (0xCD2E, *ascii_(MASK)),                                # SemanticName
+    ])
     t.ifd("exif", [
+        (0x9003, *ascii_(DATE)), (0x9004, *ascii_(DATE)),
+        (0x9011, *ascii_(OFFSET)), (0x9291, *ascii_(SUBSEC)),
         (0x927C, 7, Span("note")),
         (0xA420, *ascii_(UNIQUE_ID)),
         (0xA430, *ascii_(OWNER)),
         (0xA431, *ascii_(BODY_SERIAL)),
         (0xA435, *ascii_(LENS_SERIAL)),
     ])
+    t.ifd("gps", [
+        (0x0000, 1, [2, 3, 0, 0]), (0x0001, *ascii_(b"N")),
+        (0x0002, 5, [(51, 1), (30, 1), (1234, 100)]), (0x0003, *ascii_(b"W")),
+        (0x0004, 5, [(0, 1), (7, 1), (3912, 100)]), (0x001D, *ascii_(GPS_DATE)),
+    ])
     t.blob("note", payload)
     t.blob("thumb", thumb)
+    t.blob("preview", preview)
+    t.blob("mask", mask)
     t.blob("raw", raw)
     return t.build()

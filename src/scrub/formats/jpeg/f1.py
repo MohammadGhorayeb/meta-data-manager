@@ -63,13 +63,21 @@ def _canonical_adobe(payload: bytes) -> bytes:
     return b"\xff\xee" + length + body
 
 
-def plan(structure: seg.JpegStructure) -> list[SegmentAction]:
+def plan(structure: seg.JpegStructure, *, keep_icc: bool = False
+         ) -> list[SegmentAction]:
     """Decide keep/rewrite/drop for every segment. Separated from emission so
-    tests and the harness annotate() can inspect the decision."""
+    tests and the harness annotate() can inspect the decision.
+
+    `keep_icc` keeps APP2 ICC segments verbatim. Off for a JPEG file (the policy
+    above); on for a JPEG EMBEDDED in a camera raw, whose preview is a Display P3
+    rendering on an iPhone -- dropping its profile would make every viewer that
+    shows the preview render it in the wrong colours, a visible content change."""
     actions: list[SegmentAction] = []
     for s in structure.segments:
         if s.is_content:
             actions.append(SegmentAction(s, "keep", f"content:{s.kind}"))
+        elif keep_icc and s.kind == "app2_icc":
+            actions.append(SegmentAction(s, "keep", "icc_profile_kept"))
         elif s.kind == "app0_jfif":
             actions.append(SegmentAction(s, "rewrite", "canonical_jfif_no_thumbnail",
                                         replacement=CANONICAL_JFIF))
@@ -83,12 +91,12 @@ def plan(structure: seg.JpegStructure) -> list[SegmentAction]:
     return actions
 
 
-def scrub(data: bytes) -> bytes:
+def scrub(data: bytes, *, keep_icc: bool = False) -> bytes:
     """Rebuild the JPEG keeping only image-defining bytes. Trailer is dropped by
     construction (we stop after EOI)."""
     structure = seg.walk(data)
     out = bytearray()
-    for act in plan(structure):
+    for act in plan(structure, keep_icc=keep_icc):
         if act.action == "keep":
             out += data[act.segment.offset:act.segment.end]
         elif act.action == "rewrite":

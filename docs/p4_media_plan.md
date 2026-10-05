@@ -1620,12 +1620,12 @@ One milestone numbering, `main`'s, with the branch's order inside it:
 | # | Deliverable |
 |---|---|
 | **M16** ✅ (§10.1) | Shared surgical TIFF-IFD writing in `standards/tiff_ifd.py`: the `IIRO`/`IIU` magics, `SubIFDs`, the vendor maker-note layouts (Canon plain, Nikon `Nikon\0` with its own TIFF header, Olympus `OLYMPUS\0II`), values blanked in place and size-preserving; a hand-built DNG so CI can test it |
-| **M17** | RAW F1, **DNG first** (open spec, the GPS-bearing preview, the semantic matte), then ARW, then CR2/NEF/ORF. Acceptance: LibRaw `raw_image` bit-identical **and** the camera-WB render pixel-identical, every identity value absent from the bytes |
+| **M17** ✅ (§10.2) | RAW F1, **DNG first** (open spec, the GPS-bearing preview, the semantic matte), then ARW, then CR2/NEF/ORF. Acceptance: LibRaw `raw_image` bit-identical **and** the camera-WB render pixel-identical, every identity value absent from the bytes |
 | **M18** | RAF and RW2 (the two with a metadata-bearing preview, RAF its own container), then CR3 (brand ahead of MP4, Canon `uuid` walk, `CTMD` removal with `mdat` rebuilt as MP4 F1 does) |
 | **M19** | `RawPlugin`, matrices, A2; `limits.md` rows |
 
-The open decision stays open (§7.6): drop the previews or keep a cleaned copy, to be
-settled with viewer behaviour measured.
+The open decision (§7.6), drop the previews or keep a cleaned copy, was settled by
+measuring a viewer: see §10.2.
 
 ### 10.1 M16 as built — the TIFF writer, and an owner's name ExifTool cannot see
 
@@ -1672,3 +1672,65 @@ CR3 (M18).
 where every camera writes text -- limit #9's species, for the RAW A2 cell to measure.
 And Nikon's colour block stays enciphered under the ORIGINAL serial and count; whether
 that ciphertext is itself a linking channel is untested.
+
+### 10.2 M17 as built — RAW F1 for the TIFF family
+
+`formats/raw/f1.py`, registered as `raw`: DNG, CR2, NEF, ARW and ORF at F1, RW2
+claimed so that it is refused by name. `claims()` needs the file to say it is a raw
+(an Olympus or Panasonic magic, DNGVersion, Canon's `CR`, or a CFA/LinearRaw image),
+so a plain TIFF picture is declined. The list of what goes came from surveying the
+five files after M16, not from a reference:
+
+- **dates** in every IFD (Nikon keeps DateTimeOriginal in IFD0; Sony repeats IFD0's
+  Software and date in IFD1), with their sub-second and UTC-offset companions;
+- **the GPS IFD whole**: the pointer removed in place, the directory and its values
+  zeroed, so there is no empty GPS block left to say one was there;
+- **what wrote it**: Software (the iOS version), HostComputer, ImageDescription,
+  XMP, IPTC, Photoshop; in a DNG also OriginalRawFileName, OriginalRawFileData (an
+  embedded copy of the original raw, metadata and all) and DNGPrivateData;
+- **maker-note dates**, the shape M16 found for serials: Canon's `TimeInfo` holds
+  the time zone, the time-zone CITY and DST (12 bytes blanked inside a 16-byte
+  block); Nikon's `WorldTime` and `PowerUpTime`; Olympus's `DateTimeUTC` in
+  `CameraSettings`;
+- **a DNG 1.6 semantic mask** (ProRAW's sky matte): removed from `SubIFDs` --
+  which, at one entry left, moves the value inline as TIFF requires -- and its
+  directory and image zeroed.
+
+**The previews, decided by measurement.** Only the iPhone DNG's preview carries
+metadata of its own: EXIF with the GPS, an MPF index, a colour profile and a 171 KB
+image after EOI. It goes through the Phase 1 JPEG keep-list, now with a `keep_icc`
+option (default off, so JPEG files are unchanged), because a Display P3 preview
+without its profile renders in the wrong colours in every viewer that shows it.
+The cleaned JPEG is padded with zeros after EOI to its own length. macOS QuickLook's
+512-pixel thumbnail of the cleaned DNG is **pixel-identical** to the original's, and
+`sips` still reads it at 4032x3024, so keeping previews costs a viewer nothing.
+The other four files' previews carry no metadata and are not touched; the cleaner
+only runs on baseline or progressive JPEGs outside raw IFDs, because Canon's raw
+image is itself a (lossless) JPEG strip.
+
+**One trap: tag 0xC634.** In a DNG it is Adobe's private block, which carries the
+ORIGINAL maker note and its serials; in a Sony ARW it points at the enciphered white
+balance LibRaw needs. It is removed in DNG only, and a test holds both halves.
+
+**The tier checks itself on the bytes.** Before returning, F1 compares every image
+region of the input with the output and refuses if any changed except the previews
+it cleaned and the masks it dropped. A test sabotages the identity pass to flip one
+byte of sensor data and requires the refusal.
+
+**Measured on the five real files:** length unchanged; LibRaw sensor data
+bit-identical; camera-white-balance render pixel-identical; no date, GPS or
+identity value survives unchanged by ExifTool's reading with `-ee`, and nothing
+date-shaped is left. ExifTool still prints blanked enumerations decoded from zero: a
+time zone of +00:00 and a city of "n/a" where the original said +02:00 and a city.
+
+**Found by fuzzing:** the report walked every preview including a damaged mask the
+scrub drops anyway, and raised. The report is per-preview total now.
+
+**CI:** the hand-built corpus plants every locus above with a sentinel, in all five
+maker-note layouts and both byte orders, plus a non-DNG variant that must keep
+0xC634. 38 tests; three mutations (no preview cleaning, no GPS drop, no maker-note
+dates) fail 13, 16 and 4 of them. RAW joins the fuzz, idempotence and cross-process
+determinism suites.
+
+**Not yet:** RW2, CR3, RAF (M18), the harness plugin, matrix and A2 cell (M19), and
+the zero-run and Nikon-ciphertext residuals that A2 cell will have to measure.

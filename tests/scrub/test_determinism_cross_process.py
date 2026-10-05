@@ -72,6 +72,12 @@ def _build(kind: str, tmpdir: str) -> str | None:
         # the census names.
         from . import docx_corpus as dc  # noqa: PLC0415
         return dc.synthetic(p)
+    if kind == "raw":
+        # Olympus: the deepest maker note (sub-IFDs, a preview inside it), so the
+        # most order-dependent walking.
+        from . import raw_corpus as rc  # noqa: PLC0415
+        open(p, "wb").write(rc.build("olympus"))
+        return p
     if kind == "heic":
         from . import heic_corpus as hc  # noqa: PLC0415
         return hc.handbuilt(p)

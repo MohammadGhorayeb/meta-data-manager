@@ -80,6 +80,9 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "m4a":
         return (open(mc.torture_m4a(str(tmp_path / "t.m4a")), "rb").read()
                 if mc.HAVE_FFMPEG else None)
+    if fmt == "raw":
+        from . import raw_corpus as rc  # noqa: PLC0415
+        return rc.build("olympus")
     if fmt == "heic":
         from . import heic_corpus as hc  # noqa: PLC0415
         return open(hc.handbuilt(str(tmp_path / "t.heic")), "rb").read()
