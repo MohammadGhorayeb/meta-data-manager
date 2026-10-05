@@ -1,11 +1,11 @@
-"""Camera RAW handler, TIFF family: DNG, CR2, NEF, ARW, ORF (F1 only).
+"""Camera RAW handler, TIFF family: DNG, CR2, NEF, ARW, ORF, RW2 (F1 only).
 
 `II*\\0` and `MM\\0*` open every TIFF, so the prefix is only a gate. A file is
 claimed as a raw when it says so: the Olympus or Panasonic magic, a DNGVersion
 tag, Canon's `CR` signature, or an image whose photometric interpretation is a
 sensor mosaic (CFA) or linear raw. A plain TIFF picture is none of those and is
 declined -- scrubbing it with raw-shaped assumptions would be the M4A-versus-MP4
-mistake again. Panasonic RW2 is claimed so that it is refused by name (M18).
+mistake again.
 """
 from __future__ import annotations
 

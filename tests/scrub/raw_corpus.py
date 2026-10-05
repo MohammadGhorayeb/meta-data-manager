@@ -259,7 +259,8 @@ def sony_note(order: str) -> Callable[[int], bytes]:
 
 NOTES = ("canon", "nikon", "olympus", "apple", "sony", "unknown")
 MAKES = {"canon": b"Canon", "nikon": b"NIKON CORPORATION", "olympus": b"OLYMPUS",
-         "apple": b"Apple", "sony": b"SONY", "unknown": b"Acme"}
+         "apple": b"Apple", "sony": b"SONY", "unknown": b"Acme",
+         "panasonic": b"Panasonic"}
 
 
 # --------------------------------------------------------------------------- #
@@ -290,13 +291,17 @@ def build(note: str = "canon", order: str = "<", magic: int = 42,
     raw = raw_pixels(order)
     payload = {"canon": canon_note(order), "nikon": nikon_note(),
                "olympus": olympus_note(), "apple": apple_note(),
-               "sony": sony_note(order), "unknown": b"ACME\x00" + MN_SERIAL}[note]
+               "sony": sony_note(order), "unknown": b"ACME\x00" + MN_SERIAL,
+               "panasonic": None}[note]
+    # Panasonic: no ExifIFD maker note; its maker note (and serials) ride inside the
+    # EXIF of a preview stored as an UNDEFINED IFD0 value, tag 0x002E.
+    rw2 = [(0x002E, 7, Span("rw2_preview"))] if note == "panasonic" else []
     t = Tiff(order, magic=magic)
     preview, mask = preview_jpeg(), preview_jpeg((90, 160, 230))
     dng_only = [(0xC612, 1, [1, 4, 0, 0]),                     # DNGVersion
                 (0xC68B, *ascii_(RAW_NAME)),                  # OriginalRawFileName
                 (0xC68C, 7, RAW_DATA)] if dng else []         # OriginalRawFileData
-    t.ifd("ifd0", dng_only + [
+    t.ifd("ifd0", dng_only + rw2 + [
         (0x00FE, 4, 1),                                         # NewSubFileType
         (0x0100, 4, 8), (0x0101, 4, 8), (0x0102, 3, [8, 8, 8]),
         (0x0103, 3, 1), (0x0106, 3, 2),
@@ -335,10 +340,9 @@ def build(note: str = "canon", order: str = "<", magic: int = 42,
         (0x0111, 4, Ref("mask")), (0x0117, 4, len(mask)),
         (0xCD2E, *ascii_(MASK)),                                # SemanticName
     ])
-    t.ifd("exif", [
+    t.ifd("exif", ([] if payload is None else [(0x927C, 7, Span("note"))]) + [
         (0x9003, *ascii_(DATE)), (0x9004, *ascii_(DATE)),
         (0x9011, *ascii_(OFFSET)), (0x9291, *ascii_(SUBSEC)),
-        (0x927C, 7, Span("note")),
         (0xA420, *ascii_(UNIQUE_ID)),
         (0xA430, *ascii_(OWNER)),
         (0xA431, *ascii_(BODY_SERIAL)),
@@ -349,7 +353,10 @@ def build(note: str = "canon", order: str = "<", magic: int = 42,
         (0x0002, 5, [(51, 1), (30, 1), (1234, 100)]), (0x0003, *ascii_(b"W")),
         (0x0004, 5, [(0, 1), (7, 1), (3912, 100)]), (0x001D, *ascii_(GPS_DATE)),
     ])
-    t.blob("note", payload)
+    if payload is not None:
+        t.blob("note", payload)
+    if note == "panasonic":
+        t.blob("rw2_preview", preview_jpeg((220, 220, 30)))
     t.blob("thumb", thumb)
     t.blob("preview", preview)
     t.blob("mask", mask)

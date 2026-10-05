@@ -1734,3 +1734,14 @@ determinism suites.
 
 **Not yet:** RW2, CR3, RAF (M18), the harness plugin, matrix and A2 cell (M19), and
 the zero-run and Nikon-ciphertext residuals that A2 cell will have to measure.
+
+### 10.3 M18, part 1 — Panasonic RW2
+
+RW2 has no ExifIFD maker note. Panasonic's maker note -- internal, lens and
+accessory serials -- rides inside the EXIF of the 716 KB preview stored as an
+UNDEFINED value in IFD0 tag 0x002E. So RW2 needed one more preview location, not a
+new maker-note parser: the preview goes through the same keep-list and loses its
+EXIF whole. On the real file LibRaw's sensor data and camera-WB render are
+identical, so the decoder never used the preview's maker note; ExifTool finds no
+identity, date or GPS value surviving and no original text is left in the bytes.
+The fixture gained a Panasonic variant (no ExifIFD maker note, preview in 0x002E).

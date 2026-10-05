@@ -1,4 +1,4 @@
-"""Camera RAW F1 (TIFF family: DNG, CR2, NEF, ARW, ORF) — nothing moves.
+"""Camera RAW F1 (TIFF family: DNG, CR2, NEF, ARW, ORF, RW2) — nothing moves.
 
 The sensor data sits at offsets the file's own tables record, so F1 never shifts a
 byte: it blanks values, removes directory entries in place, zeroes regions, and
@@ -17,7 +17,9 @@ before writing it (docs/p4_media_plan.md §7, §8.9, §10):
     which carries the original maker note and its serials;
   * **the previews' own metadata** -- an iPhone DNG's 5 MB preview has its own EXIF
     with the full GPS, written separately from the main copy (the altitude differs
-    in the last digit), so a value search for removed bytes would miss it. Each
+    in the last digit), so a value search for removed bytes would miss it. A
+    Panasonic RW2 keeps its whole maker note -- serials included -- in the EXIF of
+    the preview in IFD0 tag 0x002E, not in the ExifIFD at all. Each
     preview goes through the Phase 1 JPEG F1 with its colour profile kept, and is
     padded back to its own length;
   * **subject-derived images** -- a DNG 1.6 semantic mask (ProRAW's sky matte) is
@@ -44,6 +46,7 @@ from . import identity
 from .identity import Field
 
 MAGIC_RW2 = 0x0055
+TAG_RW2_JPG_FROM_RAW = 0x002E
 
 # Blanked in EVERY IFD of the file (IFD0, IFD1..., SubIFDs, ExifIFD).
 _BLANK_ANYWHERE = {
@@ -128,6 +131,11 @@ def _previews(buf, tree: t.IfdTree, note: t.MakerNote | None
     out = []
     ifd0 = tree.ifd("IFD0")
     is_dng = ifd0 is not None and ifd0.get(TAG_DNG_VERSION) is not None
+    # Panasonic keeps its maker note -- and the serials in it -- inside the EXIF of
+    # this preview, an UNDEFINED IFD0 value, rather than in an ExifIFD maker note.
+    jpg = ifd0.get(TAG_RW2_JPG_FROM_RAW) if ifd0 is not None else None
+    if tree.magic == MAGIC_RW2 and jpg is not None and not jpg.inline:
+        out.append(("Panasonic preview", jpg.data_offset, jpg.data_length))
     for ifd in tree.ifds:
         if _is_raw_ifd(ifd, is_dng):
             continue
@@ -238,9 +246,6 @@ def scrub_with_report(data: bytes) -> tuple[bytes, list[str]]:
 
 def _scrub(data: bytes, report: bool = False):
     tree = t.parse(data, strict=True, magics=t.RAW_MAGICS)
-    if tree.magic == MAGIC_RW2:
-        raise ParseError("RAW: Panasonic RW2 is not supported yet -- its serials sit "
-                         "in the preview's own maker note (Phase 4 M18)")
     is_dng = tree.ifd("IFD0") is not None and \
         tree.ifd("IFD0").get(TAG_DNG_VERSION) is not None
     note = t.makernote(data, tree)

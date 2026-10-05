@@ -131,11 +131,16 @@ def test_a_maker_note_in_an_unmodelled_layout_is_refused():
         f1.scrub(rc.build("unknown"))
 
 
-def test_panasonic_is_claimed_so_that_it_is_refused_by_name():
-    rw2 = rc.build("canon", magic=0x0055)
+def test_panasonic_keeps_its_serials_in_the_preview_and_loses_them_there():
+    """RW2: no ExifIFD maker note -- Panasonic's rides inside the EXIF of the
+    preview stored in IFD0 tag 0x002E, so that preview is where they go."""
+    rw2 = rc.build("panasonic", magic=0x0055, dng=False)
     assert default_dispatcher().resolve(rw2).format_id == "raw"
-    with pytest.raises(ParseError, match="RW2"):
-        f1.scrub(rw2)
+    assert rc.PREVIEW_EXIF in rw2
+    out = f1.scrub(rw2)
+    assert len(out) == len(rw2) and f1.residuals(out) == []
+    for secret in (rc.PREVIEW_EXIF, rc.PREVIEW_TRAILER, rc.DATE, rc.ARTIST):
+        assert secret not in out
 
 
 def test_a_plain_tiff_picture_is_not_claimed_as_a_raw(tmp_path):
@@ -170,7 +175,7 @@ def test_the_cli_scrubs_a_raw_and_reports_what_went(tmp_path, capsys):
 # --------------------------------------------------------------------------- #
 RAW_DIR = os.path.expanduser(os.environ.get("RAW_SAMPLES", "~/metadata-research/raw"))
 REAL = ["apple_iphone12pro.DNG", "canon_80d.CR2", "nikon_d750.NEF",
-        "sony_a7m3.ARW", "olympus_em10m4.ORF"]
+        "sony_a7m3.ARW", "olympus_em10m4.ORF", "panasonic_g9.RW2"]
 
 
 def _real(name: str) -> str:
@@ -222,7 +227,3 @@ def test_cr3_and_raf_are_not_claimed_yet(name):
     with pytest.raises(UnsupportedFormatError):
         default_dispatcher().resolve(open(_real(name), "rb").read())
 
-
-def test_real_rw2_is_refused_by_name():
-    with pytest.raises(ParseError, match="RW2"):
-        f1.scrub(open(_real("panasonic_g9.RW2"), "rb").read())
