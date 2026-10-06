@@ -103,8 +103,16 @@ def build(user: str = "alice", *, bits: int = 64, order: str = "<",
     rodata = PROGRAM_TEXT + (home(user) + b"/hello.c\0" if text_path else b"")
     if go:
         rodata += modinfo(user) + (READ_BUILD_INFO + b"\0" if read_build_info else b"")
-    loaded = [(".note.gnu.build-id", SHT_NOTE, SHF_ALLOC,
-               _note(order, b"GNU", 3, gnu_build_id(user)), 4)]
+    loaded = []
+    if bits == 64:
+        # What x86-64 gcc writes by default (CET): an 8-aligned property note, whose
+        # descriptor starts at offset 16 -- the layout that a size-padding note
+        # walker gets wrong (CI's first x86-64 run, p5 plan §8).
+        prop = struct.pack(order + "III", 0xC0000002, 4, 3) + bytes(4)
+        loaded.append((".note.gnu.property", SHT_NOTE, SHF_ALLOC,
+                       _note(order, b"GNU", 5, prop), 8))
+    loaded.append((".note.gnu.build-id", SHT_NOTE, SHF_ALLOC,
+                   _note(order, b"GNU", 3, gnu_build_id(user)), 4))
     if go:
         loaded.append((".note.go.buildid", SHT_NOTE, SHF_ALLOC,
                        _note(order, b"Go", 4, go_build_id(user)), 4))

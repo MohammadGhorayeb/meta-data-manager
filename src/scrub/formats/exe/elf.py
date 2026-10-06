@@ -31,12 +31,11 @@ still show how long what they held was.
 from __future__ import annotations
 
 import hashlib
-import re
-import string
 import struct
 from dataclasses import dataclass
 
 from ...errors import ParseError, UnsupportedFormatError
+from . import common, go
 
 MAGIC = b"\x7fELF"
 ET_EXEC, ET_DYN = 2, 3
@@ -60,18 +59,6 @@ DT_RPATH, DT_RUNPATH = 15, 29
 KEEP_UNLOADED = frozenset({".symtab", ".strtab", ".shstrtab",
                            ".ARM.attributes", ".riscv.attributes"})
 
-READ_BUILD_INFO = b"runtime/debug.ReadBuildInfo"
-_VCS_LINE = re.compile(rb"build\tvcs\.(?:revision|time)=([^\n]*)\n")
-# The main module's version, when Go derived it from the checkout: a pseudo-version
-# `vX.Y.Z-[pre.]yyyymmddhhmmss-<12 hex>` carries the commit time and hash too.
-_MOD_LINE = re.compile(rb"\nmod\t[^\t\n]*\t(v[^\t\n]*)")
-_PSEUDO = re.compile(rb"-(?:[0-9A-Za-z.]*\.)?(\d{14})-([0-9a-f]{12})")
-# `path` opens the build info, straight after Go's 16-byte start marker (which
-# ends `\xd6\x18\xe6`); `mod` follows it on the next line.
-_MODULE_PATH = re.compile(rb"(?:\n|\xd6\x18\xe6)(?:path|mod)\t([^\t\n]+)")
-_USER_DIR = re.compile(
-    rb"(?:/home/|/Users/)[^/\x00\n]{1,64}/|[A-Za-z]:\\Users\\[^\\\x00\n]{1,64}\\")
-_GO_ID_ALPHABET = (string.ascii_letters + string.digits + "-_").encode()
 
 
 @dataclass(frozen=True)
@@ -193,14 +180,22 @@ def _align(n: int, to: int) -> int:
 
 
 def notes(data: bytes, elf: Elf, sec: Section) -> list[tuple[int, bytes, int, int]]:
-    """(type, name, descriptor offset, descriptor length) for each note in `sec`."""
+    """(type, name, descriptor offset, descriptor length) for each note in `sec`.
+
+    Alignment applies to OFFSETS within the section, not to sizes: in an 8-aligned
+    note section (`.note.gnu.property`, which x86-64 gcc writes by default for CET)
+    a 4-byte name already ends on an 8-byte boundary (12 + 4), and padding the
+    name's size to 8 instead put every descriptor 4 bytes late. CI's first x86-64
+    run found it; the aarch64 builds that preceded it carry no such note.
+    """
     out = []
     a = 8 if sec.align == 8 else 4
     pos, end = sec.offset, sec.end
     while pos + 12 <= end:
         namesz, descsz, ntype = struct.unpack_from(elf.order + "III", data, pos)
-        desc = pos + 12 + _align(namesz, a)
-        nxt = desc + _align(descsz, a)
+        rel = pos - sec.offset
+        desc = sec.offset + _align(rel + 12 + namesz, a)
+        nxt = sec.offset + _align(desc - sec.offset + descsz, a)
         if desc + descsz > end:
             raise ParseError(f"ELF: a note runs past the end of {sec.name}")
         out.append((ntype, bytes(data[pos + 12:pos + 12 + namesz]).rstrip(b"\0"),
@@ -266,51 +261,6 @@ def _file_symbol_names(data, elf: Elf) -> list[tuple[int, int]]:
     return ranges
 
 
-def _go_can_read_build_info(data) -> bool:
-    return READ_BUILD_INFO in data
-
-
-def _go_stamps(data) -> list[tuple[int, int]]:
-    """Byte ranges of Go's commit stamp: vcs.revision / vcs.time values, and the
-    time and hash inside a main-module pseudo-version. Every copy (Go keeps one in
-    `.go.buildinfo` for `go version -m` and one in `.rodata` for the program)."""
-    out = [m.span(1) for m in _VCS_LINE.finditer(data)]
-    for m in _MOD_LINE.finditer(data):
-        p = _PSEUDO.search(data, m.start(1), m.end(1))
-        if p:
-            out += [p.span(1), p.span(2)]
-    return out
-
-
-def _go_module_paths(data) -> list[tuple[int, int]]:
-    """The main module's path in the build info's `path` and `mod` lines."""
-    return [m.span(1) for m in _MODULE_PATH.finditer(data)]
-
-
-def _blank_name(buf: bytearray, start: int, end: int) -> None:
-    """Letters and digits to `0`; `.`, `/`, `-` and `_` kept, so the line still
-    parses as a module path."""
-    buf[start:end] = bytes(0x30 if chr(c).isalnum() else c for c in buf[start:end])
-
-
-def _blank_stamp(buf: bytearray, start: int, end: int) -> None:
-    """Hex and digits to `0`, separators kept: `2026-10-06T09:15:51Z` reads
-    `0000-00-00T00:00:00Z`, still the shape a parser expects."""
-    buf[start:end] = bytes(0x30 if chr(c) in string.hexdigits else c
-                           for c in buf[start:end])
-
-
-def _go_build_id(old: bytes, seed: bytes) -> bytes:
-    """A Go build ID of the same shape: the `/` separators where they were, the
-    other characters drawn from Go's alphabet by a hash of the cleaned file."""
-    stream, counter = b"", 0
-    while len(stream) < len(old):
-        stream += hashlib.sha256(seed + counter.to_bytes(4, "big")).digest()
-        counter += 1
-    return bytes(c if c == 0x2F else _GO_ID_ALPHABET[stream[i] % 64]
-                 for i, c in enumerate(old))
-
-
 def _recompute_ids(buf: bytearray, ids: list[tuple[bytes, int, int]],
                    go_shapes: list[bytes]) -> None:
     for _, at, n in ids:
@@ -320,7 +270,7 @@ def _recompute_ids(buf: bytearray, ids: list[tuple[bytes, int, int]],
     for i, (owner, at, n) in enumerate(ids):
         seed = digest + i.to_bytes(2, "big")
         if owner == b"Go":
-            buf[at:at + n] = _go_build_id(next(shapes), seed)
+            buf[at:at + n] = go.build_id(next(shapes), seed)
         else:
             stream = b"".join(hashlib.sha256(seed + bytes([k])).digest()
                               for k in range(n // 32 + 1))
@@ -348,33 +298,13 @@ def scrub(data: bytes) -> bytes:
         buf[s.offset:s.end] = bytes(s.size)
     for start, end in _file_symbol_names(data, elf):
         buf[start:end] = bytes(end - start)
-    if not _go_can_read_build_info(data):
-        for start, end in _go_stamps(data):
-            _blank_stamp(buf, start, end)
-        for start, end in _go_module_paths(data):
-            _blank_name(buf, start, end)
+    edited = go.blank(buf, data)
     ids = _build_ids(data, elf)
     go_shapes = [bytes(data[at:at + n]) for owner, at, n in ids if owner == b"Go"]
     _recompute_ids(buf, ids, go_shapes)
-    _check_loaded_bytes(data, buf, elf, ids)
+    common.check_unchanged(data, buf, elf.loads,
+                           [(at, at + n) for _, at, n in ids] + edited, "ELF")
     return bytes(buf)
-
-
-def _check_loaded_bytes(src: bytes, out: bytearray, elf: Elf, ids) -> None:
-    """The acceptance rule, enforced on every scrub: inside the loaded segments,
-    only the build IDs and the Go stamp may differ. Anything else is a bug in this
-    module, and the program would run differently -- so nothing is written."""
-    allowed = [(at, at + n) for _, at, n in ids]
-    if not _go_can_read_build_info(src):
-        allowed += _go_stamps(src) + _go_module_paths(src)
-    probe = bytearray(out)
-    for a, b in allowed:
-        probe[a:b] = src[a:b]
-    view_src, view_out = memoryview(src), memoryview(probe)
-    for start, end in elf.loads:
-        if view_src[start:end] != view_out[start:end]:
-            first = next(i for i in range(start, end) if src[i] != probe[i])
-            raise ParseError(f"ELF F1 changed loaded byte {first:#x}; refused")
 
 
 def residuals(data: bytes) -> list[str]:
@@ -384,14 +314,7 @@ def residuals(data: bytes) -> list[str]:
            if any(data[s.offset:s.end])]
     if any(any(data[a:b]) for a, b in _file_symbol_names(data, elf)):
         out.append("a source-file name is still in the symbol table")
-    if not _go_can_read_build_info(data):
-        for a, b in _go_stamps(data):
-            if any(c not in b"0-:TZ" for c in data[a:b]):
-                out.append("Go's commit stamp is still in the build info")
-                break
-        if any(chr(c).isalnum() and c != 0x30 for a, b in _go_module_paths(data)
-               for c in data[a:b]):
-            out.append("the Go module path is still in the build info")
+    out += go.residuals(data)
     ids = _build_ids(data, elf)
     if ids:
         expect = bytearray(data)
@@ -405,35 +328,14 @@ def residuals(data: bytes) -> list[str]:
 def advise(data: bytes) -> list[str]:
     """What stays because the program itself reads it (survey §5)."""
     elf = parse(data)
-    out = []
-    found: dict[str, str] = {}
-    for s in elf.sections:
-        if s.loaded and s.in_file:
-            for m in _USER_DIR.finditer(data, s.offset, s.end):
-                found.setdefault(m.group().decode("latin-1"), s.name)
-    if found:
-        where = ", ".join(f"{p}... in {sec}" for p, sec in list(found.items())[:3])
-        out.append("the program's own text contains a user directory path, which it "
-                   f"can print (an assert, panic or stack trace), so it is kept: "
-                   f"{where}. Rebuilding with path remapping removes it (limit #50).")
+    out = common.program_text_advice(common.user_dirs_in(
+        data, [(s.name, s.offset, s.end) for s in elf.sections
+               if s.loaded and s.in_file]))
     for path in _runpaths(data, elf):
-        if _USER_DIR.search(path):
+        if common.USER_DIR.search(path):
             out.append(f"the library search path {path.decode('latin-1')!r} names a "
                        "user directory; the loader reads it, so it is kept (limit #50)")
-    if _go_can_read_build_info(data) and (_go_stamps(data) or _go_module_paths(data)):
-        out.append("this Go program can read its own build information "
-                   "(runtime/debug.ReadBuildInfo), so its module path and any commit "
-                   "hash and time in it are kept; -buildvcs=false leaves the commit "
-                   "out at build time")
-    paths = {bytes(data[a:b]) for a, b in _go_module_paths(data)}
-    elsewhere = [p for p in paths if p != b"command-line-arguments"
-                 and data.count(p) > sum(1 for a, b in _go_module_paths(data)
-                                         if data[a:b] == p)]
-    if elsewhere:
-        out.append(f"the Go module path {elsewhere[0].decode('latin-1')!r} is also "
-                   "in the program's function names, which stack traces print, so "
-                   "those copies are kept (limit #50)")
-    return out
+    return out + go.advise(data)
 
 
 def _runpaths(data: bytes, elf: Elf) -> list[bytes]:
@@ -486,7 +388,5 @@ def describe(data: bytes) -> dict[str, str]:
         files = set()
     if files:
         out["Source file names (symbol table)"] = ", ".join(sorted(files)[:6])
-    for m in _VCS_LINE.finditer(data):
-        key = m.group(0).split(b"=")[0].split(b"\t")[1].decode()
-        out.setdefault(f"Go {key}", m.group(1).decode("latin-1"))
+    out.update(go.describe(data))
     return out
