@@ -161,6 +161,7 @@ jobs:
       #   ffmpeg + lame     MP3 decode and canonical re-encode (F3)
       #   gcc, clang, go    real programs for the executables' "runs the same" test
       #   binutils, git     `strip` (the survey's benchmark) and Go's commit stamp
+      #   wine64, mingw-w64 build Windows programs and run them, before and after
       # Tests needing a missing tool skip cleanly, so a silent failure here
       # would weaken the suite rather than break it. Hence: no `|| true`.
       - name: Install external tools
@@ -168,7 +169,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer gcc clang binutils git golang-go
+            libreoffice-writer gcc clang binutils git golang-go \
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -203,6 +205,8 @@ jobs:
             echo "| poppler | $(pdftoppm -v 2>&1 | head -1 | sed 's/.*version //') |"
             echo "| gcc | $(gcc -dumpfullversion) |"
             echo "| Go | $(go env GOVERSION) |"
+            echo "| mingw-w64 | $(x86_64-w64-mingw32-gcc -dumpversion) |"
+            echo "| Wine | $(/usr/lib/wine/wine64 --version 2>/dev/null || echo absent) |"
             echo
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -290,6 +294,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
+      # Not on the macOS image's PATH (the first run of this job skipped the Go test
+      # for want of it), and Go programs are the ones carrying a commit stamp.
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.25"
+          cache: false
+
       - name: Record the exact tool versions used
         run: |
           {
@@ -312,6 +324,7 @@ jobs:
         run: |
           status=0
           python -m pytest tests/scrub/test_exe_macho.py tests/scrub/test_exe_elf.py \
+            tests/scrub/test_exe_pe.py \
             -p no:randomly -rs --junit-xml=macos-results.xml || status=$?
           mkdir -p timing
           printf '{"job":"macos","seconds":%s}\n' \
@@ -465,7 +478,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer gcc clang binutils git golang-go
+            libreoffice-writer gcc clang binutils git golang-go \
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -544,7 +558,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer gcc clang binutils git golang-go
+            libreoffice-writer gcc clang binutils git golang-go \
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

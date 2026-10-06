@@ -53,6 +53,11 @@ _PACKAGE_FOR = {
     "go": "golang-go",
     "git": "git",
     "strip": "binutils",
+    # Windows programs: built with mingw-w64 and run under Wine, before and after.
+    "x86_64-w64-mingw32-gcc": "gcc-mingw-w64-x86-64",
+    "x86_64-w64-mingw32-windres": "binutils-mingw-w64-x86-64",
+    "wine64": "wine64",
+    "wine": "wine64",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.

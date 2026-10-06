@@ -83,6 +83,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import mp3_corpus as m3c
     from . import mp4_corpus as vc
     from . import pdf_corpus as pc
+    from . import pe_corpus as pec
     from . import raw_corpus as rc
     from .test_png import _png
 
@@ -95,6 +96,9 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
                      ("F1",)),
         "exe-macho": (mc_.build("alice", go=True), ("F1",)),
         "exe-fat": (mc_.fat("alice"), ("F1",)),
+        "exe-pe-msvc": (pec.build("alice", dll=True), ("F1",)),
+        "exe-pe-mingw": (pec.build("alice", shape="mingw", go=True, plus=False),
+                         ("F1",)),
         "jpeg": (imgc.build_torture_jpeg(), ("F1", "F2", "F3")),
         "png": (_png(), ("F1", "F2")),
         "pdf": (open(pc.torture_pdf(str(tmp_path / "t.pdf")), "rb").read(),

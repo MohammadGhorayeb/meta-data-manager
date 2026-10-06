@@ -1,4 +1,4 @@
-"""Executables (Phase 5): ELF (Linux) and Mach-O (Mac); PE (Windows) is M3.
+"""Executables (Phase 5): ELF (Linux), Mach-O (Mac) and PE (Windows).
 
 One handler for the family, because the formats answer the same question -- what
 did the build leave that the program never reads -- and share the acceptance test,
@@ -8,7 +8,7 @@ zeroed parts outright, rather than zeroing them in place, is F2's job.
 from __future__ import annotations
 
 from ..base import BaseHandler
-from . import elf, macho
+from . import elf, macho, pe
 
 _MACHO_MAGIC = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe",     # 64- and 32-bit, LE
                 b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce",     # big-endian (PowerPC)
@@ -17,17 +17,18 @@ _MACHO_MAGIC = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe",     # 64- and 32-bit, 
 
 class ExeHandler(BaseHandler):
     format_id = "exe"
-    magic = (elf.MAGIC, *_MACHO_MAGIC)
+    magic = (elf.MAGIC, *_MACHO_MAGIC, b"MZ")
     fidelities = ("F1",)
 
     def claims(self, data: bytes) -> bool:
         # `\xca\xfe\xba\xbe` also opens every Java class file; `is_macho` tells them
         # apart by the architecture count, which a class file's version exceeds.
-        return elf.is_elf(data) or macho.is_macho(data)
+        # `MZ` alone is a DOS program; a Windows one has a PE header behind it.
+        return elf.is_elf(data) or macho.is_macho(data) or pe.is_pe(data)
 
     @staticmethod
     def _module(data: bytes):
-        return elf if elf.is_elf(data) else macho
+        return elf if elf.is_elf(data) else pe if pe.is_pe(data) else macho
 
     def scrub_f1(self, data: bytes) -> bytes:
         return self._module(data).scrub(data)

@@ -313,3 +313,62 @@ M1's first CI run failed on real x86-64 builds: gcc's default 8-aligned
 offsets. The aarch64 containers M1 was tested in write no such note. Fixed
 (`ba57885`), pinned by a property note in every 64-bit corpus build, and real-compiler
 tests re-run in an x86-64 container.
+
+---
+
+## 10. M3 — Windows programs (PE)
+
+### 10.1 What the survey had left open
+
+- **Windows maps every section, debug ones included.** mingw's and clang's DWARF
+  sections and Go's `.zdebug_*` all have addresses inside `SizeOfImage`, so ELF's
+  rule ("never loaded") is not available. What holds instead, measured on every
+  survey build: they are discardable, no base relocation patches them, and no data
+  directory points into them — nothing in the program refers to them. That becomes
+  the rule, checked per file (a DWARF section that fails it is refused, not
+  zeroed), and Wine runs every zeroed build identically. `.reloc` is discardable too
+  and essential, so "discardable" alone would have been the wrong test.
+- **mingw writes 43 `.file` records** into the COFF symbol table, the user's own
+  `hello.c` among them; Go writes none (its paths are in pclntab: program text).
+- **lld puts the debug directory and the CodeView record in a `.buildid` section.**
+- **Debug-directory entries are not all metadata.** CodeView (PDB path, GUID),
+  MISC and REPRO (a build hash) identify the build; EX_DLLCHARACTERISTICS carries
+  the CET flag the loader reads; POGO and VC_FEATURE are toolchain traces (A2).
+
+### 10.2 As built
+
+`exe/pe.py` (PE32 and PE32+, any machine). Zeroed in place: the link time (COFF
+header, export, load-config and every resource directory), the Rich header
+(`DanS`…`Rich`+key), DWARF sections nothing refers to, `.file` aux records, and the
+version resource's CompanyName, LegalCopyright, LegalTrademarks, Comments,
+InternalName, OriginalFilename, PrivateBuild, SpecialBuild and file date — unless
+the program imports `version.dll`, the system's way for a program to read its own
+version (limit #50). CodeView/MISC/REPRO entries are removed from the debug
+directory (the table is compacted; an emptied directory reads as none, like a build
+without a PDB); the others stay with their timestamps zeroed. Go's rules come from
+`exe/go.py`; its text build ID is recomputed with the checksum taken as zero. The
+checksum is recomputed whenever the file had one (our implementation matches
+pefile's on all 21 inputs). Refused: Authenticode (#52), .NET (#54), a debug section
+the program refers to. `common.check_unchanged` proves on every scrub that nothing
+outside the listed fields moved.
+
+**Measured on 21 real Windows programs** — the survey's mingw, clang+lld and Go
+builds, and the 14 MSVC launchers pip and setuptools ship (x86, x64, ARM64): no
+residuals; the Rich header gone from all 14, and the author's PDB path from the six
+pip ships (setuptools' carry none).
+**Under Wine 9.0, every mingw and clang build runs identically**, including the
+ones whose mapped debug sections were zeroed, and pip's `t64.exe` behaves
+identically on its own error path. Two build directories of equal length converge
+to byte-identical output.
+
+**Tests:** `pe_corpus.py` writes MSVC-shaped (Rich header with a real key,
+CodeView, REPRO, POGO, CET entry) and mingw-shaped (COFF symbols, `/N` DWARF,
+checksum) programs, 32- and 64-bit, with Go, DLL exports, a `version.dll` import and
+every refusal, checksummed by its own implementation; pefile (new pin) reads them
+independently. `test_exe_pe.py` builds real programs with mingw-w64 and runs them
+under Wine, scrubs pip's own launchers on every machine that has pip, and builds Go
+for Windows. CI installs `wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64`;
+verified first in an x86-64 container (55 pass; Go-on-Wine crashes identically
+before and after under Docker's emulation, so CI's native run is its first real
+test). The macOS job gains `setup-go` — its first run skipped the Go test for want
+of it.

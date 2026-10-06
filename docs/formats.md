@@ -359,9 +359,9 @@ change that.
 <!-- FORMAT:mp4:END -->
 
 <!-- FORMAT:exe:BEGIN -->
-Programs — the files a computer runs: Linux programs (ELF) and Mac programs
+Programs — the files a computer runs, on all three systems: Linux (ELF), Mac
 (Mach-O, including the "universal" kind that carries an Intel and an Apple-chip copy
-in one file). Windows programs (PE) come next.
+in one file) and Windows (PE: `.exe` and `.dll`).
 
 **What a program says about whoever built it.** Compiling a program leaves notes in
 it that the program itself never reads: the folder it was built in (which usually
@@ -389,9 +389,19 @@ signature records (often your source file's name) is replaced too. A Mac program
 signed with a developer's *identity* is left alone: cleaning would break it on the
 recipient's Mac, and that signature is meant to name its publisher.
 
+**Windows programs carry a few things of their own.** The exact minute the program
+was linked; a hidden block Microsoft's compiler writes listing every tool version
+that touched the program, which researchers use to tell one developer's programs
+from another's; the location of its debugging file, which on a real program we
+checked — the launcher that ships inside every copy of Python's `pip` — names its
+author's Windows user folder; and the company, copyright and original file name in
+its properties. All of that goes, and the program's built-in checksum is redone. A
+Windows program signed by its publisher is left alone, for the same reason as on the
+Mac.
+
 **What it costs you: nothing.** The test is that the program **runs the same** —
 same output, same exit code — and that is checked by actually running real programs
-built with gcc, clang, Swift, Rust and Go, before and after, on Linux and on a Mac.
+built with gcc, clang, Swift, Rust, Go and the Windows compilers, before and after, on Linux, on a Mac, and under Wine (which runs Windows programs on Linux).
 
 **What stays, and why.** Anything the program itself can print stays, because
 changing it would change what the program does: if your program prints its own
