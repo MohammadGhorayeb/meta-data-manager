@@ -98,16 +98,29 @@ def test_identification_reads_the_index_and_never_the_media(tmp_path):
     assert c.SENTINEL not in skeleton, "the preflight read the media"
 
 
+# On Linux `ru_maxrss` cannot be used: the kernel folds the PARENT's high-water mark
+# into it across fork+exec, so a child of a large pytest process starts at pytest's
+# peak and a 100 MB scrub never moves it (measured in a container: 413 -> 413 MB,
+# while the process's own VmHWM went 7 -> 108). The first CI run read 0.00x from
+# exactly that. VmHWM is the peak of this process's own address space.
 _PEAK = r"""
 import os, resource, sys
 sys.path.insert(0, os.environ["REPO"])
 from src.scrub import cli
 from src.scrub.dispatch import default_dispatcher
+
+def peak():
+    if sys.platform.startswith("linux"):
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss     # bytes on macOS
+
 default_dispatcher()
-base = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+base = peak()
 cli.scrub_file(sys.argv[1], sys.argv[2], "F1", check_memory=False)
-peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-print((peak - base) * (1 if sys.platform == "darwin" else 1024))
+print(peak() - base)
 """
 
 

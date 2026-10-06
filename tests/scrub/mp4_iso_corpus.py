@@ -384,7 +384,8 @@ def handbuilt(*, media: bytes = None, moov_first: bool = False,
 # --------------------------------------------------------------------------- #
 def ffmpeg_sample(path: str, *, faststart: bool = False, gps: bool = False,
                   duration: float = 1.0, audio: bool = True,
-                  videotoolbox: bool = False) -> str:
+                  videotoolbox: bool = False, preset: str = "ultrafast",
+                  crf: int | None = None) -> str:
     """Encode a tiny deterministic clip. Returns `path`, or raises if ffmpeg fails."""
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
            "-f", "lavfi", "-i", f"testsrc2=size=160x120:rate=15:duration={duration}"]
@@ -396,7 +397,9 @@ def ffmpeg_sample(path: str, *, faststart: bool = False, gps: bool = False,
         # channels distinguishable.
         cmd += ["-c:v", "h264_videotoolbox", "-pix_fmt", "yuv420p"]
     else:
-        cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"]
+        cmd += ["-c:v", "libx264", "-preset", preset, "-pix_fmt", "yuv420p"]
+        if crf is not None:
+            cmd += ["-crf", str(crf)]
     if audio:
         cmd += ["-c:a", "aac", "-shortest"]
     if gps:
@@ -420,6 +423,14 @@ def ffmpeg_corpus(tmpdir: str) -> dict[str, str]:
     return out
 
 
+def have_encoder(name: str) -> bool:
+    if shutil.which("ffmpeg") is None:
+        return False
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True,
+                       text=True)
+    return f" {name} " in r.stdout
+
+
 def temp_mp4(data: bytes) -> str:
     fd, path = tempfile.mkstemp(suffix=".mp4")
     with os.fdopen(fd, "wb") as f:
@@ -431,8 +442,12 @@ def producers(tmpdir: str, repeats: int = 3) -> dict[str, list[str]]:
     """A2 peer set: the same picture through different producers.
 
     Three of the four differ only in how the file was **muxed** — faststart or not,
-    and one encoded by VideoToolbox rather than libx264 so the coded video differs
-    while the muxer does not. The fourth is the interesting one and is the reason
+    and one with a different coded stream behind the same muxer: VideoToolbox where
+    it exists (macOS), otherwise libx264 at a different quality, named for which it
+    was so the cell never claims an encoder it did not have. A different quality and
+    not a different PRESET: every preset above `ultrafast` uses B-frames, which adds
+    a `ctts` table to the container -- the encoder showing through the box list
+    (limit #48), a second channel this producer must not mix into the muxer one. The fourth is the interesting one and is the reason
     this peer set is stronger than M4A's: `avfoundation` is a genuinely different
     **muxer**, not a different ffmpeg invocation, so the container channel is being
     measured against a real second implementation rather than against ffmpeg's own
@@ -442,12 +457,19 @@ def producers(tmpdir: str, repeats: int = 3) -> dict[str, list[str]]:
     macOS-only, and reported absent rather than quietly dropped — the limit-#12
     precedent. On Linux the peer set is the three ffmpeg producers and the cell says
     which producers it had.
+
+    VideoToolbox is macOS-only too, which the first CI run after the merge found:
+    the docstring said "three ffmpeg producers on Linux" while the third called an
+    encoder Linux's ffmpeg does not have, and the whole matrix errored.
     """
     specs = {
         "ffmpeg_plain": dict(faststart=False),
         "ffmpeg_faststart": dict(faststart=True),
-        "ffmpeg_videotoolbox": dict(faststart=False, videotoolbox=True),
     }
+    if have_encoder("h264_videotoolbox"):
+        specs["ffmpeg_videotoolbox"] = dict(faststart=False, videotoolbox=True)
+    else:
+        specs["ffmpeg_x264_crf35"] = dict(faststart=False, crf=35)
     sources: dict[str, list[str]] = {}
     for name, kw in specs.items():
         paths = []

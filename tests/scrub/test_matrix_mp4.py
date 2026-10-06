@@ -112,11 +112,13 @@ def test_f1_closes_channels_rather_than_only_leaking_them(tmp_path):
     f1 = e_mp4.run_condition("F1", sources, str(tmp_path))
     closed = set(raw["struct_fingerprints"]) - set(f1["struct_fingerprints"])
 
-    # Visible to any peer set that varies the layout at all.
-    assert {"struct:free_bytes", "struct:box_inventory"} <= closed
     if mc.HAVE_AVFOUNDATION:
-        # Only a second MUXER separates these before scrubbing.
-        assert {"struct:handler_names", "struct:mdat_header_form",
+        # Only a second MUXER separates these before scrubbing. `free_bytes` and
+        # `box_inventory` were asserted outside this branch until the first Linux
+        # run: no ffmpeg-only peer set separates them either, so "closed" there
+        # would have been a claim about a feature that never fired (limit #44).
+        assert {"struct:free_bytes", "struct:box_inventory",
+                "struct:handler_names", "struct:mdat_header_form",
                 "struct:timestamps_present"} <= closed
     # And the keys that specify F2 are still open, or the spec is wrong.
     assert {"struct:top_level_order",
@@ -162,3 +164,27 @@ def test_the_handler_name_channel_fires_when_it_can_be_seen(tmp_path):
     sources = e_mp4.build_sources(str(tmp_path), repeats=2)
     raw = e_mp4.run_condition("raw", sources, str(tmp_path))
     assert "struct:handler_names" in raw["struct_fingerprints"]
+
+
+@pytest.mark.skipif(not mc.have_encoder("libx264"), reason="no libx264")
+def test_b_frames_show_through_the_box_list_and_f1_keeps_them(tmp_path):
+    """Limit #48. An encoder that uses B-frames needs a `ctts` table (composition
+    offsets) to be decoded at all, so the container's box list says how the video
+    was encoded. Found when the Linux peer set first used a different x264 preset:
+    `box_inventory` separated the producers and survived F1. F1 keeps the coded
+    video by definition, and `ctts` with it -- removing it breaks playback order."""
+    from src.scrub.formats.mp4 import f1 as mp4_f1
+    from src.scrub.standards import isobmff as iso
+
+    def boxes(data: bytes) -> set[bytes]:
+        found, todo = set(), [b for b in iso.parse(data) if b.type == b"moov"]
+        while todo:
+            box = todo.pop()
+            found.add(box.type)
+            todo.extend(box.children)
+        return found
+
+    plain = mc.ffmpeg_sample(str(tmp_path / "u.mp4"))
+    bframes = mc.ffmpeg_sample(str(tmp_path / "m.mp4"), preset="medium")
+    assert b"ctts" not in boxes(mp4_f1.scrub(open(plain, "rb").read()))
+    assert b"ctts" in boxes(mp4_f1.scrub(open(bframes, "rb").read()))

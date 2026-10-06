@@ -1851,3 +1851,32 @@ and those four marker bytes. The guard passes.
 The CI report's roadmap gained Phases 5 and 6 so its "coming next" section does not
 go quiet now that every Phase 4 format is measured. README: RAW joins the formats
 badge, which it could not before.
+
+## 11. The first Linux run of Phase 4 — four defects, none in the scrubber
+
+Pushing M7–M19 (2026-10-06) turned CI red on its first run. Every defect was in the
+tests or the workflow, and every one passed on the Mac that wrote it:
+
+1. **The MP4 peer set called a macOS-only encoder.** `h264_videotoolbox` is not in
+   Linux's ffmpeg, so the matrix errored and the evidence gate could not re-measure
+   MP4 at all — while the docstring promised "three ffmpeg producers on Linux". The
+   local Linux simulation had disabled AVFoundation and left VideoToolbox on. The
+   third producer is now VideoToolbox where it exists and libx264 at another quality
+   elsewhere, named for which it was. A different *preset* was tried first and found
+   limit #48: every preset above `ultrafast` uses B-frames, which add a `ctts` table,
+   so the encoder shows through the box list and F1 must keep it.
+2. **`test_f1_closes_channels…` asserted `free_bytes`/`box_inventory` close for any
+   peer set.** Measured without AVFoundation (Mac or Linux), neither separates the
+   producers even before scrubbing, so the assertion moved under the AVFoundation
+   branch — the limit-#44 reasoning, applied to two more keys.
+3. **The memory-factor test read 0.00× on Linux.** Linux folds the parent's peak RSS
+   into a child's `ru_maxrss` across fork+exec (measured: 413 → 413 MB while the
+   child's own `VmHWM` went 7 → 108), so the measurement now reads `VmHWM` there.
+4. **README's test count was this laptop's.** Real-file tests parametrize over the
+   files a machine has; CI collected 888 against README's 901. The count is now taken
+   with `SCRUB_IGNORE_REAL_SAMPLES=1` — the tests every machine has.
+
+And one in the workflow, latent since the QA report existed: the report step took
+the first `coverage.json` an unbounded `find` returned, and the coverage job's own
+timing record has the same name. It had been finding the right one by directory
+order; this run it did not (`KeyError: 'totals'`). Bounded to `-maxdepth 2`.

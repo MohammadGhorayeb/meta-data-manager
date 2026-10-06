@@ -57,6 +57,8 @@ REAL_DIR = os.environ.get(
 
 def real_samples() -> list[str]:
     """Real videos on this machine (symlinks, git-ignored), or []. Never bundled."""
+    if os.environ.get("SCRUB_IGNORE_REAL_SAMPLES"):
+        return []                       # the published test count (test_readme_claims)
     if not os.path.isdir(REAL_DIR):
         return []
     return sorted(os.path.join(REAL_DIR, f) for f in os.listdir(REAL_DIR)

@@ -497,8 +497,12 @@ jobs:
             find "$d" -name '*.xml' -exec cp {} "junit/$ver/" \;
           done
           find artifacts -path '*/timing/*.json' -exec cp {} timing/ \;
+          # -maxdepth 2 = artifacts/<artifact>/<file>. The coverage job's own timing
+          # record is ALSO named coverage.json (artifacts/coverage-report/timing/),
+          # and an unbounded find returned whichever the filesystem listed first --
+          # a run once handed the report builder the timing file as its coverage.
           for f in coverage.json coverage-gate.json ruff.json evidence.json; do
-            found=$(find artifacts -name "$f" -print -quit)
+            found=$(find artifacts -maxdepth 2 -name "$f" -print -quit)
             if [ -n "$found" ]; then cp "$found" "$f"; fi
           done
           echo "--- collected ---"

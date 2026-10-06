@@ -39,6 +39,8 @@ SENTINEL = "HEIC-SENTINEL"
 
 def real_samples() -> list[str]:
     """Real camera HEICs on this machine, or []. Never bundled."""
+    if os.environ.get("SCRUB_IGNORE_REAL_SAMPLES"):
+        return []                       # the published test count (test_readme_claims)
     if not os.path.isdir(REAL_DIR):
         return []
     out: list[str] = []

@@ -12,6 +12,7 @@ limit-#12 precedent. The synthetic cases below run everywhere.
 from __future__ import annotations
 
 import glob
+import os
 import struct
 
 import pytest
@@ -19,7 +20,8 @@ import pytest
 from src.scrub.errors import ParseError
 from src.scrub.formats.heic import walker as w
 
-REAL = sorted(glob.glob("metadata-research/step2/*.HEIC"))
+REAL = ([] if os.environ.get("SCRUB_IGNORE_REAL_SAMPLES")
+        else sorted(glob.glob("metadata-research/step2/*.HEIC")))
 needs_real = pytest.mark.skipif(
     not REAL, reason="no real HEIC corpus on this machine (see p4 plan §W5)")
 

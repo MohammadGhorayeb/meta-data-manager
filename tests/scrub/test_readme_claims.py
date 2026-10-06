@@ -31,6 +31,12 @@ def test_the_stated_test_count_is_what_pytest_collects():
     Word sample or an HEIC corpus, and a different box skips a different set. A
     count of passes would therefore be a claim about one laptop. What is
     reproducible is how many tests exist, so that is what README states.
+
+    Collection itself is machine-dependent too: the real-file tests parametrize
+    over the samples a machine has, one test per file. The first CI run after
+    Phase 4 found README stating this laptop's 901 against CI's 888. So the count
+    is taken with real-sample discovery switched off -- the tests that exist on
+    every machine, which is what a published number can promise.
     """
     m = re.search(r"\*\*(\d[\d,]*) tests\*\*", _readme())
     assert m, "README no longer states a test count in the form **N tests**"
@@ -39,7 +45,8 @@ def test_the_stated_test_count_is_what_pytest_collects():
     out = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/", "-q", "--collect-only",
          "-p", "no:randomly", "-p", "no:cacheprovider"],
-        cwd=REPO, capture_output=True, text=True, timeout=300).stdout
+        cwd=REPO, capture_output=True, text=True, timeout=300,
+        env=dict(os.environ, SCRUB_IGNORE_REAL_SAMPLES="1")).stdout
     found = re.search(r"(\d+) tests? collected", out)
     assert found, f"could not read a collection count from pytest:\n{out[-2000:]}"
     actual = int(found.group(1))

@@ -43,6 +43,8 @@ WORD_DIR = os.environ.get(
 
 def word_samples() -> list[str]:
     """Word-authored .docx found on this machine, or []. Never bundled."""
+    if os.environ.get("SCRUB_IGNORE_REAL_SAMPLES"):
+        return []                       # the published test count (test_readme_claims)
     if not os.path.isdir(WORD_DIR):
         return []
     return sorted(p for p in glob.glob(os.path.join(WORD_DIR, "*.docx"))
