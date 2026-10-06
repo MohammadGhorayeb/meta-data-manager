@@ -86,6 +86,11 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "heic":
         from . import heic_corpus as hc  # noqa: PLC0415
         return open(hc.handbuilt(str(tmp_path / "t.heic")), "rb").read()
+    if fmt == "exe":
+        # Go: the most edits (two build IDs, the stamp in both copies, the module
+        # path), so the most chances for a second pass to find something new.
+        from . import elf_corpus as ec  # noqa: PLC0415
+        return ec.build("alice", go=True, shared_tail=True)
     if fmt == "mp4":
         return (open(vc.build(str(tmp_path / "t.mov")), "rb").read()
                 if vc.HAVE_FFMPEG else None)

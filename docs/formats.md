@@ -358,6 +358,40 @@ video encoded at a higher quality is a bigger file, and nothing in the metadata 
 change that.
 <!-- FORMAT:mp4:END -->
 
+<!-- FORMAT:exe:BEGIN -->
+Programs — the files a computer runs. On Linux these are ELF files; Mac and Windows
+programs (Mach-O and PE) come next.
+
+**What a program says about whoever built it.** Compiling a program leaves notes in
+it that the program itself never reads: the folder it was built in (which usually
+contains your user name), the exact compiler and the exact version of the operating
+system's package it came from, the full list of settings the compiler was given, and
+the name of the source file. A program written in Go also records the **commit** it
+was built from, with its **date and time**, and the project's address — often
+`github.com/your-name/...`. We measured all of this on programs we built ourselves,
+before writing any code.
+
+**What goes.** Every part of the file the computer never loads when it runs the
+program is wiped: the build notes, the debugging information, the source file names.
+Go's commit, date and project address are wiped too — but only when the program has
+no way of reading them itself. The program's "fingerprint" numbers (build IDs) are
+recalculated from the cleaned file, so they look normal but no longer match the
+original build. The standard tool for this, `strip`, removes the folder names but
+keeps a fingerprint calculated *from* them: two people's stripped programs can still
+be told apart. Ours cannot.
+
+**What it costs you: nothing.** The test is that the program **runs the same** —
+same output, same exit code — and that is checked by actually running real programs
+built with gcc, clang, Rust and Go, before and after.
+
+**What stays, and why.** Anything the program itself can print stays, because
+changing it would change what the program does: if your program prints its own
+source location when it crashes, that location is part of the program. We tell you
+when we see one, and how to rebuild without it. And because nothing is moved, the
+wiped areas keep their size, which says roughly how long the removed folder names
+were.
+<!-- FORMAT:exe:END -->
+
 <!-- FORMAT:raw:BEGIN -->
 The files a camera saves when you choose RAW — Canon, Nikon, Sony, Fujifilm, Olympus,
 Panasonic, and Apple's ProRAW — and the format where nothing inside the file is

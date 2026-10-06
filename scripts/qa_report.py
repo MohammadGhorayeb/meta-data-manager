@@ -393,6 +393,7 @@ FORMAT_GROUPS = [
     ("M4A audio", "🎬", ["m4a"]),
     ("Documents", "📄", ["pdf", "docx"]),
     ("Video and camera", "📷", ["mp4", "heic", "raw"]),
+    ("Programs", "⚙️", ["exe"]),
 ]
 
 # Which tests belong to which format, for the per-format check counts. Specific
@@ -414,6 +415,9 @@ FORMAT_TEST_PATTERNS = [
     ("heic", ["heic"]),
     # RAW before JPEG: `test_raw_f1.py` would otherwise match JPEG's "test_f1".
     ("raw", ["test_raw_", "raw_corpus"]),
+    # Executables before JPEG and MP3 for the same reason: nothing in their names
+    # collides today, and an early row cannot be stolen from later.
+    ("exe", ["test_exe_", "elf_corpus"]),
     # MP4 before M4A, and the choice is a coin-flip made on a count rather than a
     # principle: the two formats' tests name each other (MP4's prove they did not
     # steal audio from M4A; M4A's prove it declines video), so whichever is

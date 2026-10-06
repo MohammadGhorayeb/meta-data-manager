@@ -75,6 +75,9 @@ def default_dispatcher() -> Dispatcher:
     # pictures, so `claims()` requires the file to say it is a raw.
     from .formats.raw.handler import RawHandler
     d.register(RawHandler())
+    # Executables (Phase 5). `\x7fELF` is shared with nothing else here.
+    from .formats.exe.handler import ExeHandler
+    d.register(ExeHandler())
     # DOCX last: its magic (`PK\x03\x04`) is the weakest of any handler here -- it
     # is shared with every ZIP ever made -- so it gets asked only after every format
     # with a distinctive prefix has declined.

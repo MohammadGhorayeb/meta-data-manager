@@ -159,6 +159,8 @@ jobs:
       #   exiftool          ground-truth metadata extractor
       #   jpegtran          lossless JPEG repack (F2)
       #   ffmpeg + lame     MP3 decode and canonical re-encode (F3)
+      #   gcc, clang, go    real programs for the executables' "runs the same" test
+      #   binutils, git     `strip` (the survey's benchmark) and Go's commit stamp
       # Tests needing a missing tool skip cleanly, so a silent failure here
       # would weaken the suite rather than break it. Hence: no `|| true`.
       - name: Install external tools
@@ -166,7 +168,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer
+            libreoffice-writer gcc clang binutils git golang-go
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -199,6 +201,8 @@ jobs:
             echo "| ffmpeg | $(ffmpeg -version | head -1 | cut -d' ' -f3) |"
             echo "| LAME | $(lame --version | head -1 | sed 's/.*version //; s/ .*//') |"
             echo "| poppler | $(pdftoppm -v 2>&1 | head -1 | sed 's/.*version //') |"
+            echo "| gcc | $(gcc -dumpfullversion) |"
+            echo "| Go | $(go env GOVERSION) |"
             echo
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -380,7 +384,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer
+            libreoffice-writer gcc clang binutils git golang-go
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -459,7 +463,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer
+            libreoffice-writer gcc clang binutils git golang-go
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

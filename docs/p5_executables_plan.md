@@ -206,3 +206,45 @@ prototyped), and PE third (it needs Wine in CI).
 | **M2** — Mach-O F1 | debug map + `N_OSO` mtimes, UUID (D2), signature identifier, own ad-hoc re-sign + verifier, fat binaries, identity signatures refused (D3) | the §0 Mach-O corpus runs identically, `codesign -v` passes on macOS, our verifier passes on Linux |
 | **M3** — PE F1 | timestamps, Rich header, CodeView, version resource, mingw DWARF, checksum; Authenticode refused | the §0 PE corpus and the MSVC launchers run identically under Wine |
 | **M4** — `ExePlugin` + matrix `exe` + CI | A1 differential over the alice/bob pairs per toolchain; A2 across toolchains (expected to **fail** at F1: the compiler is in the code itself, as the encoder is in a JPEG's DQT); Wine and Go in CI | matrix published, evidence gate re-measures it, limits recorded |
+
+---
+
+## 8. M1 as built — ELF at F1
+
+`src/scrub/formats/exe/` — `elf.py` (walker, F1, residual check, report, advisories)
+and `handler.py` (`ExeHandler`, format id `exe`, F1 only). Registered after RAW;
+`\x7fELF` is shared with nothing.
+
+**The rule is the loader's.** Every section without `SHF_ALLOC` is zeroed in place
+except `.symtab`, `.strtab`, `.shstrtab` and the architecture attributes — an
+allowlist, so a toolchain's next section is removed rather than missed. A file where
+such a section lies inside a `PT_LOAD` range is refused (the flag is only a claim;
+the loader maps segments). Source-file symbol names are blanked except bytes another
+symbol's name shares (linkers merge string tails). The GNU build-id and the Go build
+ID are recomputed: a SHA-256 of the cleaned file with both ID fields zeroed, the Go
+one keeping its `/` positions and alphabet. Go's commit stamp, its pseudo-version
+(Go ≥ 1.24 writes `v0.0.0-<time>-<hash>` as the module version) and the module path
+are blanked in both copies — unless `runtime/debug.ReadBuildInfo` is linked, which
+is checked by its name in the binary (the linker drops it when unused).
+
+**Enforced on every scrub, not only in tests:** inside every `PT_LOAD` range, the
+output may differ from the input only at the build IDs and the Go stamp, or nothing
+is written.
+
+**Measured on the survey corpus (§0), 13 files × 2 users:** no residuals;
+**22 of 22** scrubbed programs run identically (Ubuntu 24.04); `go version -m` still
+parses the cleaned build info; Go 1.25's pseudo-version handled. The survey's sharpest
+finding closes: two users' stripped `-g` builds, 20 bytes apart after `strip` (the
+build-id), come out **byte-identical**. Unstripped `-g` builds from paths of
+different lengths still differ by ~21 bytes — the section sizes and the build-id
+hashed over them (limit #49); equal-length paths come out identical, tested on real
+gcc and clang builds in CI. What stays is program text (limit #50): Go's `.gopclntab`
+source paths, reported by `advise()`.
+
+**Tests:** `tests/scrub/elf_corpus.py` builds executables byte by byte (both widths,
+both byte orders, C and Go shapes, shared string tails, every refusal case), read
+independently with pyelftools (new test-side pin). `test_exe_elf.py` runs real gcc,
+clang, `strip` and Go builds where Linux and the compilers exist — CI now installs
+`gcc clang binutils git golang-go` in all three measuring jobs, recorded in the CI
+contract. ELF joins the fuzz, idempotence and cross-process determinism suites.
+Limits #49–#51.

@@ -76,6 +76,7 @@ def _mutations(data: bytes, rnd: random.Random, n: int):
 def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import corpus as imgc
     from . import docx_corpus as dc
+    from . import elf_corpus as ec
     from . import flac_corpus as fc
     from . import m4a_corpus as mc
     from . import mp3_corpus as m3c
@@ -88,6 +89,9 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
         "raw": (rc.build("olympus"), ("F1",)),
         "raw-cr3": (rc.cr3(), ("F1",)),
         "raw-raf": (rc.raf(), ("F1",)),
+        "exe": (ec.build("alice", go=True), ("F1",)),
+        "exe-32be": (ec.build("alice", bits=32, order=">", shared_tail=True),
+                     ("F1",)),
         "jpeg": (imgc.build_torture_jpeg(), ("F1", "F2", "F3")),
         "png": (_png(), ("F1", "F2")),
         "pdf": (open(pc.torture_pdf(str(tmp_path / "t.pdf")), "rb").read(),

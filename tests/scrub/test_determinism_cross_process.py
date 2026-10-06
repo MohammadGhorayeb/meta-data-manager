@@ -81,6 +81,12 @@ def _build(kind: str, tmpdir: str) -> str | None:
     if kind == "heic":
         from . import heic_corpus as hc  # noqa: PLC0415
         return hc.handbuilt(p)
+    if kind == "exe":
+        # The recomputed build IDs are hashes over the cleaned bytes: any
+        # order-dependence anywhere upstream would show up in them first.
+        from . import elf_corpus as ec  # noqa: PLC0415
+        open(p, "wb").write(ec.build("alice", go=True, bits=32, order=">"))
+        return p
     raise AssertionError(
         f"no builder for {kind!r}. CASES is derived from the dispatcher now, so a "
         "newly registered format arrives here automatically -- add its builder "

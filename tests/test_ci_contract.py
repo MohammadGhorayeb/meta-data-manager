@@ -46,6 +46,13 @@ _PACKAGE_FOR = {
     # `zipfile` accepting our output proves only that two Python views of the format
     # agree, so this is the cross-check -- installed rather than declared optional.
     "unzip": "unzip",
+    # Phase 5: the executables' acceptance test runs real programs, so it needs
+    # compilers to make them -- and git, because Go stamps the commit into a build.
+    "gcc": "gcc",
+    "clang": "clang",
+    "go": "golang-go",
+    "git": "git",
+    "strip": "binutils",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.
