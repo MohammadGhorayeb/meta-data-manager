@@ -71,7 +71,15 @@ _OPTIONAL = {
               "not assumed -- so no published verdict depends on it. What IS lost "
               "is resolution: ffmpeg writes the same handler names and the same "
               "brand in every configuration, so two of the channels are invisible "
-              "to an ffmpeg-only peer set (limit #44)",
+              "to an ffmpeg-only peer set (limit #44). Also builds the real Swift "
+              "program for the Mach-O tests, which run in the macOS job",
+    "codesign": "Apple's signature checker, part of macOS: the macOS job's judge of "
+                "the Mach-O signature we recompute. Linux checks the same pages with "
+                "our own verifier and the corpus's second signer, so absent means "
+                "Apple's opinion is missing, never that a bad signature passes",
+    "rustc": "builds the real Rust program whose debug map names the home directory "
+             "(survey §4.1); preinstalled on the macOS runner, where that test runs. "
+             "The Linux legs need no Rust compiler",
     "sysctl": "macOS-only source of free memory for the memory preflight (limit "
               "#38); Linux reads /proc/meminfo instead, and a platform where neither "
               "answers skips the check rather than refusing every scrub",

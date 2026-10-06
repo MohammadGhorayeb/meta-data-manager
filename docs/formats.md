@@ -359,8 +359,9 @@ change that.
 <!-- FORMAT:mp4:END -->
 
 <!-- FORMAT:exe:BEGIN -->
-Programs — the files a computer runs. On Linux these are ELF files; Mac and Windows
-programs (Mach-O and PE) come next.
+Programs — the files a computer runs: Linux programs (ELF) and Mac programs
+(Mach-O, including the "universal" kind that carries an Intel and an Apple-chip copy
+in one file). Windows programs (PE) come next.
 
 **What a program says about whoever built it.** Compiling a program leaves notes in
 it that the program itself never reads: the folder it was built in (which usually
@@ -380,9 +381,17 @@ original build. The standard tool for this, `strip`, removes the folder names bu
 keeps a fingerprint calculated *from* them: two people's stripped programs can still
 be told apart. Ours cannot.
 
+**Mac programs have one more lock.** On a Mac with an Apple chip, every program
+carries a signature that covers every byte of it; change one byte without redoing
+the signature and the Mac refuses to start it. So after cleaning we recompute that
+signature ourselves — Apple's own checking tool accepts it — and the name the
+signature records (often your source file's name) is replaced too. A Mac program
+signed with a developer's *identity* is left alone: cleaning would break it on the
+recipient's Mac, and that signature is meant to name its publisher.
+
 **What it costs you: nothing.** The test is that the program **runs the same** —
 same output, same exit code — and that is checked by actually running real programs
-built with gcc, clang, Rust and Go, before and after.
+built with gcc, clang, Swift, Rust and Go, before and after, on Linux and on a Mac.
 
 **What stays, and why.** Anything the program itself can print stays, because
 changing it would change what the program does: if your program prints its own

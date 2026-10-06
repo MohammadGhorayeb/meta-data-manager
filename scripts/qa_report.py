@@ -186,6 +186,9 @@ STAGES = [
     ("evidence", "🔬", "Published results still true",
      "Re-measures the tool's headline claims and confirms the published results "
      "table still matches reality."),
+    ("macos", "🍎", "Mac programs, on a Mac",
+     "Cleans real Mac programs on a real Mac and runs them: they must behave the "
+     "same, and Apple's own tool must accept the signature we recompute."),
 ]
 
 
@@ -766,7 +769,7 @@ def section_stage_table(run: Run) -> str:
             outcome = run.stages.get(key, "")
             secs = run.timings.get(key, 0.0)
             result = f"{icon(outcome)} {outcome or 'not run'}"
-            if key == "coverage" and run.coverage:
+            if key == "coverage" and run.coverage and "totals" in run.coverage:
                 pct = run.coverage["totals"]["percent_covered"]
                 result = f"{icon(outcome)} {pct:.1f}%"
             elif key == "lint" and run.lint is not None:

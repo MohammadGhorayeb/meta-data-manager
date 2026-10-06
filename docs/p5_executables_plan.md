@@ -248,3 +248,68 @@ clang, `strip` and Go builds where Linux and the compilers exist — CI now inst
 `gcc clang binutils git golang-go` in all three measuring jobs, recorded in the CI
 contract. ELF joins the fuzz, idempotence and cross-process determinism suites.
 Limits #49–#51.
+
+---
+
+## 9. M2 — Mac programs (Mach-O)
+
+### 9.1 What the first survey had not built
+
+Universal (`-arch arm64 -arch x86_64`), a dylib (with and without an absolute
+install name), a binary re-signed with `codesign -s -`, Swift `-g`, an x86-64-only
+binary, and Go cross-compiled for the Mac in a git checkout (`GOOS=darwin`):
+
+- **The signature's identifier is metadata, and sometimes worse.** The linker writes
+  the output's name; a universal build writes `hello-arm64.out` — named after the
+  **source file**, from the driver's temporary per-architecture output; and
+  `codesign -s -` writes `<name>-55554944<UUID>`, so the old UUID survives *inside
+  the signature* and recomputing `LC_UUID` alone would have kept the link. Nothing
+  checks it for an ad-hoc signature: the designated requirement is the cdhash
+  (`codesign -d -r-`). Go's linker writes `a.out` — the crowd value F1 uses.
+- **The linker does not sign x86-64.** Only arm64 slices carry signatures; `codesign
+  -v` of a universal file reports "not signed at all" before *and* after (it reads
+  the x86-64 slice), and `--arch arm64` verifies.
+- **Swift `-g` adds `N_AST`**, the `.swiftmodule` path in the per-user temp dir.
+- **Go writes an unmapped `__DWARF` segment** (vmsize 0, initprot 0): the Mach-O
+  equivalent of ELF's unloaded sections — never mapped, so zeroed. Its build ID is
+  at the start of `__TEXT` (`\xff Go build ID: "…"`); its build info is ELF's.
+- **A dylib's install name is the loader's**: an absolute one names the user
+  directory, and every program linked against it copies it. Kept, reported.
+
+### 9.2 As built
+
+`exe/macho.py` (thin and universal; 32/64-bit; either byte order), `exe/codesign.py`
+(SuperBlob, every CodeDirectory, SHA-1/256/384, 4 KiB and 16 KiB pages), with Go's
+rules shared from `exe/go.py` and the unchanged-bytes check from `exe/common.py`.
+Per slice: unmapped segments zeroed; path stabs (`N_SO`, `N_OSO`, `N_SOL`, `N_AST`,
+`N_BINCL`) blanked except shared string tails, `N_OSO` mtimes zeroed; `LC_UUID`
+and Go's build ID recomputed from a hash of the cleaned slice *without* the
+signature (which hashes them); identifier → `a.out` when it fits (limit #53);
+every code slot re-hashed. Refused: identity signatures (limit #52), objects, core
+dumps, dSYMs (#51), an unmapped segment over mapped bytes. Enforced on every scrub:
+inside mapped segments only the listed edits and the signature may differ.
+
+**Measured on 20 real Mac programs** (clang `-O2`/`-g`/separate compile, strip,
+rustc, cargo, swiftc, universal, dylib, `codesign`-signed, x86-64-only, Go):
+no residuals, every program **runs the same** (the x86-64 one under Rosetta), a
+program linked against a cleaned dylib still loads it, and Apple's `codesign -v`
+accepts every recomputed signature. **Builds from two directories converge to
+byte-identical output** — including one-step `clang -g`, whose inputs differ in a
+random UUID, temp object names and an object time — where `strip` left 48 bytes.
+
+**Tests:** `macho_corpus.py` writes thin, universal, 32-bit big-endian, dylib, Go,
+`codesign`-style and identity-signed programs byte by byte and signs them with its
+own second implementation; macholib (new test-side pin) reads them independently,
+and `codesign -v` accepts them as built. `test_exe_macho.py` runs real clang
+(`-g`, `-O2`, universal), rustc, swiftc and Go builds on macOS. **CI gains a macOS
+job** (`macos-latest`, free for a public repository) that runs the executable tests
+natively and reports as its own stage; Linux checks the same signatures with our
+verifier and the corpus's signer. Mac programs join the fuzz suite.
+
+### 9.3 Found on the way: ELF on x86-64
+
+M1's first CI run failed on real x86-64 builds: gcc's default 8-aligned
+`.note.gnu.property` (CET) exposed a note walker that aligned sizes instead of
+offsets. The aarch64 containers M1 was tested in write no such note. Fixed
+(`ba57885`), pinned by a property note in every 64-bit corpus build, and real-compiler
+tests re-run in an x86-64 container.
