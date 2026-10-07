@@ -72,6 +72,37 @@ def maximal(runs: set[bytes]) -> list[bytes]:
     return keep
 
 
+def explained(sig: bytes, constants: list[bytes], inputs: list[bytes],
+              min_len: int) -> bool:
+    """A run made only of declared marks and the input's own bytes is not a tool
+    signature, even when the two happen to sit side by side.
+
+    Blanking in place leaves a declared mark (zeros, say) next to bytes the input
+    already had (the name of the field that was blanked). Every output then shares
+    the joined run, and no input has it -- yet nothing in it is ours beyond the
+    declared mark. So the run is cut at every multi-byte constant, single-byte
+    constants (fill characters) are stripped from the ends of each piece, and the
+    run is explained only if every piece is too short to be a signature or was in
+    some input. A producer string between zero pads leaves the string itself as a
+    piece, which is in no input, so it is still caught; and fill is stripped from
+    the EDGES and at runs of `min_len` -- splitting at every `0` would dissolve a
+    stamp like `20261007` into pieces too short to count."""
+    fills = bytes(c[0] for c in constants if len(c) == 1)
+    # A run of fill as long as a signature is a blanked value: a cut. Shorter
+    # leftovers are stripped from the edges below.
+    cuts = sorted([c for c in constants if len(c) > 1]
+                  + [bytes([f]) * min_len for f in fills], key=len, reverse=True)
+    if not constants:
+        return False
+    parts = [sig]
+    for c in cuts:
+        parts = [q for p in parts for q in p.split(c)]
+    parts = [p.strip(fills) if fills else p for p in parts]
+    if parts == [sig]:
+        return False
+    return all(len(p) < min_len or any(p in ib for ib in inputs) for p in parts)
+
+
 def evaluate(scrubber, plugin, inputs: list[str], fidelity,
              min_len: int = 4) -> tuple[str, list[dict]]:
     import os
@@ -85,11 +116,15 @@ def evaluate(scrubber, plugin, inputs: list[str], fidelity,
         os.unlink(op)
     common = common_substrings(outs, min_len)
     introduced = {s for s in common if all(s not in ib for ib in in_bytes)}  # not echoed content
+    constants = list(plugin.mandatory_constants())
     mand = set()
-    for c in plugin.mandatory_constants():
+    for c in constants:
         for L in range(min_len, len(c) + 1):
             for i in range(len(c) - L + 1): mand.add(c[i:i + L])
-    sigs = maximal(introduced - mand)
+    # Maximal first, then explained: a run that starts partway into a mark is a
+    # piece of a longer run, and judging the piece alone would flag the half-mark.
+    sigs = [s for s in maximal(introduced - mand)
+            if not explained(s, constants, in_bytes, min_len)]
     verdict = "fail" if sigs else "pass"
     detail = [{"space": "byte", "bytes_hex": s.hex(),
                "decoded": s.decode("latin-1", "replace")} for s in sigs]

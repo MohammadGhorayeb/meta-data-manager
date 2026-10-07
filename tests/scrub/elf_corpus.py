@@ -43,8 +43,21 @@ def home(user: str) -> bytes:
     return f"/home/{user}/proj".encode()
 
 
-def module(user: str) -> bytes:
-    return f"github.com/{user}/tool".encode()
+def module(user: str, seed: int = 0) -> bytes:
+    hosts = ("github.com/{}/tool", "gitlab.example.org/{}/x", "codeberg.org/{}/hello-cli")
+    return hosts[seed % len(hosts)].format(user).encode()
+
+
+def code(seed: int = 0) -> bytes:
+    """Filler machine code; a seed makes it differ, so a diverse set of inputs
+    shares no code page (what the fingerprint guard needs to see past)."""
+    return CODE if not seed else bytes((b * (2 * seed + 1) + seed) & 0xFF for b in CODE)
+
+
+def program_text(seed: int = 0) -> bytes:
+    """A seed changes the text and the size, so diverse inputs share neither."""
+    return PROGRAM_TEXT if not seed else (PROGRAM_TEXT + f"build {seed}\0".encode()
+                                          + b"~" * (97 * seed))
 
 
 def revision(user: str) -> bytes:
@@ -65,10 +78,14 @@ def go_build_id(user: str) -> bytes:
     return b"/".join(parts)                     # 83 characters, as Go writes them
 
 
-def modinfo(user: str) -> bytes:
+def modinfo(user: str, seed: int = 0) -> bytes:
     pseudo = b"v0.0.0-20261006091551-" + revision(user)[:12]
-    text = (b"path\t" + module(user) + b"\nmod\t" + module(user) + b"\t" + pseudo
-            + b"\t\nbuild\t-buildmode=exe\nbuild\tvcs=git\nbuild\tvcs.revision="
+    settings = (b"build\t-buildmode=exe\n" if not seed else
+                f"build\t-buildmode={('exe', 'pie', 'exe')[seed % 3]}\n"
+                f"build\tCGO_ENABLED={seed % 2}\n"
+                f"build\tGOARCH={('amd64', 'arm64', '386')[seed % 3]}\n".encode())
+    text = (b"path\t" + module(user, seed) + b"\nmod\t" + module(user, seed) + b"\t"
+            + pseudo + b"\t\n" + settings + b"build\tvcs=git\nbuild\tvcs.revision="
             + revision(user) + b"\nbuild\tvcs.time=" + commit_time(user)
             + b"\nbuild\tvcs.modified=false\n")
     return GO_START + text + GO_END
@@ -92,7 +109,8 @@ def _note(order: str, name: bytes, ntype: int, desc: bytes) -> bytes:
 def build(user: str = "alice", *, bits: int = 64, order: str = "<",
           etype: int = ET_DYN, go: bool = False, read_build_info: bool = False,
           text_path: bool = False, shared_tail: bool = False,
-          unloaded_inside_load: bool = False, section_headers: bool = True) -> bytes:
+          unloaded_inside_load: bool = False, section_headers: bool = True,
+          seed: int = 0) -> bytes:
     """One executable whose every build-dependent value is derived from `user`.
 
     `text_path` puts the absolute build path in `.rodata`, as an `assert` does
@@ -100,9 +118,10 @@ def build(user: str = "alice", *, bits: int = 64, order: str = "<",
     keeps and reports. `shared_tail` gives a function a name that is the tail of
     the source-file symbol's name, as linkers produce by merging string tails.
     """
-    rodata = PROGRAM_TEXT + (home(user) + b"/hello.c\0" if text_path else b"")
+    rodata = program_text(seed) + (home(user) + b"/hello.c\0" if text_path else b"")
     if go:
-        rodata += modinfo(user) + (READ_BUILD_INFO + b"\0" if read_build_info else b"")
+        rodata += modinfo(user, seed) + (READ_BUILD_INFO + b"\0"
+                                         if read_build_info else b"")
     loaded = []
     if bits == 64:
         # What x86-64 gcc writes by default (CET): an 8-aligned property note, whose
@@ -116,10 +135,10 @@ def build(user: str = "alice", *, bits: int = 64, order: str = "<",
     if go:
         loaded.append((".note.go.buildid", SHT_NOTE, SHF_ALLOC,
                        _note(order, b"Go", 4, go_build_id(user)), 4))
-    loaded += [(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXEC, CODE, 16),
+    loaded += [(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXEC, code(seed), 16),
                (".rodata", SHT_PROGBITS, SHF_ALLOC, rodata, 8)]
     if go:
-        info = modinfo(user)
+        info = modinfo(user, seed)
         version = b"go1.22.2"
         header = b"\xff Go buildinf:" + bytes([bits // 8, 2]) + bytes(16)
         loaded.append((".go.buildinfo", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE,

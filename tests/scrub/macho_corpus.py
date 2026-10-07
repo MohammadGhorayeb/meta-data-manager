@@ -99,7 +99,7 @@ def build(user: str = "alice", *, filetype: int = MH_EXECUTE, cpu: int = CPU_ARM
           bits: int = 64, order: str = "<", signed: bool = True,
           sign_style: str = "linker", identity: bool = False, go: bool = False,
           read_build_info: bool = False, text_path: bool = False,
-          dwarf_overlaps: bool = False) -> bytes:
+          dwarf_overlaps: bool = False, seed: int = 0) -> bytes:
     """One Mach-O slice whose every build-dependent value derives from `user`."""
     o = order
     seg_fmt = o + ("II16sQQQQiiII" if bits == 64 else "II16sIIIIiiII")
@@ -107,14 +107,15 @@ def build(user: str = "alice", *, filetype: int = MH_EXECUTE, cpu: int = CPU_ARM
     hdr_len = 32 if bits == 64 else 28
     seg_len, sect_len = struct.calcsize(seg_fmt), struct.calcsize(sect_fmt)
 
-    cstring = PROGRAM_TEXT + (home(user) + b"hello.c\0" if text_path else b"")
-    text_code = CODE
+    cstring = (PROGRAM_TEXT if not seed else ec.program_text(seed)) + (
+        home(user) + b"hello.c\0" if text_path else b"")
+    text_code = CODE if not seed else ec.code(seed)
     if go:
         text_code = (b'\xff Go build ID: "' + ec.go_build_id(user) + b'"\n \xff'
-                     + CODE)
-        cstring += ec.modinfo(user) + (ec.READ_BUILD_INFO + b"\0"
-                                       if read_build_info else b"")
-    data_sect = ec.modinfo(user) if go else b"\x01\x02\x03\x04"
+                     + text_code)
+        cstring += ec.modinfo(user, seed) + (ec.READ_BUILD_INFO + b"\0"
+                                             if read_build_info else b"")
+    data_sect = ec.modinfo(user, seed) if go else bytes([1, 2, 3, 4 + seed])
 
     # Load commands other than the segments, sized first so offsets can be fixed.
     dylib = filetype == MH_DYLIB
@@ -234,11 +235,11 @@ def _patch_linkedit(out: bytearray, o: str, bits: int, hdr_len: int, seg_len: in
     struct.pack_into(o + ("Q" if bits == 64 else "I"), out, field, size)
 
 
-def fat(user: str = "alice") -> bytes:
+def fat(user: str = "alice", seed: int = 0) -> bytes:
     """A universal file: an unsigned x86_64 slice and a signed arm64 one, the shape
     `clang -arch arm64 -arch x86_64` writes (survey §9)."""
-    x86 = build(user, cpu=CPU_X86_64, signed=False)
-    arm = build(user)
+    x86 = build(user, cpu=CPU_X86_64, signed=False, seed=seed)
+    arm = build(user, seed=seed)
     align = 1 << 14
     first = align
     second = (first + len(x86) + align - 1) & ~(align - 1)

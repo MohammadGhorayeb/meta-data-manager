@@ -1,0 +1,247 @@
+{
+  "format": "exe",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p5",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-10-07T13:03:08.905125+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no builder-correlated byte survives in any of 12 layouts (elf-c, elf-go, elf-32be, macho-thin, macho-universal, macho-go, pe-msvc, pe-mingw, pe-go, pe-dll, real-elf-gcc, real-pe-mingw); real compilers here: real-elf-gcc, real-pe-mingw"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "exe_f2_not_built: dropping the zeroed parts and normalising the container (section order and names, header versions) without touching code is not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "exe_f3_not_applicable: a lossy tier has no meaning for a program -- re-compiling it is not cleaning it"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "compiler still identifiable from the container around the code (the code itself is excluded from this channel: F1 keeps it and it differs by definition). elf (gcc, clang): still separate on section_layout, section_names, size; pe (mingw-gcc, clang-lld): still separate on checksum_set, dll_characteristics, dos_stub, linker_version, machine_characteristics, os_subsystem_versions, section_flags, section_names, size; F1 closed data_directories, debug_entries",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:section_layout",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (elf)",
+          "evidence": "struct:section_layout constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:section_names",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (elf)",
+          "evidence": "struct:section_names constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (elf)",
+          "evidence": "struct:size constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:checksum_set",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:checksum_set constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:dll_characteristics",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:dll_characteristics constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:dos_stub",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:dos_stub constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:linker_version",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:linker_version constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:machine_characteristics",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:machine_characteristics constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:os_subsystem_versions",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:os_subsystem_versions constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:section_flags",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:section_flags constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:section_names",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:section_names constant within a compiler, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "compiler (pe)",
+          "evidence": "struct:size constant within a compiler, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "exe_f2_not_built: dropping the zeroed parts and normalising the container (section order and names, header versions) without touching code is not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "exe_f3_not_applicable: a lossy tier has no meaning for a program -- re-compiling it is not cleaning it"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "00",
+        "decoded": "\u0000"
+      },
+      {
+        "bytes_hex": "30",
+        "decoded": "0"
+      },
+      {
+        "bytes_hex": "303030302d30302d30305430303a30303a30305a",
+        "decoded": "0000-00-00T00:00:00Z"
+      },
+      {
+        "bytes_hex": "612e6f757400",
+        "decoded": "a.out\u0000"
+      }
+    ],
+    "signatures": []
+  }
+}

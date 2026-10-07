@@ -143,7 +143,7 @@ class _Section:
 def build(user: str = "alice", *, shape: str = "msvc", plus: bool = True,
           go: bool = False, dll: bool = False, reads_version: bool = False,
           signed: bool = False, dotnet: bool = False, reloc_into_debug: bool = False,
-          text_path: bool = False) -> bytes:
+          text_path: bool = False, seed: int = 0) -> bytes:
     msvc = shape == "msvc"
     text = _Section(b".text", TEXT, 0x60000020)
     rdata = _Section(b".rdata", RDATA, 0x40000040)
@@ -154,10 +154,11 @@ def build(user: str = "alice", *, shape: str = "msvc", plus: bool = True,
 
     if go:
         text.put(b'\xff Go build ID: "' + ec.go_build_id(user) + b'"\n \xff')
-    text.put(CODE)
-    rdata.put(PROGRAM_TEXT + (home_unix(user) + b"/hello.c\0" if text_path else b""))
+    text.put(CODE if not seed else ec.code(seed))
+    rdata.put((PROGRAM_TEXT if not seed else ec.program_text(seed))
+              + (home_unix(user) + b"/hello.c\0" if text_path else b""))
     if go:
-        info = ec.modinfo(user)
+        info = ec.modinfo(user, seed)
         rdata.put(info)
         data.put(b"\xff Go buildinf:" + bytes([8, 2]) + bytes(16)
                  + ec._uvarint(8) + b"go1.22.2" + ec._uvarint(len(info)) + info, 16)

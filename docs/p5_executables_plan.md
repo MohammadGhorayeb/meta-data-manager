@@ -372,3 +372,51 @@ verified first in an x86-64 container (55 pass; Go-on-Wine crashes identically
 before and after under Docker's emulation, so CI's native run is its first real
 test). The macOS job gains `setup-go` — its first run skipped the Go test for want
 of it.
+
+---
+
+## 11. M4 — the `exe` matrix
+
+`tests/harness/plugins/exe.py` (`ExePlugin`), `tests/scrub/e_exe.py` (E-EXE) and
+`tests/scrub/gen_matrix_exe.py`; published as
+`tests/harness/results/exe_irreversible_scrubber.json`, generated on x86-64 Linux
+(CI's platform) and re-measured there by the evidence gate.
+
+- **Content identity** is the machine code, read with independent parsers
+  (pyelftools, macholib, pefile): every executable section, hashed. Whether a
+  program still *runs* the same stays the per-format tests' job.
+- **A1@F1: pass** in twelve layouts — every corpus shape (ELF C, Go, 32-bit
+  big-endian; Mach-O thin, universal, Go; PE MSVC, mingw, Go, DLL) and real builds
+  from three directories with gcc (ELF) and mingw-w64 (PE) on Linux, clang on a
+  Mac. Builders' names have equal length; the length channel is limit #49.
+- **A2@F1: fail**, as it must — F1 keeps the code, and the compiler is in it. The
+  categorical channel therefore leaves the code out and names the CONTAINER traits
+  that still separate compilers, which is the specification for an F2:
+  - ELF, gcc vs clang: `section_names`, `section_layout`, `size`;
+  - PE, mingw-w64 gcc vs clang + lld: `linker_version`, `dos_stub`,
+    `machine_characteristics`, `dll_characteristics`, `os_subsystem_versions`,
+    `section_names`, `section_flags`, `checksum_set`, `size` — and F1 **closed**
+    `data_directories` and `debug_entries`, which separated them before.
+  A Mac has one C compiler, so there the cell says not measured.
+- **The fingerprint guard runs per family** (ELF, signed Mach-O, PE, and Go across
+  all three), because a mixed set can never fail on a mark only one format
+  carries: run once over everything mixed, it passed with nothing declared, which
+  meant it could not fail. Per family, with nothing declared, it failed in all
+  four, and every flag was one of two things:
+  1. **Corpus artifacts** — identical code pages, equal file sizes, identical Go
+     build lines, builders' names of equal length. Fixed by a `seed` in all three
+     corpora (code, text, size, module host, build settings), not by declaring.
+  2. **The marks blanking leaves**, joined to the input's own bytes — a zeroed value
+     beside the name of its field. The guard only excluded runs lying wholly inside
+     a declared constant, so a mark fused to echoed bytes was flagged however it
+     was declared. `fingerprint_guard.explained` now cuts a run at declared
+     constants and at fill runs of signature length, strips fill from the edges,
+     and calls it explained only if every piece is too short or is in some input.
+     A tag between zero pads is still caught (test), and so is a numeric stamp that
+     merely contains zeros (test). It only ever excludes more, so no other format's
+     verdict can change.
+  Declared, generated from the code: the two fill characters (`\0`, and `0` for
+  Go's stamps), the one shape every blanked commit time takes, and `a.out`.
+  Found on the way: Go module paths were blanked with their `.` and `/` kept, which
+  kept each segment's length — `github.com/<name>/…` gave away the length of the
+  name. They are filled whole now; only the total length stays.

@@ -32,6 +32,17 @@ _MODULE_PATH = re.compile(rb"(?:\n|\xd6\x18\xe6)(?:path|mod)\t([^\t\n]+)")
 # text: `\xff Go build ID: "<id>"\n \xff`.
 TEXT_BUILD_ID = re.compile(rb'\xff Go build ID: "([A-Za-z0-9_\-/]{20,200})"\n \xff')
 _ID_ALPHABET = (string.ascii_letters + string.digits + "-_").encode()
+# What a blanked stamp or module path is filled with. Declared to the fingerprint
+# guard as the mark it is (limit #9).
+BLANK = 0x30                                  # "0"
+
+
+def _blank_time(value: bytes) -> bytes:
+    return bytes(BLANK if chr(c) in string.hexdigits else c for c in value)
+
+
+# Every blanked commit time reads the same: the mark, declared rather than hidden.
+BLANKED_TIME = _blank_time(b"2000-01-01T00:00:00Z")
 
 
 def can_read_build_info(data) -> bool:
@@ -66,13 +77,13 @@ def blank(buf: bytearray, data) -> list[tuple[int, int]]:
     for start, end in stamps(data):
         # Hex and digits to `0`, separators kept: `2026-10-06T09:15:51Z` reads
         # `0000-00-00T00:00:00Z`, still the shape a parser expects.
-        buf[start:end] = bytes(0x30 if chr(c) in string.hexdigits else c
-                               for c in buf[start:end])
+        buf[start:end] = _blank_time(bytes(buf[start:end]))
         edited.append((start, end))
     for start, end in module_paths(data):
-        # Letters and digits to `0`; `.`, `/`, `-` and `_` kept, so the line still
-        # parses as a module path.
-        buf[start:end] = bytes(0x30 if chr(c).isalnum() else c for c in buf[start:end])
+        # Every character, separators included: keeping `.` and `/` would keep the
+        # length of each segment -- `github.com/<name>/...` says how long the name
+        # is -- and only the total length can stay without moving a byte.
+        buf[start:end] = bytes([BLANK]) * (end - start)
         edited.append((start, end))
     return edited
 
@@ -94,8 +105,7 @@ def residuals(data) -> list[str]:
     out = []
     if any(any(c not in b"0-:TZ" for c in data[a:b]) for a, b in stamps(data)):
         out.append("Go's commit stamp is still in the build info")
-    if any(chr(c).isalnum() and c != 0x30 for a, b in module_paths(data)
-           for c in data[a:b]):
+    if any(c != BLANK for a, b in module_paths(data) for c in data[a:b]):
         out.append("the Go module path is still in the build info")
     return out
 
