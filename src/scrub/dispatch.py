@@ -75,6 +75,10 @@ def default_dispatcher() -> Dispatcher:
     # pictures, so `claims()` requires the file to say it is a raw.
     from .formats.raw.handler import RawHandler
     d.register(RawHandler())
+    # Plain TIFF after RAW: same prefix, and RAW claims only files that say they
+    # are raws, so what reaches this handler is a scan, an export, a conversion.
+    from .formats.tiff.handler import TiffHandler
+    d.register(TiffHandler())
     # Executables (Phase 5). `\x7fELF` is shared with nothing else here.
     from .formats.exe.handler import ExeHandler
     d.register(ExeHandler())

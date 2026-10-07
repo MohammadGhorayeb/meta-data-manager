@@ -145,3 +145,60 @@ def sanitize(profile: bytes) -> bytes:
     off, length = _F_PROFILE_ID
     buf[off:off + length] = new_id
     return bytes(buf)
+
+
+def description(profile: bytes) -> str | None:
+    """The profile's `desc` text: ICC v2 `textDescriptionType` (ASCII) or v4
+    `multiLocalizedUnicodeType` (first record, UTF-16BE). None if absent."""
+    if len(profile) < HEADER_LEN + 4:
+        return None
+    count = struct.unpack_from(">I", profile, HEADER_LEN)[0]
+    for i in range(min(count, 256)):
+        at = HEADER_LEN + 4 + 12 * i
+        if at + 12 > len(profile):
+            return None
+        sig, off, size = struct.unpack_from(">4sII", profile, at)
+        if sig != b"desc" or off + 12 > len(profile):
+            continue
+        kind = profile[off:off + 4]
+        if kind == b"desc":
+            n = struct.unpack_from(">I", profile, off + 8)[0]
+            return profile[off + 12:off + 12 + n].split(b"\0")[0].decode("latin-1")
+        if kind == b"mluc":
+            records, rsize = struct.unpack_from(">II", profile, off + 8)
+            if records and rsize >= 12:
+                length, start = struct.unpack_from(">II", profile, off + 16 + 4)
+                return profile[off + start:off + start + length].decode(
+                    "utf-16-be", "replace").rstrip("\0")
+        return None
+    return None
+
+
+# Published colour spaces: a profile describing one of these is a shared canned
+# profile -- the same bytes in millions of files -- and is kept as it is. Zeroing
+# its header would turn a crowd value into a mark of this tool. Anything else (a
+# display calibrated on someone's own screen, a printer profile made for one
+# machine) is sanitized.
+STANDARD_DESCRIPTIONS = (
+    "srgb", "display p3", "dci(p3)", "dci-p3", "smpte rp 431-2", "p3",
+    "adobe rgb (1998)", "generic rgb profile", "generic gray profile",
+    "generic gray gamma 2.2 profile", "generic cmyk profile", "generic lab profile",
+    "generic xyz profile", "rec. itu-r bt.2020", "rec. itu-r bt.709", "itu-r bt.2020",
+    "itu-r bt.709", "itu-2020", "itu-709", "rec. 2020", "rec. 709", "romm rgb",
+    "prophoto rgb", "aces cg linear", "acescg linear", "coated fogra39",
+    "uncoated fogra29", "u.s. web coated (swop) v2", "japan color 2001 coated",
+    "dot gain 20%", "gray gamma 2.2", "linear gray", "sgray", "image p3",
+)
+
+
+def is_standard(profile: bytes) -> bool:
+    """Anchored at the start, a non-alphanumeric character ending the name: a
+    profile CALLED `sRGB IEC61966-2.1` is the published one; one called
+    `Alice sRGB calibration` is not."""
+    desc = (description(profile) or "").strip().lower()
+    for name in STANDARD_DESCRIPTIONS:
+        if desc.startswith(name):
+            rest = desc[len(name):]
+            if not rest or not rest[0].isalnum():
+                return True
+    return False

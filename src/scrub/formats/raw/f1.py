@@ -38,34 +38,24 @@ from __future__ import annotations
 
 import struct
 
-from ...errors import ParseError, ScrubError
+from ...errors import ParseError
 from ...standards import tiff_ifd as t
-from ..jpeg import f1 as jpeg_f1
-from ..jpeg import segments as jseg
+from ..tiff import clean as tc
 from . import identity
 from .identity import Field
 
 MAGIC_RW2 = 0x0055
 TAG_RW2_JPG_FROM_RAW = 0x002E
 
-# Blanked in EVERY IFD of the file (IFD0, IFD1..., SubIFDs, ExifIFD).
-_BLANK_ANYWHERE = {
-    0x010E: "ImageDescription", 0x0131: "Software", 0x0132: "DateTime",
-    0x013C: "HostComputer", 0x9003: "DateTimeOriginal", 0x9004: "DateTimeDigitized",
-    0x9010: "OffsetTime", 0x9011: "OffsetTimeOriginal",
-    0x9012: "OffsetTimeDigitized", 0x9290: "SubSecTime",
-    0x9291: "SubSecTimeOriginal", 0x9292: "SubSecTimeDigitized",
-    0x9286: "UserComment", 0xC62F: "CameraSerialNumber",
-    0xC68B: "OriginalRawFileName",
-}
-# Removed (entry deleted in place, value zeroed) from every IFD.
-_REMOVE_ANYWHERE = {0x02BC: "XMP", 0x83BB: "IPTC", 0x8649: "Photoshop"}
+# Shared with plain TIFF (formats/tiff/clean.py); the aliases keep RAW's names.
+_BLANK_ANYWHERE = tc.BLANK_ANYWHERE
+_REMOVE_ANYWHERE = tc.REMOVE_ANYWHERE
 # Removed in a DNG only. 0xC634 is Adobe's private block there, carrying the
 # ORIGINAL maker note; in a Sony ARW the same tag points at the enciphered white
 # balance the decoder needs, so it is never touched outside DNG.
 _REMOVE_IN_DNG = {0xC68C: "OriginalRawFileData", 0xC634: "DNGPrivateData"}
 TAG_DNG_VERSION = 0xC612
-TAG_GPS = 0x8825
+TAG_GPS = tc.TAG_GPS
 TAG_SEMANTIC_NAME = 0xCD2E
 
 # Dates and time zones inside maker notes, beside the serials.
@@ -76,46 +66,19 @@ MAKERNOTE_DATES = {
     "olympus": (Field("MakerNote/CameraSettings", 0x0908, "DateTimeUTC"),),
 }
 
-# Image-data locators: (offsets tag, byte-counts tag).
-_DATA_TAGS = ((0x0111, 0x0117), (0x0144, 0x0145), (0x0201, 0x0202))
 # A preview is a baseline or progressive JPEG. The raw image itself can be a JPEG
 # too -- Canon's is lossless (SOF3) -- and must never reach the preview cleaner,
 # whose rewrites the image-data check is told to allow.
-_PREVIEW_FRAMES = {"sof0", "sof1", "sof2"}
+_PREVIEW_FRAMES = tc.JPEG_FRAMES
 _RAW_PHOTOMETRIC = {32803, 34892}          # CFA, LinearRaw
-# Marks a cleaned preview leaves, declared to the scrubber-fingerprint guard (see
-# RawPlugin.mandatory_constants): EOI then the zero padding that keeps the preview's
-# length, and SOI followed directly by a kept ICC segment once EXIF is gone.
-PREVIEW_PAD_MARK = b"\xff\xd9" + bytes(254)
-PREVIEW_ICC_FIRST = b"\xff\xd8\xff\xe2"
-BLANKED_RUN = bytes(1024)                  # what a blanked value or dropped mask is
+# Marks a cleaned preview leaves (see RawPlugin.mandatory_constants), shared.
+PREVIEW_PAD_MARK = tc.JPEG_PAD_MARK
+PREVIEW_ICC_FIRST = tc.JPEG_ICC_FIRST
+BLANKED_RUN = tc.BLANKED_RUN
 TAG_CR2_SLICE = 0xC640
 
 
-def _short(entry: t.IfdEntry, order: str) -> int:
-    return struct.unpack(order + "H", struct.pack(order + "I", entry.raw_value)[:2])[0]
-
-
-def _ints(buf, entry: t.IfdEntry, order: str) -> list[int]:
-    raw = t.value_bytes(buf, entry)
-    code = {3: "H", 4: "I", 13: "I"}.get(entry.type)
-    if code is None:
-        raise ParseError(f"RAW: tag {entry.tag:#06x} is not an integer array")
-    return list(struct.unpack(f"{order}{entry.count}{code}", raw))
-
-
-def _data_regions(buf, ifd: t.Ifd) -> list[tuple[int, int]]:
-    """Where an IFD's image bytes are: strips, tiles or an embedded JPEG."""
-    out = []
-    for off_tag, len_tag in _DATA_TAGS:
-        offs, lens = ifd.get(off_tag), ifd.get(len_tag)
-        if offs is None or lens is None:
-            continue
-        o, n = _ints(buf, offs, ifd.order), _ints(buf, lens, ifd.order)
-        if len(o) != len(n):
-            raise ParseError(f"RAW: {ifd.name} offsets and counts disagree")
-        out += [(ifd.base + a if off_tag == 0x0201 else a, b) for a, b in zip(o, n, strict=True)]
-    return out
+_short, _ints, _data_regions = tc.short, tc.ints, tc.data_regions
 
 
 def _is_raw_ifd(ifd: t.Ifd, is_dng: bool) -> bool:
@@ -173,47 +136,9 @@ def _previews(buf, tree: t.IfdTree, note: t.MakerNote | None
     return [(w, a, n) for w, a, n in out if 0 <= a and a + n <= len(buf) and n > 0]
 
 
-def _has_preview_metadata(blob: bytes) -> bool:
-    """True when the JPEG F1 keep-list would change this preview: a metadata
-    segment, a non-canonical JFIF, or anything but zeros after EOI. Decided by the
-    same keep-list the JPEG format uses, so the two cannot disagree."""
-    if blob[:2] != b"\xff\xd8":
-        return False
-    structure = jseg.walk(blob)
-    if not any(s.kind in _PREVIEW_FRAMES for s in structure.segments):
-        return False                               # not a preview: never touched
-    if structure.trailer.strip(b"\x00"):
-        return True
-    body = blob[:len(blob) - len(structure.trailer)]
-    return jpeg_f1.scrub(body, keep_icc=True) != body
-
-
-def _clean_preview(buf: bytearray, at: int, length: int) -> bool:
-    """Strip a preview JPEG's metadata, keeping its picture and colour profile,
-    inside its own extent: the shorter result is padded with zeros after EOI, so
-    nothing after it moves. Returns whether it changed anything."""
-    blob = bytes(buf[at:at + length])
-    if not _has_preview_metadata(blob):
-        return False
-    cleaned = jpeg_f1.scrub(blob, keep_icc=True)
-    if len(cleaned) > length:
-        raise ScrubError("RAW: a cleaned preview came out larger than the original")
-    buf[at:at + length] = cleaned + bytes(length - len(cleaned))
-    return True
-
-
-def _drop_gps(buf: bytearray, tree: t.IfdTree, removed: list[str]) -> None:
-    gps = tree.ifd("GPSIFD")
-    if gps is None:
-        return
-    for ifd in tree.ifds:
-        if ifd.get(TAG_GPS) is not None:
-            t.remove_entry(buf, ifd, TAG_GPS)
-    for e in gps.entries:
-        if not e.inline:
-            t.zero(buf, e.data_offset, e.data_length)
-    t.zero(buf, gps.offset, 2 + 12 * len(gps.entries) + 4)
-    removed.append(f"GPS ({len(gps.entries)} fields)")
+_has_preview_metadata = tc.jpeg_has_metadata
+_clean_preview = tc.clean_jpeg_in_place
+_drop_gps = tc.drop_gps
 
 
 def _drop_semantic_masks(buf: bytearray, tree: t.IfdTree, removed: list[str]
@@ -310,18 +235,7 @@ def _scrub(data: bytes, report: bool = False):
 
 def _check_image_data_untouched(data: bytes, buf: bytearray,
                                 before: dict, allowed: list[tuple[int, int]]) -> None:
-    """The tier's promise, checked on the bytes: every image region in the input --
-    sensor data above all -- is byte-identical in the output, except the previews
-    F1 cleaned and the masks it dropped."""
-    if len(buf) != len(data):
-        raise ScrubError("RAW F1 changed the file's length")
-    view = memoryview(buf)
-    for regions in before.values():
-        for a, n in regions:
-            if any(x <= a and a + n <= x + m for x, m in allowed):
-                continue
-            if view[a:a + n] != data[a:a + n]:
-                raise ScrubError(f"RAW F1 altered image data at {a} ({n} bytes)")
+    tc.check_image_data_untouched(data, buf, before, allowed, "RAW")
 
 
 def residuals(data: bytes, magics=t.RAW_MAGICS) -> list[str]:

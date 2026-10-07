@@ -85,6 +85,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import pdf_corpus as pc
     from . import pe_corpus as pec
     from . import raw_corpus as rc
+    from . import tiff_corpus as tfc
     from .test_png import _png
 
     out: dict[str, tuple[bytes, tuple[str, ...]]] = {
@@ -94,6 +95,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
         "exe": (ec.build("alice", go=True), ("F1",)),
         "exe-32be": (ec.build("alice", bits=32, order=">", shared_tail=True),
                      ("F1",)),
+        "tiff": (tfc.build(), ("F1",)),
         "exe-macho": (mc_.build("alice", go=True), ("F1",)),
         "exe-fat": (mc_.fat("alice"), ("F1",)),
         "exe-pe-msvc": (pec.build("alice", dll=True), ("F1",)),

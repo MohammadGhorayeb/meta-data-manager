@@ -81,6 +81,10 @@ def _build(kind: str, tmpdir: str) -> str | None:
     if kind == "heic":
         from . import heic_corpus as hc  # noqa: PLC0415
         return hc.handbuilt(p)
+    if kind == "tiff":
+        from . import tiff_corpus as tfc  # noqa: PLC0415
+        open(p, "wb").write(tfc.build(order=">", pages=3))
+        return p
     if kind == "exe":
         # The recomputed build IDs are hashes over the cleaned bytes: any
         # order-dependence anywhere upstream would show up in them first.

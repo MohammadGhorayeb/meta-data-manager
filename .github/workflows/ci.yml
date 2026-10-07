@@ -163,6 +163,7 @@ jobs:
       #   binutils, git     `strip` (the survey's benchmark) and Go's commit stamp
       #   wine64, mingw-w64 build Windows programs and run them, before and after
       #   lld               clang's linker: the second Windows compiler in E-EXE (A2)
+      #   libtiff-tools     tiffcp, a second TIFF writer for E-TIFF (A2)
       # Tests needing a missing tool skip cleanly, so a silent failure here
       # would weaken the suite rather than break it. Hence: no `|| true`.
       - name: Install external tools
@@ -171,7 +172,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -480,7 +481,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -560,7 +561,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

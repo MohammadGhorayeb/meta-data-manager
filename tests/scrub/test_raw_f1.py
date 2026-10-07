@@ -21,7 +21,7 @@ sys.path.insert(0, REPO)
 
 from src.scrub import cli  # noqa: E402
 from src.scrub.dispatch import default_dispatcher  # noqa: E402
-from src.scrub.errors import ParseError, ScrubError, UnsupportedFormatError  # noqa: E402
+from src.scrub.errors import ParseError, ScrubError  # noqa: E402
 from src.scrub.formats.jpeg import segments as jseg  # noqa: E402
 from src.scrub.formats.raw import f1, identity  # noqa: E402
 from src.scrub.formats.raw.handler import RawHandler  # noqa: E402
@@ -144,13 +144,14 @@ def test_panasonic_keeps_its_serials_in_the_preview_and_loses_them_there():
 
 
 def test_a_plain_tiff_picture_is_not_claimed_as_a_raw(tmp_path):
+    """Not a raw -- and since Phase 6 M1, not unsupported either: the plain-TIFF
+    handler takes it, after RAW has declined."""
     from PIL import Image
     path = tmp_path / "plain.tif"
     Image.new("RGB", (8, 8), (1, 2, 3)).save(path)
     data = path.read_bytes()
     assert not RawHandler().claims(data)
-    with pytest.raises(UnsupportedFormatError):
-        default_dispatcher().resolve(data)
+    assert default_dispatcher().resolve(data).format_id == "tiff"
 
 
 def test_malformed_input_fails_closed_with_a_parse_error():

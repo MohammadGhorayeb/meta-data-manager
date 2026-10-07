@@ -86,6 +86,9 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "heic":
         from . import heic_corpus as hc  # noqa: PLC0415
         return open(hc.handbuilt(str(tmp_path / "t.heic")), "rb").read()
+    if fmt == "tiff":
+        from . import tiff_corpus as tfc  # noqa: PLC0415
+        return tfc.build()
     if fmt == "exe":
         # Go: the most edits (two build IDs, the stamp in both copies, the module
         # path), so the most chances for a second pass to find something new.

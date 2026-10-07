@@ -358,6 +358,29 @@ video encoded at a higher quality is a bigger file, and nothing in the metadata 
 change that.
 <!-- FORMAT:mp4:END -->
 
+<!-- FORMAT:tiff:BEGIN -->
+TIFF pictures — what scanners, publishing tools and photo editors save when quality
+matters more than size, and what macOS makes when you convert a photo with its
+built-in tools.
+
+**What goes.** Everything the photo formats carry — camera and lens serials, owner,
+dates, GPS, the editing software, XMP, IPTC and Photoshop blocks — plus two fields
+TIFF has of its own that tools fill with **the file's original location on your
+computer** ("DocumentName", "PageName"): the standard tool, ExifTool, leaves the first
+of those in place even when told to remove everything. Every page of a multi-page
+file is cleaned, and so is the small preview picture some TIFFs carry.
+
+**A conversion can copy your details twice.** Converting a photo to TIFF with macOS's
+own tool copied its camera, owner and location across, and added a second copy in a
+different format it made up from the first. Both go.
+
+**What stays.** Every page's pixels, exactly. The colour profile stays too, because
+the colours depend on it: a standard one (sRGB, Display P3, Adobe RGB…) exactly as
+it was, any other — a screen calibrated at home, say — with the details of who made
+it removed. Nothing inside a TIFF can move, so removed details leave zeros of the
+same length.
+<!-- FORMAT:tiff:END -->
+
 <!-- FORMAT:exe:BEGIN -->
 Programs — the files a computer runs, on all three systems: Linux (ELF), Mac
 (Mach-O, including the "universal" kind that carries an Intel and an Apple-chip copy

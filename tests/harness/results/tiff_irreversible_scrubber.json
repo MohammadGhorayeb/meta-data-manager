@@ -1,0 +1,183 @@
+{
+  "format": "tiff",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p6",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-10-07T13:47:13.314883+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no metadata-correlated byte survives, in either byte order (IFD0 strings incl. DocumentName/PageName, XP fields, EXIF, GPS, XMP, IPTC, Photoshop, maker note, a personal ICC header, a second page, the thumbnail's EXIF)"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "tiff_f2_not_built: re-storing the pixels losslessly through one canonical writer is not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "tiff_f3_not_built: a lossy tier has no reason to exist where an F2 could remove the writer's fingerprint without loss"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "writer still identifiable: byte_order, compression, icc, ifds, planar, rows_per_strip, size, tag_sets. Peer set = pillow, pillow_lzw, libtiff_tiffcp, macos_sips.",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:byte_order",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "TIFF writer",
+          "evidence": "struct:byte_order constant within a writer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:compression",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "TIFF writer",
+          "evidence": "struct:compression constant within a writer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:icc",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "TIFF writer",
+          "evidence": "struct:icc constant within a writer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:ifds",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "TIFF writer",
+          "evidence": "struct:ifds constant within a writer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:planar",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "TIFF writer",
+          "evidence": "struct:planar constant within a writer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:rows_per_strip",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "TIFF writer",
+          "evidence": "struct:rows_per_strip constant within a writer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "TIFF writer",
+          "evidence": "struct:size constant within a writer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:tag_sets",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "TIFF writer",
+          "evidence": "struct:tag_sets constant within a writer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "tiff_f2_not_built: re-storing the pixels losslessly through one canonical writer is not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "tiff_f3_not_built: a lossy tier has no reason to exist where an F2 could remove the writer's fingerprint without loss"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [
+      {
+        "bytes_hex": "00",
+        "decoded": "\u0000"
+      }
+    ],
+    "signatures": []
+  }
+}

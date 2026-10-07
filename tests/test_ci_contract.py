@@ -58,6 +58,8 @@ _PACKAGE_FOR = {
     "x86_64-w64-mingw32-windres": "binutils-mingw-w64-x86-64",
     "wine64": "wine64",
     "wine": "wine64",
+    # Phase 6: libtiff's own writer, the non-Pillow producer in E-TIFF.
+    "tiffcp": "libtiff-tools",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.
@@ -85,6 +87,9 @@ _OPTIONAL = {
     "rustc": "builds the real Rust program whose debug map names the home directory "
              "(survey §4.1); preinstalled on the macOS runner, where that test runs. "
              "The Linux legs need no Rust compiler",
+    "sips": "macOS's own image converter, one TIFF writer in E-TIFF's peer set. "
+            "Absent on Linux, where Pillow, Pillow-LZW and libtiff's tiffcp still "
+            "separate -- the A2 verdict is the same either way, measured on both",
     "sysctl": "macOS-only source of free memory for the memory preflight (limit "
               "#38); Linux reads /proc/meminfo instead, and a platform where neither "
               "answers skips the check rather than refusing every scrub",

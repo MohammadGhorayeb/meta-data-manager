@@ -118,7 +118,9 @@ real benchmark — and in four of the six, a measured way it fails.
   generic part of `formats/raw/f1.py` (`clean_tiff` and its tag tables) moves to a
   shared module both handlers call — written once, as the plan requires — and plain
   TIFF adds what a raw does not need kept: Make/Model (no decoder needs them in a
-  plain TIFF), `DocumentName`, `PageName`. The ICC profile stays (colour), as in JPEG.
+  plain TIFF), `DocumentName`, `PageName`. The ICC profile stays (colour) -- unlike
+  JPEG F1, which drops it on an sRGB assumption a TIFF often breaks; a published
+  colour space's profile stays byte for byte, any other is sanitized (§6.1).
 - **D2. WebP and GIF are rebuilt by block.** Drop `EXIF`/`XMP ` (WebP) and comment and
   XMP extensions (GIF); keep image data, animation control, the loop count and ICC;
   fix WebP's flags and RIFF size. Nothing in either holds an absolute offset.
@@ -159,3 +161,46 @@ real benchmark — and in four of the six, a measured way it fails.
 
 Each format publishes its matrix as it lands (A1 across planted-value variants, A2
 across the producers in §0), so the evidence gate covers it from the first push.
+
+---
+
+## 6. M1 as built — plain TIFF
+
+`formats/tiff/` — `clean.py` (shared with RAW: the tag tables, embedded-JPEG
+cleaning, GPS dropping, the image-region check, moved out of `raw/f1.py`; RAW keeps
+aliases and all 114 RAW tests pass unchanged), `f1.py`, `handler.py` (registered
+after RAW, which claims only files that say they are raws).
+
+Blanked in every IFD: the shared dates/software/host/description/comment set plus
+Make, Model, DocumentName, PageName, Artist, Copyright, the XP fields and the EXIF
+owner/serial/lens/editor fields; removed in place: XMP, IPTC, Photoshop, the maker
+note; the GPS IFD dropped; the EXIF thumbnail cleaned within its extent; every page
+of a multi-page file walked; image data checked byte-identical on every scrub.
+
+### 6.1 The colour profile, decided by measurement rather than by analogy
+
+The plan said "keep ICC, as in JPEG". JPEG F1 actually **drops** ICC (an sRGB
+assumption, `formats/jpeg/f1.py`), and a TIFF is often the file that breaks that
+assumption. So the profile stays — but the first run sanitized the header of
+`sips`'s plain sRGB profile, which would have turned the commonest bytes in imaging
+into a mark of this tool on every file. `icc.description()` and `icc.is_standard()`
+now tell a published colour space (matched anchored at the start of the profile's
+description: all 14 macOS system profiles recognized) from anything else; a standard
+profile stays byte for byte, any other (a display calibrated at home) is sanitized —
+header provenance zeroed, ID recomputed, colour tables untouched.
+
+### 6.2 Found by the corpus
+
+A truncated TIFF was **accepted**: image data past the end of the file compared two
+equally short slices and passed. Plain TIFF now refuses it. RAW keeps the tolerant
+reading — a real Panasonic RW2 declares more sensor data than it holds, and LibRaw
+decodes it — so the bounds check is an option, on for TIFF only.
+
+**Measured:** the 8 survey TIFFs (sips, Pillow, libtiff, ExifTool-tagged, multi-page)
+come out with every page pixel-identical, no residuals, every planted value gone;
+plain `sips` output is untouched (nothing in it was personal). **Matrix:** A1@F1
+pass in both byte orders; A2@F1 fail across Pillow, Pillow-LZW, `tiffcp` and `sips`
+on byte order, compression, IFD chain, tag sets, strip layout, ICC and size (on
+Linux, without `sips`: compression, tag sets, size — same verdict, measured); the
+fingerprint guard passes with one declared mark, the zero fill. Limit #56 (BigTIFF
+refused).
