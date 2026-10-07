@@ -390,7 +390,7 @@ def load_format_stories() -> dict[str, str]:
 # unit because they share a story; each audio format gets its own because their
 # outcomes genuinely differ.
 FORMAT_GROUPS = [
-    ("Images", "🖼️", ["jpeg", "png", "tiff"]),
+    ("Images", "🖼️", ["jpeg", "png", "tiff", "webp"]),
     ("MP3 audio", "🎵", ["mp3"]),
     ("FLAC audio", "🎶", ["flac"]),
     ("M4A audio", "🎬", ["m4a"]),
@@ -419,6 +419,7 @@ FORMAT_TEST_PATTERNS = [
     # RAW before JPEG: `test_raw_f1.py` would otherwise match JPEG's "test_f1".
     ("raw", ["test_raw_", "raw_corpus"]),
     ("tiff", ["test_tiff", "tiff_corpus", "matrix_tiff"]),
+    ("webp", ["test_webp", "webp_corpus", "matrix_webp"]),
     # Executables before JPEG and MP3 for the same reason: nothing in their names
     # collides today, and an early row cannot be stolen from later.
     ("exe", ["test_exe_", "elf_corpus"]),

@@ -204,3 +204,22 @@ on byte order, compression, IFD chain, tag sets, strip layout, ICC and size (on
 Linux, without `sips`: compression, tag sets, size — same verdict, measured); the
 fingerprint guard passes with one declared mark, the zero fill. Limit #56 (BigTIFF
 refused).
+
+---
+
+## 7. M2 as built — WebP
+
+`formats/webp/` — the RIFF rebuilt from an ALLOWLIST of image chunks (`VP8X`, `ICCP`,
+`ANIM`, `ANMF`, `ALPH`, `VP8 `, `VP8L`), applied inside every animation frame too; the
+EXIF/XMP flags cleared; the RIFF size recomputed; bytes after the RIFF's end dropped;
+ICC by TIFF's rule. Checked on every scrub: the coded image — every frame and alpha
+plane — is in the output byte for byte, in order. `RIFF` is shared with WAV and AVI,
+so the handler claims only the `WEBP` form.
+
+**Measured:** the 7 survey files (cwebp lossy/lossless/plain, webpmux, Pillow,
+gif2webp animated, ExifTool-tagged) come out frame-identical with no residuals;
+libwebp's own `dwebp` decodes the result and `webpmux` still reads three frames and
+the loop. **Matrix:** A1@F1 pass, still and animated; A2@F1 fails **only on file
+size** across Pillow at effort 0 and 6 and `cwebp -lossless` (pixels asserted
+identical): the container is the same, and the encoder shows only in the bitstream
+F1 copies. Guard passes with nothing declared.

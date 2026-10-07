@@ -381,6 +381,23 @@ it removed. Nothing inside a TIFF can move, so removed details leave zeros of th
 same length.
 <!-- FORMAT:tiff:END -->
 
+<!-- FORMAT:webp:BEGIN -->
+WebP pictures — the format websites and phones increasingly save, still or animated.
+
+**What goes.** The camera and personal details a photo carries (EXIF: owner,
+serials, location, software) and its XMP copy; anything stored in a part of the file
+that picture viewers skip over — they skip what they do not recognise, so it could
+hold anything — including inside each frame of an animation; and anything stuck on
+after the file's declared end. The flags announcing those parts are corrected so
+the file stays valid.
+
+**What stays.** The picture, exactly as it was compressed — every frame, every
+transparency mask, the timing and the loop. A standard colour profile stays as it
+was; any other keeps its colours and loses the details of who made it. Because the
+compressed picture is copied as it is, the program that compressed it can still be
+told apart from another — only through the file's size, in our measurement.
+<!-- FORMAT:webp:END -->
+
 <!-- FORMAT:exe:BEGIN -->
 Programs — the files a computer runs, on all three systems: Linux (ELF), Mac
 (Mach-O, including the "universal" kind that carries an Intel and an Apple-chip copy

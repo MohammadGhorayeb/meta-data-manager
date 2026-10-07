@@ -79,6 +79,9 @@ def default_dispatcher() -> Dispatcher:
     # are raws, so what reaches this handler is a scan, an export, a conversion.
     from .formats.tiff.handler import TiffHandler
     d.register(TiffHandler())
+    # WebP: `RIFF` is shared with WAV and AVI, so it claims only the WEBP form.
+    from .formats.webp.handler import WebpHandler
+    d.register(WebpHandler())
     # Executables (Phase 5). `\x7fELF` is shared with nothing else here.
     from .formats.exe.handler import ExeHandler
     d.register(ExeHandler())

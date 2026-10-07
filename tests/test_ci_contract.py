@@ -60,6 +60,8 @@ _PACKAGE_FOR = {
     "wine": "wine64",
     # Phase 6: libtiff's own writer, the non-Pillow producer in E-TIFF.
     "tiffcp": "libtiff-tools",
+    "cwebp": "webp",
+    "webpmux": "webp",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.
