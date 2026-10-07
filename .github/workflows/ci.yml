@@ -167,6 +167,8 @@ jobs:
       #   webp              cwebp/webpmux: a second WebP encoder (E-WEBP), and libwebp's
       #                     own reader of what F1 writes
       #   gifsicle          a second GIF writer for E-GIF (A2)
+      #   librsvg2-bin      rsvg-convert: renders SVGs before and after (the check MAT2
+      #                     fails), and cairo, a real second SVG writer for E-SVG
       # Tests needing a missing tool skip cleanly, so a silent failure here
       # would weaken the suite rather than break it. Hence: no `|| true`.
       - name: Install external tools
@@ -175,7 +177,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -484,7 +486,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -564,7 +566,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

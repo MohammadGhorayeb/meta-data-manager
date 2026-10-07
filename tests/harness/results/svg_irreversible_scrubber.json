@@ -1,0 +1,152 @@
+{
+  "format": "svg",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p6",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-10-07T16:09:06.075831+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no metadata-correlated byte survives in documents shaped like Inkscape's, Illustrator's, Sketch's and LibreOffice's exports, embedded pictures included (a photo's EXIF, a PNG text chunk, a nested SVG's metadata)"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "svg_f2_f3_not_built: a canonical re-serialisation (F2) and a re-drawing (F3) are not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "svg_f2_f3_not_built: a canonical re-serialisation (F2) and a re-drawing (F3) are not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "producer still identifiable -- F1 only deletes, so how a producer writes XML stays: attributes, declaration, elements, namespaces, root_attributes, size. Peer set = inkscape_model, sketch_model, libreoffice_model, cairo; inkscape_model, sketch_model, libreoffice_model are corpus models of those producers' idioms, cairo is a real serializer.",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:attributes",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "SVG producer",
+          "evidence": "struct:attributes constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:declaration",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "SVG producer",
+          "evidence": "struct:declaration constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:elements",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "SVG producer",
+          "evidence": "struct:elements constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:namespaces",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "SVG producer",
+          "evidence": "struct:namespaces constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:root_attributes",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "SVG producer",
+          "evidence": "struct:root_attributes constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "SVG producer",
+          "evidence": "struct:size constant within a producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "svg_f2_f3_not_built: a canonical re-serialisation (F2) and a re-drawing (F3) are not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "svg_f2_f3_not_built: a canonical re-serialisation (F2) and a re-drawing (F3) are not built"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [],
+    "signatures": []
+  }
+}

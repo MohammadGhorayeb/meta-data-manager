@@ -413,6 +413,28 @@ are copied as compressed, the program that made the GIF can still be told apart
 from another by how it laid them out.
 <!-- FORMAT:gif:END -->
 
+<!-- FORMAT:svg:BEGIN -->
+SVG drawings — logos, icons, diagrams and charts, as drawing programs and websites
+save them.
+
+**What goes.** The drawing program's own notes: the file's name in the editor, the
+program and its exact version, the folder a copy was exported to (which can name your
+home folder), the "Created with…" and "Generator:" signatures, Illustrator's private
+copy of its own document, author and date fields, and processing instructions meant
+for an editor. **And the pictures inside the drawing:** a photo placed in an SVG is
+often stored whole — LibreOffice stores the original photo byte for byte, with its
+**GPS position**, camera serial and author, which the standard tool, ExifTool, does
+not even report. Each picture inside is cleaned by its own format's rules and put
+back.
+
+**What stays.** Everything that draws, exactly as written — and we check that by
+drawing it: every one of 4,252 SVGs shipped inside the apps on this machine looks
+pixel-for-pixel the same after cleaning. The standard tool for this, MAT2, changed
+how every one of the 14 such files we tried looks, and turned two into blank pictures.
+References to files on your computer are kept (the drawing needs them to display) and
+reported, so you can remove them in the editor.
+<!-- FORMAT:svg:END -->
+
 <!-- FORMAT:exe:BEGIN -->
 Programs — the files a computer runs, on all three systems: Linux (ELF), Mac
 (Mach-O, including the "universal" kind that carries an Intel and an Apple-chip copy

@@ -279,3 +279,41 @@ picture as displayed. `test_jpeg_orientation.py` checks all eight orientations a
 all three tiers by what a viewer shows (`ImageOps.exif_transpose`), and that two
 rotated photos differing only in metadata still come out identical. The segments are
 declared to the fingerprint guard (generated from the code).
+
+### 9.2 M4 as built — SVG
+
+`formats/svg/` and the shared `embedded.py` (scrub a contained file by its own
+format's handler, identified by content, refused if no handler claims it — written
+once for SVG, ZIP and EPUB). F1 only deletes, through the DOCX surgery: comments;
+processing instructions except the XML declaration and `xml-stylesheet`;
+`<metadata>`; every element, attribute and declaration in an editor's namespace —
+resolved from the declarations (expat), not trusted from the prefix, because
+Illustrator binds its prefixes through DOCTYPE entities, which go too once unused;
+a `<title>`/`<desc>` that only names the program. It rewrites one thing: each
+`data:` picture is decoded, scrubbed by its own handler (nested SVGs recursively, up
+to three deep) and re-encoded. LibreOffice's `ooo:` namespace is never touched (its
+presentation script reads it). Entities only as plain strings; external, parameter
+and nested entities refused. `.svgz` is rewritten without the gzip header's original
+file name and time. The prolog's empty lines are tidied (a parser reports no text
+there); inside the root, whitespace is reported text and stays.
+
+**The safety net**, on every scrub: input and output, read by a real XML parser,
+must give the same stream of elements, attributes and text once the rules' removals
+and the embedded payloads are set aside — so nothing that draws can change unnoticed.
+
+**Measured on the 4,255 SVGs shipped inside installed apps** (read in place, scrubbed
+in memory): 4,253 scrubbed, **every one librsvg can render (4,252) renders
+pixel-identically**, no residuals, 3,976 needed no change at all; 2 refused as
+malformed XML. The first run refused two more because the default namespace was
+re-bound (XHTML inside `<foreignObject>`) — a check too strict, relaxed to refuse
+only a named prefix bound both to an editor's namespace and to another. The
+LibreOffice export's embedded photo comes out without its EXIF and still renders.
+
+**Matrix:** A1@F1 pass in four producer shapes, embedded pictures included; A2@F1
+fails on namespaces, vocabulary, root attributes, the XML declaration and size
+(peer: cairo, real, and three corpus models — said so in the cell). The
+fingerprint guard needed two changes: the corpus got a seed (identical drawings and
+photos were common to every output), and plugins can now give the guard a view of
+their own layer (`guard_view`) — base64 re-aligns every byte after a removed segment
+into different text, so SVG blanks its payloads there; the pictures are guarded in
+their own matrices. Declared: the newline a removal leaves inside the root.

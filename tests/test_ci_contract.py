@@ -63,6 +63,7 @@ _PACKAGE_FOR = {
     "cwebp": "webp",
     "webpmux": "webp",
     "gifsicle": "gifsicle",
+    "rsvg-convert": "librsvg2-bin",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.

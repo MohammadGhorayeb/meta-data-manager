@@ -95,6 +95,9 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "gif":
         from . import gif_corpus as gfc  # noqa: PLC0415
         return gfc.build(frames=3)
+    if fmt == "svg":
+        from . import svg_corpus as svc  # noqa: PLC0415
+        return svc.build(shape="illustrator")
     if fmt == "exe":
         # Go: the most edits (two build IDs, the stamp in both copies, the module
         # path), so the most chances for a second pass to find something new.

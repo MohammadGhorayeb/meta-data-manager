@@ -114,6 +114,14 @@ def evaluate(scrubber, plugin, inputs: list[str], fidelity,
         scrubber.run(ip, op, fidelity)
         with open(op, "rb") as f: outs.append(f.read())
         os.unlink(op)
+    # A container can hand the guard the view of itself that is its own layer.
+    # SVG carries pictures as base64, where removing one segment re-aligns every
+    # byte after it into different text; those pictures are guarded byte-wise in
+    # their own formats' matrices, so the SVG plugin blanks them here.
+    view = getattr(plugin, "guard_view", None)
+    if view is not None:
+        outs = [view(o) for o in outs]
+        in_bytes = [view(i) for i in in_bytes]
     common = common_substrings(outs, min_len)
     introduced = {s for s in common if all(s not in ib for ib in in_bytes)}  # not echoed content
     constants = list(plugin.mandatory_constants())

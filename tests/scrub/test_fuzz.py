@@ -86,6 +86,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import pdf_corpus as pc
     from . import pe_corpus as pec
     from . import raw_corpus as rc
+    from . import svg_corpus as svc
     from . import tiff_corpus as tfc
     from . import webp_corpus as wbc
     from .test_png import _png
@@ -100,6 +101,8 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
         "tiff": (tfc.build(), ("F1",)),
         "webp": (wbc.build(frames=3), ("F1",)),
         "gif": (gfc.build(frames=3), ("F1",)),
+        "svg": (svc.build(shape="inkscape"), ("F1",)),
+        "svgz": (svc.svgz(shape="illustrator"), ("F1",)),
         "exe-macho": (mc_.build("alice", go=True), ("F1",)),
         "exe-fat": (mc_.fat("alice"), ("F1",)),
         "exe-pe-msvc": (pec.build("alice", dll=True), ("F1",)),

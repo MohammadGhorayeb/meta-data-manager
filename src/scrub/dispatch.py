@@ -84,6 +84,9 @@ def default_dispatcher() -> Dispatcher:
     d.register(WebpHandler())
     from .formats.gif.handler import GifHandler
     d.register(GifHandler())
+    # SVG is text: it claims only a document whose root element is <svg>.
+    from .formats.svg.handler import SvgHandler
+    d.register(SvgHandler())
     # Executables (Phase 5). `\x7fELF` is shared with nothing else here.
     from .formats.exe.handler import ExeHandler
     d.register(ExeHandler())
