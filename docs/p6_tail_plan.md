@@ -223,3 +223,24 @@ the loop. **Matrix:** A1@F1 pass, still and animated; A2@F1 fails **only on file
 size** across Pillow at effort 0 and 6 and `cwebp -lossless` (pixels asserted
 identical): the container is the same, and the encoder shows only in the bitstream
 F1 copies. Guard passes with nothing declared.
+
+---
+
+## 8. M3 as built — GIF
+
+`formats/gif/` — the block stream rebuilt from an allowlist: images, graphic control
+extensions, plain-text extensions (rendered text: content) and the loop extensions
+kept; an ICC extension kept and sanitized by the shared rule, rewritten around the
+same sub-block sizes; comments, XMP (with its 258-byte "magic trailer"), every other
+application or unknown extension, and bytes after the trailer dropped. The header's
+version is left as it is. Every scrub checks the images, timing and text blocks are
+in the output byte for byte, in order.
+
+**Measured:** the 6 survey files (Pillow with a comment, `sips`, ExifTool-tagged,
+animated) come out frame-identical with no residuals; the loop and frame timing
+survive. **Matrix:** A1@F1 pass, still and animated; A2@F1 fails across Pillow,
+Pillow-optimised and `sips` (and `gifsicle` on CI) on the block layout, each image's
+encoding settings, the screen descriptor and size, with decoded colours asserted
+identical — on Linux (Pillow ×2 + `gifsicle`, no `sips`) on the screen descriptor's
+flags alone; same verdict, measured in an x86-64 container. Guard passes with
+nothing declared.

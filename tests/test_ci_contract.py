@@ -62,6 +62,7 @@ _PACKAGE_FOR = {
     "tiffcp": "libtiff-tools",
     "cwebp": "webp",
     "webpmux": "webp",
+    "gifsicle": "gifsicle",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.

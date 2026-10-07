@@ -82,6 +82,8 @@ def default_dispatcher() -> Dispatcher:
     # WebP: `RIFF` is shared with WAV and AVI, so it claims only the WEBP form.
     from .formats.webp.handler import WebpHandler
     d.register(WebpHandler())
+    from .formats.gif.handler import GifHandler
+    d.register(GifHandler())
     # Executables (Phase 5). `\x7fELF` is shared with nothing else here.
     from .formats.exe.handler import ExeHandler
     d.register(ExeHandler())

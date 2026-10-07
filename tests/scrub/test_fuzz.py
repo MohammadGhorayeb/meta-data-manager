@@ -78,6 +78,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import docx_corpus as dc
     from . import elf_corpus as ec
     from . import flac_corpus as fc
+    from . import gif_corpus as gfc
     from . import m4a_corpus as mc
     from . import macho_corpus as mc_
     from . import mp3_corpus as m3c
@@ -98,6 +99,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
                      ("F1",)),
         "tiff": (tfc.build(), ("F1",)),
         "webp": (wbc.build(frames=3), ("F1",)),
+        "gif": (gfc.build(frames=3), ("F1",)),
         "exe-macho": (mc_.build("alice", go=True), ("F1",)),
         "exe-fat": (mc_.fat("alice"), ("F1",)),
         "exe-pe-msvc": (pec.build("alice", dll=True), ("F1",)),

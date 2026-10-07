@@ -398,6 +398,21 @@ compressed picture is copied as it is, the program that compressed it can still 
 told apart from another — only through the file's size, in our measurement.
 <!-- FORMAT:webp:END -->
 
+<!-- FORMAT:gif:BEGIN -->
+GIF pictures and animations.
+
+**What goes.** Comments, the XMP block photo tools write into GIFs, any other
+program's private block (viewers skip what they do not recognise, so it could hold
+anything), and anything stuck on after the file's end.
+
+**What stays.** Every frame exactly as it was compressed, its timing and
+transparency, the loop, and text the GIF itself draws. A colour profile, if there is
+one, follows the same rule as everywhere else: standard ones stay as they are,
+others keep their colours and lose the details of who made them. Because the frames
+are copied as compressed, the program that made the GIF can still be told apart
+from another by how it laid them out.
+<!-- FORMAT:gif:END -->
+
 <!-- FORMAT:exe:BEGIN -->
 Programs — the files a computer runs, on all three systems: Linux (ELF), Mac
 (Mach-O, including the "universal" kind that carries an Intel and an Apple-chip copy

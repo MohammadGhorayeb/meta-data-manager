@@ -89,6 +89,10 @@ def _build(kind: str, tmpdir: str) -> str | None:
         from . import webp_corpus as wbc  # noqa: PLC0415
         open(p, "wb").write(wbc.build(frames=3))
         return p
+    if kind == "gif":
+        from . import gif_corpus as gfc  # noqa: PLC0415
+        open(p, "wb").write(gfc.build(frames=3))
+        return p
     if kind == "exe":
         # The recomputed build IDs are hashes over the cleaned bytes: any
         # order-dependence anywhere upstream would show up in them first.
