@@ -57,15 +57,21 @@ class JpegPlugin:
           - The canonical libjpeg baseline file prefix (SOI + JFIF + first DQT
             header) so the *join* between those mandatory pieces is excluded too.
 
+          - The canonical orientation segment F1/F2 keep for a rotated photo
+            (`jpeg/orientation.py`): how to display it, the same bytes for every
+            producer -- generated from the code that writes it.
+
         Everything content- or encoder-choice-dependent (DHT counts, SOF sampling)
         is deliberately NOT listed — those must stay visible to the guard.
         """
+        from src.scrub.formats.jpeg import orientation
         from src.scrub.formats.jpeg.f1 import CANONICAL_JFIF
         soi, eoi = b"\xff\xd8", b"\xff\xd9"
         dqt0 = b"\xff\xdb\x00\x43\x00"   # DQT: 8-bit, table 0
         dqt1 = b"\xff\xdb\x00\x43\x01"   # DQT: 8-bit, table 1
         canonical_prefix = soi + CANONICAL_JFIF + dqt0
-        return [soi, eoi, CANONICAL_JFIF, dqt0, dqt1, canonical_prefix]
+        return [soi, eoi, CANONICAL_JFIF, dqt0, dqt1, canonical_prefix,
+                *sorted(orientation.SEGMENTS)]
 
     def structural_features(self, path: str) -> dict:
         """A2 structural fingerprint channel (p1 plan W2/E3; fields.py hook).

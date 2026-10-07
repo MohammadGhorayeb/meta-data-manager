@@ -244,3 +244,38 @@ encoding settings, the screen descriptor and size, with decoded colours asserted
 identical — on Linux (Pillow ×2 + `gifsicle`, no `sips`) on the screen descriptor's
 flags alone; same verdict, measured in an x86-64 container. Guard passes with
 nothing declared.
+
+---
+
+## 9. Found during M4
+
+### 9.1 A rotated photo came out sideways — in all three JPEG tiers (fixed)
+
+Checking how an SVG's embedded photo would look after cleaning raised the question
+nothing in the project had asked: what happens to EXIF **Orientation**? A phone held
+upright stores its picture sideways and writes Orientation = 6; every browser and
+photo viewer rotates it for display. Measured on a 64×32 test photo tagged 6
+(displayed 32×64):
+
+| | displayed as |
+|---|---|
+| original | 32×64 (upright) |
+| our JPEG F1, F2, F3 | **64×32 — sideways** |
+| `exiftool -all=` | 64×32 — sideways |
+| MAT2 0.14.0 | 32×64 (it re-encodes with the rotation applied) |
+
+All three tiers dropped the whole EXIF block, Orientation with it, breaking hard
+constraint 1 ("perceptually identical") for most portrait phone photos. The tests had
+not seen it because they compare decoded pixel arrays, and Pillow decodes the stored
+pixels without applying the tag.
+
+Fixed (`formats/jpeg/orientation.py`): F1 and F2, which may not touch the pixels,
+keep the orientation as **one canonical EXIF segment holding nothing else** — the
+same bytes for every producer, so it says how to display the picture and nothing
+about who made it — inserted only when the value is not 1, and accepted by their
+residual checks only in that exact form. F3 applies the rotation to the pixels and
+keeps no tag, as MAT2 does, and its perceptual check now compares against the
+picture as displayed. `test_jpeg_orientation.py` checks all eight orientations at
+all three tiers by what a viewer shows (`ImageOps.exif_transpose`), and that two
+rotated photos differing only in metadata still come out identical. The segments are
+declared to the fingerprint guard (generated from the code).

@@ -31,6 +31,7 @@ import io
 import warnings
 
 from ...errors import ContentError, ParseError, ScrubError
+from . import orientation
 from . import segments as seg
 
 CANONICAL_QUALITY = 90
@@ -65,7 +66,9 @@ def scrub(data: bytes) -> bytes:
     # Parse first so a non-JPEG / malformed input fails closed with our error.
     seg.walk(data)
 
-    im = _open_rgb(data)
+    # A rotated photo is re-encoded the way it is displayed, so it needs no tag:
+    # the EXIF orientation is applied to the pixels, as MAT2 does (orientation.py).
+    im = orientation.apply(_open_rgb(data), orientation.read(data))
     buf = io.BytesIO()
     # No exif=/icc_profile= passed => output carries no metadata; fixed quality +
     # subsampling => a content-independent, producer-independent DQT.
@@ -84,7 +87,8 @@ def _check_perceptual(original: bytes, scrubbed: bytes) -> None:
         import imagehash
     except ImportError as e:  # pragma: no cover - imagehash is a pinned dep
         raise ScrubError("imagehash required for JPEG F3 content verification") from e
-    h_in = imagehash.phash(_open_rgb(original))
+    h_in = imagehash.phash(orientation.apply(_open_rgb(original),
+                                            orientation.read(original)))
     h_out = imagehash.phash(_open_rgb(scrubbed))
     distance = h_in - h_out
     if distance > PHASH_MAX_DISTANCE:

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import orientation
 from . import segments as seg
 
 # Canonical no-thumbnail JFIF APP0 (full segment incl. marker + length):
@@ -102,7 +103,9 @@ def scrub(data: bytes, *, keep_icc: bool = False) -> bytes:
         elif act.action == "rewrite":
             out += act.replacement
         # "drop" contributes nothing
-    return bytes(out)
+    # Orientation is how the picture is displayed, not who made it: kept as one
+    # canonical segment (orientation.py), or a portrait photo comes out sideways.
+    return orientation.insert(bytes(out), orientation.read(data))
 
 
 # Segment kinds F1 output is allowed to contain (everything else is a residual).
@@ -125,6 +128,8 @@ def residuals(data: bytes) -> list[str]:
         if s.kind == "app14_adobe":
             if data[s.offset:s.end] != _canonical_adobe(s.payload):
                 out.append(f"non-canonical APP14 at {s.offset}")
+            continue
+        if s.kind == "app1_exif" and orientation.is_canonical(data, s):
             continue
         out.append(f"residual {s.kind} segment at {s.offset}")
     if structure.trailer:

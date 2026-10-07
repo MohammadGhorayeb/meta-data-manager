@@ -37,6 +37,7 @@ import shutil
 import subprocess
 
 from ...errors import ContentError, ParseError, ScrubError
+from . import orientation
 from . import segments as seg
 
 # jpegtran invocation. Order is fixed for determinism/reproducibility.
@@ -95,7 +96,9 @@ def scrub(data: bytes) -> bytes:
             "JPEG F2 re-encode changed decoded pixels "
             f"(size {in_size}->{out_size}, "
             f"{'pixels differ' if in_px != out_px else 'size differs'})")
-    return out
+    # `-copy none` drops the orientation with everything else; it is how the picture
+    # is displayed, so it goes back as one canonical segment (orientation.py).
+    return orientation.insert(out, orientation.read(data))
 
 
 # Segment kinds F2 output may legitimately contain: image-defining markers plus
@@ -116,6 +119,8 @@ def residuals(data: bytes) -> list[str]:
             continue
         if s.kind == "app0_jfif":
             continue  # libjpeg's canonical JFIF — allowed
+        if s.kind == "app1_exif" and orientation.is_canonical(data, s):
+            continue  # the display orientation, canonical
         if s.kind == "app14_adobe":
             # libjpeg re-emits a canonical Adobe APP14 for CMYK/YCCK to signal the
             # colour transform — dropping it would misrender the image (same policy
