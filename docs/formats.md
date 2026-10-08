@@ -435,6 +435,35 @@ References to files on your computer are kept (the drawing needs them to display
 reported, so you can remove them in the editor.
 <!-- FORMAT:svg:END -->
 
+<!-- FORMAT:zip:BEGIN -->
+ZIP archives — what "Compress" on a Mac, "Send to → Compressed folder" on Windows, and
+`zip` on Linux make.
+
+**What goes.** The archive's own records about the files: the time each was last
+changed (in the clock of the machine that made it, so a time zone), the account's
+user number on Unix, permission settings that show how that computer was set up,
+comments. **The hidden folder a Mac adds** (`__MACOSX`), which we measured holding
+**the web address each file was downloaded from**, the browser, and the download's
+quarantine record — compressed, so nobody sees it by looking. Finder's folder-view
+files (`.DS_Store`) and Windows' thumbnail caches (`Thumbs.db`, which can hold small
+copies of pictures that are not even in the archive). **And every file inside is
+cleaned by its own format's rules** — the photo's GPS, the Word document's author,
+an archive inside the archive — and put back.
+
+**What stays.** The names, the folders (empty ones too), each file's content, and
+whether a script can be run. Plain text is kept exactly as written: it has no
+hidden part, so what it says is the content. A file of a type we do not clean
+stops the whole archive, naming the file, unless you ask to keep such files
+untouched (`--keep-unknown-members`), and the report then lists each one.
+
+**How it compares.** The standard tool, MAT2, crashed on an archive made with a Mac's
+*Compress* and left an empty file behind; refused an archive holding a shell
+script; and, told to keep the script, made it impossible to run, removed the empty
+folder and made every file readable by its owner only. Four different archiving
+programs given the same folder produce archives that tell them apart on eleven
+points; after cleaning, the four are the same file, byte for byte.
+<!-- FORMAT:zip:END -->
+
 <!-- FORMAT:exe:BEGIN -->
 Programs — the files a computer runs, on all three systems: Linux (ELF), Mac
 (Mach-O, including the "universal" kind that carries an Intel and an Apple-chip copy

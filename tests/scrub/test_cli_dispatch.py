@@ -19,11 +19,11 @@ def test_dispatch_resolves_jpeg_by_magic():
 
 def test_dispatch_unsupported_raises():
     d = default_dispatcher()
-    # A ZIP header. Was a PDF header until Phase 3 registered a PDF handler — the
-    # example has to be a format we genuinely do not claim, or the test passes for
-    # the wrong reason. OOXML lands next, so this line will need moving again.
+    # A 7-Zip header. Was a PDF header until Phase 3 registered a PDF handler, then
+    # a ZIP header until Phase 6 registered ZIP -- the example has to be a format we
+    # genuinely do not claim, or the test passes for the wrong reason.
     with pytest.raises(UnsupportedFormatError):
-        d.resolve(b"PK\x03\x04" + b"\x00" * 16)
+        d.resolve(b"7z\xbc\xaf\x27\x1c" + b"\x00" * 16)
 
 
 def test_dispatch_resolves_pdf_by_magic():

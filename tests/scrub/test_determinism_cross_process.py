@@ -97,6 +97,12 @@ def _build(kind: str, tmpdir: str) -> str | None:
         from . import svg_corpus as svc  # noqa: PLC0415
         open(p, "wb").write(svc.svgz())
         return p
+    if kind == "zip":
+        # Members are collected into a dict and sorted; the sidecars, folders and
+        # nested archive are the most chances for a set to decide an order.
+        from . import zip_corpus as zc  # noqa: PLC0415
+        open(p, "wb").write(zc.build(1, shape="ditto"))
+        return p
     if kind == "exe":
         # The recomputed build IDs are hashes over the cleaned bytes: any
         # order-dependence anywhere upstream would show up in them first.

@@ -240,10 +240,12 @@ def test_capabilities_come_from_the_measured_matrices_not_a_hardcoded_list():
     assert caps, "no Pareto matrices found under tests/harness/results/"
     fmts = {c["fmt"] for c in caps}
     assert {"jpeg", "png", "mp3"} <= fmts
-    # Nothing may be claimed for a format with no matrix on disk. This line has
-    # named `pdf`, then `docx`, then `mp4`, then `raw`, then `exe`, and moves again
-    # with each phase — that churn is the test working. Archives are next.
-    assert "exe" in fmts and "zip" not in fmts
+    # Nothing may be claimed for a format with no matrix on disk. This line named
+    # the next unmeasured format -- `pdf`, `docx`, `mp4`, `raw`, `exe`, `zip` --
+    # and moved with each phase. With ZIP every roadmap format is measured, so it
+    # now checks the rule itself: claimed = published.
+    assert fmts == set(qr.published_matrices()) & {f for f, _ in qr.ROADMAP}
+    assert "zip" in fmts
     md = qr.section_capabilities(_run())
     assert "MP3" in md
 

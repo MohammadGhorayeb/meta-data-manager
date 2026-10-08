@@ -317,3 +317,89 @@ photos were common to every output), and plugins can now give the guard a view o
 their own layer (`guard_view`) — base64 re-aligns every byte after a removed segment
 into different text, so SVG blanks its payloads there; the pictures are guarded in
 their own matrices. Declared: the newline a removal leaves inside the root.
+
+---
+
+## 10. M5 as built — ZIP
+
+`formats/zip/` (F1, `appledouble.py` to read sidecars for the report) and two
+extensions of the Phase 3 ZIP layer, both written so DOCX output stays byte for byte
+what it was (checked on the synthetic and the real Word samples before and after):
+the reader keeps each name's stored bytes and bounds inflation by the declared size
+(a member that inflates past it is refused after one byte too many, not after the
+memory is gone); the writer gains `write_archive`, the same serialiser with
+directory entries, bit 11 and four modes. Registered after DOCX: Word packages go
+there, every other `PK` file here.
+
+### 10.1 The canonical archive, decided by measurement
+
+Five producers measured on one folder (an executable script, an empty folder, an
+empty file, a non-ASCII name); Python is `zipfile` and `shutil.make_archive`:
+
+| field | Info-ZIP 3.0 | `ditto` | libarchive | Python | MAT2 | **ours** |
+|---|---|---|---|---|---|---|
+| create system / made by | 3 / 30 | 3 / 21 | 3 / 20 (10 stored) | 3 / 20 | 3 / 20 | **3 / 20** |
+| version needed | 10 stored, 20 deflate | same | same | 20 | 20 | **20** |
+| extra fields | `UT` + `ux` (uid, gid) | `UX` (times; uid, gid in the local copy) | `ux` + `UT` | none | none | **none** |
+| file modes | from disk | from disk + `0x4000` | from disk | from disk | **0600, no type bits** | **0644 / 0755** |
+| folder entries | every folder | every folder | every folder | every folder | **none** | **empty folders only** |
+| empty / incompressible | stored | stored | stored | deflated (2 bytes) | as input | **stored** |
+| non-ASCII name | UTF-8, **no bit 11** | UTF-8, no bit 11 | UTF-8, no bit 11 | bit 11 | bit 11 | **bit 11** |
+| internal attr | 1 on text | 0 | 0 | 0 | 0 | **0** |
+
+The Unix crowd is unanimous on create system 3, so modes are written and mean
+something; every mode is one of four (file, executable, folder, link), so the
+operator's umask is gone and a script still runs. The UTF-8 flag splits the crowd
+three to two; the spec and Python (and so MAT2) set it, and with it every reader
+decodes the name the same way. One side effect, measured: libarchive on macOS
+extracts a flagged name decomposed (NFD) where it kept an unflagged one composed —
+the same visible name, and what it already does with every archive Python writes.
+Members are sorted by name; a folder its files imply gets no entry.
+
+### 10.2 Members
+
+Sidecars are decided by their bytes, not their names: AppleDouble (`._*`, files
+under `__MACOSX/`), `.DS_Store` (`Bud1`), `Thumbs.db` (OLE). A file named `._notes`
+that is not AppleDouble is a file someone named so, and stays. Every other member
+is resolved by content through the dispatcher and scrubbed by its handler's F1
+(`embedded.py`); a nested archive by this module again, to a depth of four. Plain
+text (UTF-8, no control characters but tab, newlines, form feed) is kept: it has
+no container to separate metadata from — limit #58. An XMP packet saved as a file
+is the exception, metadata by definition, and counts as unknown. Unknown members
+are all named in one refusal, or kept byte for byte with `--keep-unknown-members`
+(`kept()` lists them). Symbolic links stay links; an absolute target is advised.
+Packages that are ZIPs — OOXML other than Word, OpenDocument/EPUB (`mimetype`
+first), Java, Android — are refused by name.
+
+**Memory**: decompressing is where an archive can outgrow the machine, so before any
+member is inflated the declared sizes are checked against free memory
+(`MEMORY_FACTOR` = 3 × (archive + declared), measured 2.5 on macOS and held by a
+test); `--skip-memory-check` reaches it through the dispatcher.
+
+### 10.3 Measured
+
+- **E-ZIP (A2)**: one folder through Info-ZIP `zip -r`, `shutil.make_archive`,
+  libarchive `bsdtar` and `ditto`, content identical (asserted). Raw, 11 container
+  keys separate them (versions, flags, extras, attributes, order, folder entries,
+  methods, sidecars, size, ExifTool's required version); after F1, none — the four
+  outputs are **one file, byte for byte** (a test holds it). Linux runs the same
+  without `ditto`.
+- **A1** pass in four producer shapes (Info-ZIP, `ditto`, Python, Windows Explorer):
+  comments, local times, Unix and NTFS times, uid/gid, umask modes, the sidecars'
+  download URL, referrer and quarantine record, `.DS_Store`, `Thumbs.db`, and every
+  member's own metadata down to a nested archive's.
+- **The survey archives**: Info-ZIP's, Python's and Finder's all scrub clean; from
+  Finder's, the download URL and quarantine record go with the sidecars (MAT2 crashed
+  on it and left an empty archive, §2).
+- **MAT2 0.14.0 on the probe folder**: refuses an archive holding a shell script
+  (`application/x-sh` "isn't supported", exit 255, nothing written). With
+  `--unknown-members keep`, the script loses its executable bit, the empty folder
+  is gone, and every file is written `0600` with no file-type bits.
+- **Guard**: the corpus seed now changes every member's size and the top folder's
+  name length (equal sizes made equal offsets, which the guard rightly could not
+  tell from a mark); the view blanks member data (guarded in their own matrices);
+  the header constants are declared. A test plants a comment on every output and
+  sees the guard fail.
+
+**Matrix:** A1@F1 pass, A2@F1 pass, fingerprint guard pass; F2/F3 not built (an
+archive's F2/F3 would be its members' own, applied inside it).

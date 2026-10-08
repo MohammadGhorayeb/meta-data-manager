@@ -98,6 +98,11 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "svg":
         from . import svg_corpus as svc  # noqa: PLC0415
         return svc.build(shape="illustrator")
+    if fmt == "zip":
+        # Info-ZIP's shape: every container field to normalise, a .DS_Store to drop,
+        # and a nested archive whose own scrub must also be a fixed point.
+        from . import zip_corpus as zc  # noqa: PLC0415
+        return zc.build(1, shape="infozip")
     if fmt == "exe":
         # Go: the most edits (two build IDs, the stamp in both copies, the module
         # path), so the most chances for a second pass to find something new.

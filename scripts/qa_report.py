@@ -127,9 +127,16 @@ ROADMAP = [
     # Phases 5 and 6 (docs/schedule_report.pdf). Named here so the report says
     # what is coming rather than going quiet once Phase 4 is measured.
     ("exe", "program files (Windows, Mac and Linux)"),
-    ("zip", "ZIP archives and EPUB books"),
+    ("zip", "ZIP archives"),
     ("tiff", "TIFF images"), ("webp", "WebP images"),
     ("svg", "SVG graphics"), ("gif", "GIF animations"),
+    ("epub", "EPUB books"),
+]
+
+# What is coming that is not a file type, listed after the formats still to come and
+# removed when it ships, like a ROADMAP entry with no matrix to retire it.
+FEATURES_PLANNED = [
+    "Cleaning a whole folder in one run, with one results sheet",
 ]
 
 FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
@@ -137,7 +144,8 @@ FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
                 "m4a": "M4A (Apple / AAC audio)",
                 "pdf": "PDF (documents)", "docx": "Word (.docx)",
                 "mp4": "MP4 (video)", "heic": "HEIC (iPhone photos)",
-                "raw": "Camera RAW", "exe": "Programs", "zip": "ZIP / EPUB",
+                "raw": "Camera RAW", "exe": "Programs", "zip": "ZIP archives",
+                "epub": "EPUB (books)",
                 "tiff": "TIFF", "webp": "WebP", "svg": "SVG", "gif": "GIF"}
 
 # The three cleaning strengths, in words a reader can act on. "F1/F2/F3" is the
@@ -397,6 +405,7 @@ FORMAT_GROUPS = [
     ("Documents", "📄", ["pdf", "docx"]),
     ("Video and camera", "📷", ["mp4", "heic", "raw"]),
     ("Programs", "⚙️", ["exe"]),
+    ("Archives", "🗜️", ["zip", "epub"]),
 ]
 
 # Which tests belong to which format, for the per-format check counts. Specific
@@ -414,6 +423,9 @@ FORMAT_TEST_PATTERNS = [
     # six DOCX F3 tests named after the re-typesetting *engine* were counted as
     # MP3 checks. Ordering fixes it; a pattern that has to be a whole word would
     # be the deeper fix, and is not worth it for a table this small.
+    # ZIP first of all: its tests prove a Word document inside an archive goes to
+    # the DOCX handler, and the broad "docx" pattern would take them.
+    ("zip", ["test_zip", "zip_corpus", "matrix_zip"]),
     ("docx", ["docx", "ooxml", "e_session_id"]),
     ("heic", ["heic"]),
     # RAW before JPEG: `test_raw_f1.py` would otherwise match JPEG's "test_f1".
@@ -1143,6 +1155,7 @@ def section_formats(run: Run) -> str:
                 "The measurements are real; the report is at fault."]
 
     planned = [label for fmt, label in ROADMAP if fmt not in covered]
+    planned += FEATURES_PLANNED
     if planned:
         out += ["", "---", "", "## 🔜 What is coming next", "",
                 "Built on the same tested foundation, in this order — each one "

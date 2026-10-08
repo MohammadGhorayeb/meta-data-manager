@@ -78,7 +78,8 @@ def _write_atomic(path: str, data: bytes) -> None:
 
 
 def scrub_file(in_path: str, out_path: str, fidelity: str,
-               dispatcher=None, check_memory: bool = True) -> list[str]:
+               dispatcher=None, check_memory: bool = True,
+               keep_unknown_members: bool = False) -> list[str]:
     """Scrub in_path -> out_path at the given fidelity. Raises ScrubError
     (fail-closed) on any problem; writes output only on full success.
 
@@ -86,12 +87,14 @@ def scrub_file(in_path: str, out_path: str, fidelity: str,
     that are not failures of the scrub. See the module docstring.
     """
     return scrub_file_reported(in_path, out_path, fidelity, dispatcher,
-                               check_memory=check_memory)[0]
+                               check_memory=check_memory,
+                               keep_unknown_members=keep_unknown_members)[0]
 
 
 def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
                         dispatcher=None, verify_with_exiftool: bool = False,
-                        check_memory: bool = True
+                        check_memory: bool = True,
+                        keep_unknown_members: bool = False
                         ) -> tuple[list[str], rep.Report]:
     """The same scrub, also returning a before/after account of the metadata.
 
@@ -101,7 +104,8 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
     for a feature none of them use.
     """
     fid.validate(fidelity)
-    dispatcher = dispatcher or default_dispatcher()
+    dispatcher = dispatcher or default_dispatcher(
+        keep_unknown_members=keep_unknown_members, check_memory=check_memory)
     if check_memory:
         # Before the read: loading a file the machine cannot hold is itself the
         # failure this check exists to prevent.
@@ -183,6 +187,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="scrub even if this machine appears to lack the memory the "
                         "file needs. It may swap heavily or fail, but never writes a "
                         "partial file")
+    p.add_argument("--keep-unknown-members", action="store_true",
+                   help="in an archive, keep members of a type no handler reads "
+                        "byte for byte, UNSCRUBBED, instead of refusing the archive. "
+                        "The report lists every member kept this way")
     p.add_argument("--no-verify", action="store_true",
                    help="skip the independent exiftool check at the end of the "
                         "report (it reads the file twice, which costs a moment)")
@@ -192,7 +200,8 @@ def main(argv: list[str] | None = None) -> int:
         advisories, report = scrub_file_reported(
             args.input, args.output, args.fidelity,
             verify_with_exiftool=not (args.no_report or args.no_verify),
-            check_memory=not args.skip_memory_check)
+            check_memory=not args.skip_memory_check,
+            keep_unknown_members=args.keep_unknown_members)
     except ScrubError as e:
         print(f"scrub: {type(e).__name__}: {e}", file=sys.stderr)
         return _EXIT.get(type(e), 1)

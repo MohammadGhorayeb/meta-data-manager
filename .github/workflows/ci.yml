@@ -123,7 +123,10 @@ jobs:
   test:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Raised from 25 after a run where the apt mirror served the external tools'
+    # 434 MB at ~360 KB/s: 21 minutes of install, and a passing suite cancelled at
+    # 49%. The other leg, same commit, installed in 4 minutes and finished in 10.
+    timeout-minutes: 45
     strategy:
       # One version failing must not hide the others: knowing whether a break is
       # version-specific is most of the diagnosis.
@@ -169,6 +172,7 @@ jobs:
       #   gifsicle          a second GIF writer for E-GIF (A2)
       #   librsvg2-bin      rsvg-convert: renders SVGs before and after (the check MAT2
       #                     fails), and cairo, a real second SVG writer for E-SVG
+      #   zip, libarchive-tools  Info-ZIP `zip` and `bsdtar`: two of E-ZIP's archivers
       # Tests needing a missing tool skip cleanly, so a silent failure here
       # would weaken the suite rather than break it. Hence: no `|| true`.
       - name: Install external tools
@@ -177,7 +181,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
+            zip libarchive-tools
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -464,7 +469,9 @@ jobs:
     # Raised from 20 when Phase 3 landed: rebuilding the PDF matrix now renders a
     # multi-document peer corpus through every available producer and runs
     # E-PDF-RASTER over it, which is minutes of work this job did not have before.
-    timeout-minutes: 35
+    # Raised again, to 50, for the same slow-mirror risk as the test job: it installs
+    # the same 434 MB of tools and took 24 minutes on a normal day.
+    timeout-minutes: 50
     steps:
       - name: Start the clock
         run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
@@ -486,7 +493,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
+            zip libarchive-tools
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -566,7 +574,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
-            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin
+            wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
+            zip libarchive-tools
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

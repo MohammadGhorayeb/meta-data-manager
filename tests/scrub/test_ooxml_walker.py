@@ -257,14 +257,15 @@ def test_handler_claims_every_producer_and_no_plain_zip(real, tmp_path):
     assert not h.claims(data), "claims() is what has to tell them apart"
 
 
-def test_docx_is_registered_last_because_its_magic_is_the_weakest():
+def test_docx_is_registered_last_but_one_because_its_magic_is_the_weakest():
     """`PK\x03\x04` is shared with every ZIP ever made, so the DOCX handler is asked
-    only after every format with a distinctive prefix has declined. Registration
-    itself waited for F1 (M10): until a tier existed, the tool did not advertise a
-    format it could not scrub."""
+    only after every format with a distinctive prefix has declined -- and before
+    the plain-archive handler (Phase 6), which takes every ZIP DOCX declines.
+    Registration itself waited for F1 (M10): until a tier existed, the tool did not
+    advertise a format it could not scrub."""
     from src.scrub.dispatch import default_dispatcher
     ids = [h.format_id for h in default_dispatcher()._handlers]
-    assert ids[-1] == "docx"
+    assert ids[-2:] == ["docx", "zip"]
 
 
 def test_preflight_reports_input_side_refusals(tmp_path):

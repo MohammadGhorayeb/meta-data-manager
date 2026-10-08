@@ -73,6 +73,7 @@ class ZipEntry:
     data_offset: int
     raw: bytes                      # still compressed
     header_disagreements: list[str] = field(default_factory=list)
+    name_bytes: bytes = b""         # the name as stored, before any decoding
 
     @property
     def is_dir(self) -> bool:
@@ -84,10 +85,20 @@ class ZipEntry:
         if self.method == STORED:
             body = self.raw
         elif self.method == DEFLATED:
+            # Bounded by the declared size: a member that inflates past it is a
+            # decompression bomb or a lie, and is refused after one byte too many
+            # rather than after the memory is gone.
+            d = zlib.decompressobj(-15)
             try:
-                body = zlib.decompress(self.raw, -15)
+                body = d.decompress(self.raw, self.uncomp_size + 1)
             except zlib.error as exc:
                 raise ParseError(f"{self.name}: undecodable deflate ({exc})") from exc
+            if len(body) > self.uncomp_size:
+                raise ParseError(f"{self.name}: inflates past its declared "
+                                 f"{self.uncomp_size} bytes")
+            if not d.eof:
+                raise ParseError(f"{self.name}: undecodable deflate (truncated "
+                                 "stream)")
         else:
             raise ParseError(f"{self.name}: unsupported compression method "
                              f"{self.method}")
@@ -232,7 +243,7 @@ def read(data: bytes) -> ZipArchive:
             create_system=vmb >> 8, version_needed=vneed, internal_attr=iattr,
             external_attr=eattr, extra_cen=extra_cen, extra_loc=extra_loc,
             comment=comment, local_offset=loff, data_offset=start, raw=raw,
-            header_disagreements=disagree))
+            header_disagreements=disagree, name_bytes=bytes(name_raw)))
 
     first = data.find(LOC_SIG)
     if entries and first not in (0, -1) and first < cd_offset:

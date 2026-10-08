@@ -1,0 +1,72 @@
+{
+  "format": "zip",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p6",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-10-07T20:47:40.478178+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no metadata-correlated byte survives in any of 4 producer shapes (infozip, ditto, python, windows): comments, entry times, Unix and NTFS times, uid/gid, modes, __MACOSX sidecars (download URL, quarantine), .DS_Store, Thumbs.db, and members' own metadata to a nested archive"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "zip_f2_f3_not_built: an archive's F2/F3 would apply each member's own F2/F3 inside it; not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "zip_f2_f3_not_built: an archive's F2/F3 would apply each member's own F2/F3 inside it; not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no container key separates the archivers (infozip, python_shutil, libarchive_bsdtar, macos_ditto); the members are files of their own formats, judged in their own matrices"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "zip_f2_f3_not_built: an archive's F2/F3 would apply each member's own F2/F3 inside it; not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "zip_f2_f3_not_built: an archive's F2/F3 would apply each member's own F2/F3 inside it; not built"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [],
+    "signatures": []
+  }
+}

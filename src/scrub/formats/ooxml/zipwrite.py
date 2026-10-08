@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import struct
 import zlib
+from dataclasses import dataclass
 
 from ...errors import ParseError
 
@@ -83,12 +84,8 @@ def write(parts: dict[str, bytes]) -> bytes:
     `parts` maps part name to its bytes. Names must be ASCII with no directory
     entries — the two things that would force a flag bit or an entry we do not write.
     """
-    out = bytearray()
-    central = bytearray()
-    count = 0
-
+    entries = []
     for name in order_parts(parts):
-        body = parts[name]
         try:
             raw_name = name.encode("ascii")
         except UnicodeEncodeError as exc:
@@ -98,8 +95,76 @@ def write(parts: dict[str, bytes]) -> bytes:
             raise ParseError(f"non-ASCII part name {name!r}") from exc
         if name.endswith("/"):
             raise ParseError(f"directory entry {name!r}: we do not write them")
+        body = parts[name]
+        entries.append((raw_name, FLAGS, METHOD_DEFLATE, body, _deflate(body),
+                        CREATE_SYSTEM, EXTERNAL_ATTR))
+    return _serialise(entries)
 
-        data = _deflate(body)
+
+# --- plain archives (Phase 6: ZIP, EPUB) ---------------------------------------
+#
+# The same writer with the three things a package never needs and an archive does:
+# directory entries (an empty folder is content), a non-ASCII name (bit 11, set only
+# for such a name, as the spec and Python's writer do -- Info-ZIP, `ditto` and
+# libarchive write UTF-8 without it, which a reader without a UTF-8 guess shows as
+# mojibake), and the executable bit (a script that stops running is a content
+# change). An archive is written as Unix (`create system` 3, the crowd on every
+# producer measured: Info-ZIP, `ditto`, libarchive, Python, MAT2), so modes mean
+# something, and every mode is one of four canonical values -- what was the
+# operator's umask (0600, 0664...) is gone. Stored when deflate does not shrink a
+# member (an empty file, a JPEG), deflated otherwise: decided by the content, as
+# Info-ZIP does, never by the producer.
+
+UNIX = 3
+FLAG_UTF8 = 0x0800
+METHOD_STORED = 0
+MODE_FILE = 0o100644
+MODE_EXEC = 0o100755
+MODE_DIR = 0o040755
+MODE_LINK = 0o120777
+DOS_DIRECTORY = 0x10
+
+
+@dataclass(frozen=True)
+class Member:
+    """One archive member as written. `name` is the stored bytes; `utf8` sets bit
+    11 (only for a non-ASCII name known to be UTF-8 -- a legacy code-page name is
+    written back as it was, without it). `mode` is one of the MODE_ constants."""
+    name: bytes
+    body: bytes
+    mode: int = MODE_FILE
+    utf8: bool = False
+
+
+def write_archive(members: list[Member]) -> bytes:
+    """Serialise members in the order given (the caller decides it: sorted for a
+    plain archive, `mimetype` first for EPUB). Deterministic for a given input and
+    zlib."""
+    entries = []
+    for m in members:
+        if m.mode not in (MODE_FILE, MODE_EXEC, MODE_DIR, MODE_LINK):
+            raise ParseError(f"{m.name!r}: mode {m.mode:o} is not a canonical mode")
+        if (m.mode == MODE_DIR) != m.name.endswith(b"/"):
+            raise ParseError(f"{m.name!r}: a directory entry is a name ending '/'")
+        if m.mode == MODE_DIR and m.body:
+            raise ParseError(f"{m.name!r}: a directory entry has no content")
+        attr = (m.mode << 16) | (DOS_DIRECTORY if m.mode == MODE_DIR else 0)
+        packed = _deflate(m.body)
+        method, data = ((METHOD_DEFLATE, packed) if len(packed) < len(m.body)
+                        else (METHOD_STORED, m.body))
+        entries.append((m.name, FLAG_UTF8 if m.utf8 else 0, method, m.body, data,
+                        UNIX, attr))
+    return _serialise(entries)
+
+
+def _serialise(entries) -> bytes:
+    """(name bytes, flags, method, body, stored data, create system, external attr)
+    per entry, in order, into an archive."""
+    out = bytearray()
+    central = bytearray()
+    count = 0
+
+    for raw_name, flags, method, body, data, create_system, external_attr in entries:
         crc = zlib.crc32(body)
         offset = len(out)
 
@@ -107,17 +172,17 @@ def write(parts: dict[str, bytes]) -> bytes:
         # the classic subtly-corrupt rewrite is the local header and the central
         # directory drifting apart. Note the DOS pair is time-then-date; writing it
         # the other way round is silent and produces a file dated 1980-01-00.
-        shared = struct.pack("<HHHH", FLAGS, METHOD_DEFLATE, DOS_TIME, DOS_DATE)
+        shared = struct.pack("<HHHH", flags, method, DOS_TIME, DOS_DATE)
         sizes = struct.pack("<III", crc, len(data), len(body))
 
         out += (_LOC_SIG + struct.pack("<H", VERSION) + shared + sizes
                 + struct.pack("<HH", len(raw_name), 0) + raw_name + data)
 
         central += (_CEN_SIG
-                    + struct.pack("<HH", (CREATE_SYSTEM << 8) | VERSION, VERSION)
+                    + struct.pack("<HH", (create_system << 8) | VERSION, VERSION)
                     + shared + sizes
                     + struct.pack("<HHHHH", len(raw_name), 0, 0, 0, INTERNAL_ATTR)
-                    + struct.pack("<II", EXTERNAL_ATTR, offset) + raw_name)
+                    + struct.pack("<II", external_attr, offset) + raw_name)
         count += 1
 
     cd_offset = len(out)

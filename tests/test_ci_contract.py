@@ -64,6 +64,9 @@ _PACKAGE_FOR = {
     "webpmux": "webp",
     "gifsicle": "gifsicle",
     "rsvg-convert": "librsvg2-bin",
+    # E-ZIP's archivers besides Python: Info-ZIP and libarchive.
+    "zip": "zip",
+    "bsdtar": "libarchive-tools",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.
@@ -94,6 +97,10 @@ _OPTIONAL = {
     "sips": "macOS's own image converter, one TIFF writer in E-TIFF's peer set. "
             "Absent on Linux, where Pillow, Pillow-LZW and libtiff's tiffcp still "
             "separate -- the A2 verdict is the same either way, measured on both",
+    "ditto": "macOS's archiver (what Finder's Compress runs), one of E-ZIP's peer "
+             "set. Absent on Linux, where Info-ZIP, Python and libarchive still "
+             "differ raw and collapse after F1 -- the verdict is the same, measured "
+             "on both",
     "sysctl": "macOS-only source of free memory for the memory preflight (limit "
               "#38); Linux reads /proc/meminfo instead, and a platform where neither "
               "answers skips the check rather than refusing every scrub",

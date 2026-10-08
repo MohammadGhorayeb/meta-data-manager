@@ -41,9 +41,15 @@ class Dispatcher:
             f"no handler for magic {header[:8].hex(' ')}")
 
 
-def default_dispatcher() -> Dispatcher:
+def default_dispatcher(keep_unknown_members: bool = False,
+                       check_memory: bool = True) -> Dispatcher:
     """The production registry. Handlers are imported lazily so a broken/optional
-    handler can't take down dispatch of the others."""
+    handler can't take down dispatch of the others.
+
+    The options reach the one handler that has any: ZIP, which keeps members no
+    handler reads only when asked, and checks the memory its members inflate to
+    unless told not to (the CLI's `--keep-unknown-members`, `--skip-memory-check`).
+    """
     d = Dispatcher()
     from .formats.jpeg.handler import JpegHandler
     d.register(JpegHandler())
@@ -95,4 +101,8 @@ def default_dispatcher() -> Dispatcher:
     # with a distinctive prefix has declined.
     from .formats.docx.handler import DocxHandler
     d.register(DocxHandler())
+    # Any other archive, after the package that shares its magic.
+    from .formats.zip.handler import ZipHandler
+    d.register(ZipHandler(keep_unknown=keep_unknown_members,
+                          check_memory=check_memory))
     return d
