@@ -502,3 +502,52 @@ partway into a declared header (the next member stored in one output and deflate
 in another) is cut only at whole constants, so the header fields are now declared
 in their pieces as well as whole -- the same fields, never more. The non-vacuity
 tests (a planted comment, a planted generator line) still fail the guard.
+
+---
+
+## 12. M7 as built — folder mode
+
+`src/scrub/folder.py`; the CLI switches to it when the input is a directory. A folder
+is treated as the ZIP handler treats an archive -- it is the same thing on a disk --
+but each file goes through the full single-file path (dispatch, scrub, residual
+check, report, the ExifTool cross-check), so nothing folder mode does is a second
+implementation of a format.
+
+**Outcomes**, one row each in `scrub-results.csv` (UTF-8, written as files finish,
+so an interrupted run still leaves a sheet): cleaned; kept as text (ZIP's rule,
+limit #58); kept unscrubbed (only with `--keep-unknown-members`); not supported;
+refused, with the handler's reason; dropped (sidecars, by their bytes:
+`.DS_Store`, AppleDouble `._*`, `Thumbs.db`); skipped (links, never followed;
+special files); error (anything unexpected -- the run goes on). Only the first three
+are written. If ExifTool still reads a value the report says is gone, the file is
+deleted and the row says so: the independent reader outranks ours. Exit 0 when
+everything but sidecars was written out, 8 when the run finished but not
+everything was, 2 for a refused layout.
+
+**Decisions:**
+
+- **The sheet names fields, never values.** The single-file report echoes the
+  values it removed (a terminal display); a sheet saved beside cleaned files and
+  shared with them would return the author and the GPS position. A test plants
+  values and finds none in the sheet or on the terminal.
+- **Layouts that could overwrite or recurse are refused before anything is
+  written**: an output folder that exists and is not empty, or that is the input,
+  inside it, or around it. A top-level input file called `scrub-results.csv` is
+  never overwritten (the sheet takes the next free name).
+- **Permissions** (`cli.output_mode`, now for single files too): the user's default
+  for a new file, plus the executable bits when the input had one. Until now every
+  output was written `0600` by `mkstemp`, so a cleaned program did not start until
+  it was `chmod`ed -- the executable tests did that by hand. Found while designing
+  this milestone.
+- **Files are written new.** Measured on macOS: a photo carrying a browser's
+  download address (`kMDItemWhereFroms`) and quarantine record comes out with
+  neither (tested). It does carry `com.apple.provenance`, which macOS writes on
+  every new file of the session -- the same 11 bytes on files made by `touch` and
+  `printf`, and not removable with `xattr -d` (limit #64).
+
+**Run on a mixed folder** (photos with EXIF and download attributes, a truncated
+JPEG, a PNG, Finder sidecars, an EPUB, a Finder ZIP, a Word file, text, a script, a
+program, a binary blob, an empty file, a link, a name with an accent and a space):
+7 cleaned, 2 kept as text, 2 dropped, 1 not supported, 1 refused (the truncated
+JPEG, with the reason), 1 skipped; the script and the program keep their
+executable bit.

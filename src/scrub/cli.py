@@ -32,6 +32,11 @@ hold (limit #38; see `resources.py`). `--skip-memory-check` overrides it.
 Exit codes (stable, so the harness/tests can assert on them):
   0 ok · 2 usage · 3 unsupported format · 4 parse error · 5 fidelity error
   6 content/residual error · 7 not enough memory · 1 unexpected
+  8 folder mode: the run finished, but not every file was written out
+
+**Folder mode**: when the input is a directory, every file in it is cleaned into
+the same place under the output directory and one results sheet is written there
+(`folder.py`). One bad file never stops the run.
 """
 from __future__ import annotations
 
@@ -52,6 +57,7 @@ from .errors import (
     ScrubError,
     UnsupportedFormatError,
 )
+from .textfmt import clip
 
 _EXIT = {
     UnsupportedFormatError: 3,
@@ -62,12 +68,25 @@ _EXIT = {
 }
 
 
-def _write_atomic(path: str, data: bytes) -> None:
+def output_mode(in_path: str) -> int:
+    """The cleaned file's permissions: what any program writing a new file gets
+    (0666 under the user's umask), plus the executable bits when the input had
+    one -- a cleaned program that will not start does not "run the same". Never the
+    input's other bits: its group/world access was set for the original."""
+    umask = os.umask(0)
+    os.umask(umask)
+    executable = os.stat(in_path).st_mode & 0o111
+    return (0o777 if executable else 0o666) & ~umask
+
+
+def _write_atomic(path: str, data: bytes, mode: int | None = None) -> None:
     d = os.path.dirname(os.path.abspath(path))
     fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
+        if mode is not None:
+            os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -125,7 +144,7 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
                 "post-scrub verification found residual metadata: "
                 + "; ".join(residuals))
 
-    _write_atomic(out_path, scrubbed)
+    _write_atomic(out_path, scrubbed, output_mode(in_path))
     report = rep.build(handler, data, scrubbed, fidelity, advisories)
     report.advisories.extend(_kept(handler, scrubbed, fidelity))
     if verify_with_exiftool:
@@ -174,9 +193,12 @@ def _advise(handler, data: bytes) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="scrub",
-        description="Irreversibly strip metadata from a file.")
-    p.add_argument("input")
-    p.add_argument("output")
+        description="Irreversibly strip metadata from a file, or from every file "
+                    "in a folder.")
+    p.add_argument("input", help="a file, or a folder to clean whole")
+    p.add_argument("output", help="the cleaned file, or (for a folder) a new or "
+                                  "empty folder to write the cleaned files and the "
+                                  "results sheet into")
     p.add_argument("--fidelity", default=fid.F1, choices=fid.ALL,
                    help="F1 bit-preserving (default), F2 lossless, F3 lossy")
     p.add_argument("--no-report", action="store_true",
@@ -196,6 +218,8 @@ def main(argv: list[str] | None = None) -> int:
                         "report (it reads the file twice, which costs a moment)")
     args = p.parse_args(argv)
 
+    if os.path.isdir(args.input):
+        return _main_folder(args)
     try:
         advisories, report = scrub_file_reported(
             args.input, args.output, args.fidelity,
@@ -217,6 +241,36 @@ def main(argv: list[str] | None = None) -> int:
         for note in advisories:
             print(f"scrub: warning: {note}", file=sys.stderr)
     return 0
+
+
+def _main_folder(args) -> int:
+    """Folder mode: one line per file (fields, never values), a summary, and the
+    path of the results sheet. Exit 0 when every file was written out, 8 when the
+    run finished but some were not (the sheet says which and why)."""
+    from . import folder
+
+    def line(row):
+        extra = (f"{row['removed']} removed" if row["outcome"] == folder.CLEANED
+                 else row["notes"])
+        print(f"  {row['outcome']:<16} {row['path']}"
+              + (f"  ({clip(str(extra), 90)})" if extra != "" else ""))
+    try:
+        summary = folder.clean_folder(
+            args.input, args.output, args.fidelity,
+            keep_unknown=args.keep_unknown_members,
+            check_memory=not args.skip_memory_check,
+            verify=not (args.no_report or args.no_verify),
+            progress=None if args.no_report else line)
+    except ValueError as e:
+        print(f"scrub: {e}", file=sys.stderr)
+        return 2
+    counts = ", ".join(f"{summary.count(o)} {o}" for o in (
+        folder.CLEANED, folder.TEXT, folder.UNSCRUBBED, folder.DROPPED,
+        folder.UNSUPPORTED, folder.REFUSED, folder.SKIPPED, folder.ERROR)
+        if summary.count(o))
+    print(f"scrub: {len(summary.rows)} files -- {counts}")
+    print(f"scrub: results sheet: {summary.sheet}")
+    return 0 if summary.complete else 8
 
 
 if __name__ == "__main__":

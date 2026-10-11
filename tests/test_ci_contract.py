@@ -103,6 +103,9 @@ _OPTIONAL = {
                  "dedicated step (the official release, checksum-pinned) rather than "
                  "an apt package; the validity tests skip without it, and no "
                  "published verdict depends on it",
+    "xattr": "macOS's extended-attribute tool: folder mode's test that a browser's "
+             "download address and quarantine record stay with the input. macOS-only "
+             "attributes, so the test skips elsewhere; nothing published depends on it",
     "ditto": "macOS's archiver (what Finder's Compress runs), one of E-ZIP's peer "
              "set. Absent on Linux, where Info-ZIP, Python and libarchive still "
              "differ raw and collapse after F1 -- the verdict is the same, measured "

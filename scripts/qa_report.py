@@ -136,7 +136,13 @@ ROADMAP = [
 # What is coming that is not a file type, listed after the formats still to come and
 # removed when it ships, like a ROADMAP entry with no matrix to retire it.
 FEATURES_PLANNED = [
-    "Cleaning a whole folder in one run, with one results sheet",
+    # November: production readiness (docs/schedule_report.pdf), after every file
+    # type and folder mode shipped.
+    "Robustness: broken or hostile files refused safely, measured across every type",
+    "Performance: speed and memory measured on large files, and very large files "
+    "cleaned without loading them whole",
+    "Packaging: a proper install",
+    "Documentation and a release",
 ]
 
 FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
