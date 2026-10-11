@@ -227,7 +227,10 @@ def _data_uris(xml: bytes) -> list[tuple[int, int, str, bool, bytes]]:
     return out
 
 
-def _clean_data_uris(xml: bytes, removed: list[str], depth: int) -> bytes:
+def _clean_data_uris(xml: bytes, removed: list[str], depth: int,
+                     label: str = "SVG") -> bytes:
+    """Every `data:` picture scrubbed by its own handler. Shared with EPUB, whose
+    XHTML may inline pictures the same way (`label` names the document)."""
     out, i = bytearray(), 0
     for n, (start, end, mime, is_b64, payload) in enumerate(_data_uris(xml)):
         where = f"embedded {mime} #{n + 1}"
@@ -235,7 +238,7 @@ def _clean_data_uris(xml: bytes, removed: list[str], depth: int) -> bytes:
                             "text/css", "text/plain")):
             continue                                       # content; reported
         if not mime.startswith("image/"):
-            raise ParseError(f"SVG: {where} is not a picture this project can clean; "
+            raise ParseError(f"{label}: {where} is not a picture this project can clean; "
                              "refused rather than passed through")
         try:
             raw = (base64.b64decode(re.sub(rb"\s", b"", payload), validate=True)
@@ -243,11 +246,11 @@ def _clean_data_uris(xml: bytes, removed: list[str], depth: int) -> bytes:
         except (ValueError, binascii.Error) as e:
             # Damaged base64 is a damaged file (the fuzz suite found it escaping as
             # an unexpected error rather than a refusal).
-            raise ParseError(f"SVG: {where} is not valid base64 ({e})") from None
+            raise ParseError(f"{label}: {where} is not valid base64 ({e})") from None
         if mime == "image/svg+xml" and depth >= 3:
-            raise ParseError(f"SVG: {where} nests SVGs more than three deep; refused")
+            raise ParseError(f"{label}: {where} nests SVGs more than three deep; refused")
         clean = (_scrub_xml_bytes(raw, depth + 1)[0] if mime == "image/svg+xml"
-                 else embedded.scrub_bytes(raw, f"SVG {where}"))
+                 else embedded.scrub_bytes(raw, f"{label} {where}"))
         if clean != raw:
             removed.append(f"{where}: its own metadata")
         head = xml[start:start + xml[start:end].index(b",") + 1]

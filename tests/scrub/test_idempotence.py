@@ -98,6 +98,11 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "svg":
         from . import svg_corpus as svc  # noqa: PLC0415
         return svc.build(shape="illustrator")
+    if fmt == "epub":
+        # Calibre's shape: two identifiers, opf: attributes, an unlisted file and
+        # a bookmark file to drop -- and a second pass must find nothing to do.
+        from . import epub_corpus as epc  # noqa: PLC0415
+        return epc.build(1, shape="calibre")
     if fmt == "zip":
         # Info-ZIP's shape: every container field to normalise, a .DS_Store to drop,
         # and a nested archive whose own scrub must also be a fixed point.

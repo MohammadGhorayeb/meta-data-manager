@@ -1,0 +1,282 @@
+{
+  "format": "epub",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p6",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-10-09T16:12:25.868943+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no metadata-correlated byte survives in any of 5 producer shapes (libreoffice, pandoc, calibre, sigil, indesign): the package document's people, dates and tool lines, the per-export identifier in OPF and NCX, chapter metas, bookmarks, unlisted files, pictures' own metadata; obfuscated fonts re-keyed to the derived identifier"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "epub_f2_f3_not_built: a canonical package document (one element order, one id scheme, one NCX head) is F2's specification, from A2@F1's surviving keys; not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "epub_f2_f3_not_built: a canonical package document (one element order, one id scheme, one NCX head) is F2's specification, from A2@F1's surviving keys; not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "closed at F1: packager. Still separating -- package metadata: elements, ncx_head, package_attrs, uid_ref, field:XML:IdentifierId; content model: classes, css_bytes, head, layout, size, field:XML:Identifier, field:XML:ManifestItemHref, field:XML:ManifestItemId, field:XML:ManifestItemMedia-type, field:XML:SpineItemrefIdref, field:XML:SpineToc. Peer set = libreoffice, pandoc_epub3, pandoc_epub2 (one Word document, the same title and language in its properties).",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:meta_elements",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (package metadata)",
+          "evidence": "struct:meta_elements constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:meta_ncx_head",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (package metadata)",
+          "evidence": "struct:meta_ncx_head constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:meta_package_attrs",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (package metadata)",
+          "evidence": "struct:meta_package_attrs constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:meta_uid_ref",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (package metadata)",
+          "evidence": "struct:meta_uid_ref constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:XML:IdentifierId",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (package metadata)",
+          "evidence": "field:XML:IdentifierId constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:content_classes",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "struct:content_classes constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:content_css_bytes",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "struct:content_css_bytes constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:content_head",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "struct:content_head constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:content_layout",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "struct:content_layout constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:content_size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "struct:content_size constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:XML:Identifier",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "field:XML:Identifier constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:XML:ManifestItemHref",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "field:XML:ManifestItemHref constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:XML:ManifestItemId",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "field:XML:ManifestItemId constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:XML:ManifestItemMedia-type",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "field:XML:ManifestItemMedia-type constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:XML:SpineItemrefIdref",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "field:XML:SpineItemrefIdref constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:XML:SpineToc",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "EPUB producer (content model)",
+          "evidence": "field:XML:SpineToc constant within a producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "epub_f2_f3_not_built: a canonical package document (one element order, one id scheme, one NCX head) is F2's specification, from A2@F1's surviving keys; not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "epub_f2_f3_not_built: a canonical package document (one element order, one id scheme, one NCX head) is F2's specification, from A2@F1's surviving keys; not built"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [],
+    "signatures": []
+  }
+}

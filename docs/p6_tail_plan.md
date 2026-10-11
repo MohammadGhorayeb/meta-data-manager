@@ -403,3 +403,102 @@ test); `--skip-memory-check` reaches it through the dispatcher.
 
 **Matrix:** A1@F1 pass, A2@F1 pass, fingerprint guard pass; F2/F3 not built (an
 archive's F2/F3 would be its members' own, applied inside it).
+
+---
+
+## 11. M6 as built — EPUB
+
+`formats/epub/` (`ocf.py`: container, font obfuscation, the derived identifier;
+`f1.py`) on top of ZIP M5, and a shared span reader, `ooxml/xmlspans.py`: expat
+says which element is which by **resolved namespace** (one producer writes
+`<dc:creator>`, another declares Dublin Core as the default namespace), and gives
+each element's byte span, so every edit is still a cut or an in-place value. (Expat
+reports an empty element's end *after* its tag but a normal element's at its `</`;
+the self-closing check is made on the start tag's bytes.) Registered after DOCX and
+before ZIP; ZIP now refuses any OCF package (a `mimetype` anywhere, or a
+`META-INF/container.xml`), so an EPUB never falls through to a plain-archive clean.
+
+### 11.1 Survey (one document, LibreOffice 26.2 and pandoc 3.12)
+
+- Both producers pack the source photo **byte for byte, GPS included**. ExifTool
+  reads the package document's fields but reports nothing from the photo, and
+  cannot write EPUB.
+- pandoc prints the author, publisher, date and rights on a generated title page,
+  as well as in the package document.
+- **MAT2 0.14.0 produces invalid books.** By the W3C's epubcheck 5.4: pandoc's book
+  is valid (0 errors) and MAT2's copy has 13. It empties `dc:title` and
+  `dc:language`, removes the `dcterms:modified` EPUB 3 requires, gives the
+  identifier a new `id` the package's `unique-identifier` no longer points to,
+  empties every chapter's `<title>` and the NCX's `docTitle`, and leaves NCX
+  `<meta/>` elements with no attributes. LibreOffice's book goes from 1 error
+  (its own CSS) to 7. MAT2's identifier is random per run.
+
+### 11.2 Rules
+
+OCF: `mimetype` first and stored (wherever it was); the rest sorted; `META-INF`
+keeps `container.xml`, `encryption.xml` and Apple's display options, drops anything
+else (calibre's bookmarks); a file the manifest does not list is dropped (no reading
+system shows it); rights, signatures, DRM and multiple renditions refused. OPF: in
+every `metadata` block (OPF 2.0's `dc-metadata`/`x-metadata` wrappers too), keep the
+title, the language and the unique identifier; keep `dcterms:modified` (set to the
+ZIP epoch, 1980-01-01T00:00:00Z), rendition, media-overlay, accessibility and
+Apple's specified-fonts properties, the EPUB 2 `cover` pointer, and a title's
+type/display order; drop everything else (people, dates, tools, calibre's columns,
+other identifiers, `link`s), and `opf:scheme` from the kept identifier. The
+identifier becomes a UUID (v8) from SHA-256 over the cleaned members, computed with
+a placeholder in OPF and NCX and then written in; the NCX's `dtb:uid` follows.
+NCX: `docAuthor` and head metas other than the four readers use go. XHTML: `<meta>`
+with a name or property (except `viewport`) and author/schema `link`s go, inline
+`data:` pictures are cleaned (SVG's cleaner, now shared), inline SVG `metadata`
+goes; whitespace is tidied only in the head, never in mixed content. Comments and
+PIs (except the declaration and `xml-stylesheet`) go everywhere.
+
+**Font obfuscation** is keyed by the identifier (IDPF: SHA-1 of it over the first
+1040 bytes; Adobe: its UUID over the first 1024), so every obfuscated font is
+unscrambled with the old identifier, checked to be a font, and scrambled again with
+the new one; tests unscramble the output with the output's identifier and get the
+original font back.
+
+**The residual check is the clean itself**: a cleaned book must be a fixed point —
+the OPF, NCX, every chapter and the kept `META-INF` files come back unchanged from a
+second clean — plus the ZIP checks and `mimetype` first and stored.
+
+### 11.3 Measured
+
+- **Validity**: epubcheck finds no error in our output that the input did not have,
+  on both survey books and all five corpus shapes (tests run it when installed;
+  CI installs the release, checksum-pinned).
+- **A1** pass in five shapes (LibreOffice, pandoc, Calibre EPUB 2, Sigil with IDPF
+  font obfuscation, InDesign with Adobe's).
+- **E-EPUB (A2)**: one Word document (title and language in its properties, so every
+  producer reads the same metadata) through LibreOffice and pandoc (EPUB 3, EPUB 2).
+  Raw, all three channels separate them. After F1 the **packager channel is
+  closed**; the **package metadata** channel keeps its layout — element order and
+  set, the identifier's `id` name, the NCX head, the package's attributes (F2's
+  spec); the **content model** (file layout, chapter heads, class names, stylesheet,
+  size; the derived identifier, a hash of it) is untouched by design. Two packager
+  keys were first measuring the wrong thing — `entry_order` and `methods` list
+  member names, so after a sorting writer they report the content layout; replaced
+  by policies (is the order sorted; is a member stored exactly when deflate would
+  not shrink it), the DOCX M11 lesson again.
+
+**Matrix:** published as its own (`epub`), not as ZIP's second family as §5
+planned: its A2 channels are its own. A1@F1 pass, A2@F1 fail (channels named),
+guard pass; F2/F3 not built.
+
+### 11.4 Found by CI: the ZIP guard on Linux
+
+The push of M5 failed one test on both Linux legs: the ZIP fingerprint guard,
+which passes on the Mac. Reproduced in an x86-64 container: the signature was
+`ff000000 7b010000` -- a compressed size of 255 and a size of 379, the nested
+archive's, in all three "diverse" outputs. The corpus varied its seeds with
+repeated characters (`"." * n`) and solid-colour pictures, which deflate shrinks to
+nearly the same size whatever `n`; the Mac's zlib happened to leave one of the three
+different, Linux's did not. Equal sizes in diverse inputs are equal header bytes in
+their outputs, which the guard rightly cannot tell from a mark. Both corpora now
+vary seeds with incompressible hex of seed-dependent length (`zip_corpus.filler`)
+and seed-dependent pixel noise. That exposed a second edge: a run that ends
+partway into a declared header (the next member stored in one output and deflated
+in another) is cut only at whole constants, so the header fields are now declared
+in their pieces as well as whole -- the same fields, never more. The non-vacuity
+tests (a planted comment, a planted generator line) still fail the guard.

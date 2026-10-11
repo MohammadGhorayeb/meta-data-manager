@@ -46,9 +46,10 @@ def default_dispatcher(keep_unknown_members: bool = False,
     """The production registry. Handlers are imported lazily so a broken/optional
     handler can't take down dispatch of the others.
 
-    The options reach the one handler that has any: ZIP, which keeps members no
-    handler reads only when asked, and checks the memory its members inflate to
-    unless told not to (the CLI's `--keep-unknown-members`, `--skip-memory-check`).
+    The options reach the two handlers that have any, ZIP and EPUB, which keep
+    members no handler reads only when asked, and check the memory their members
+    inflate to unless told not to (the CLI's `--keep-unknown-members`,
+    `--skip-memory-check`).
     """
     d = Dispatcher()
     from .formats.jpeg.handler import JpegHandler
@@ -101,7 +102,12 @@ def default_dispatcher(keep_unknown_members: bool = False,
     # with a distinctive prefix has declined.
     from .formats.docx.handler import DocxHandler
     d.register(DocxHandler())
-    # Any other archive, after the package that shares its magic.
+    # EPUB: a ZIP whose `mimetype` names it. Before the plain-archive handler,
+    # which refuses OCF packages by name.
+    from .formats.epub.handler import EpubHandler
+    d.register(EpubHandler(keep_unknown=keep_unknown_members,
+                           check_memory=check_memory))
+    # Any other archive, after the packages that share its magic.
     from .formats.zip.handler import ZipHandler
     d.register(ZipHandler(keep_unknown=keep_unknown_members,
                           check_memory=check_memory))

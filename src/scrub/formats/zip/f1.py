@@ -108,10 +108,14 @@ def package_kind(archive: zipread.ZipArchive) -> str | None:
     names = set(archive.names)
     if "[Content_Types].xml" in names:
         return "an Office Open XML package other than Word (Excel, PowerPoint...)"
-    first = archive.entries[0] if archive.entries else None
-    if first is not None and first.name == "mimetype":
+    # Anywhere, not only first: an EPUB whose `mimetype` is out of place is still a
+    # book (the EPUB handler claims it and puts it back first); one that reached
+    # this handler is a package of another kind, never a plain archive.
+    mimetype = archive.by_name("mimetype")
+    if mimetype is not None or "META-INF/container.xml" in names:
         try:
-            kind = first.content().decode("ascii", "replace").strip()
+            kind = (mimetype.content().decode("ascii", "replace").strip()
+                    if mimetype is not None else "OCF")
         except ParseError:
             kind = "?"
         return f"a {kind!r} package (OpenDocument or EPUB)"
@@ -192,7 +196,7 @@ _MODE = {"file": zipwrite.MODE_FILE, "exec": zipwrite.MODE_EXEC,
 
 # --- the scrub ------------------------------------------------------------------
 
-def _check_memory(archive: zipread.ZipArchive, where: str) -> None:
+def check_memory_for(archive: zipread.ZipArchive, where: str) -> None:
     declared = sum(e.uncomp_size for e in archive.entries)
     need = MEMORY_FACTOR * (archive.size + declared)
     free = resources.available_memory()
@@ -225,7 +229,7 @@ def scrub(data: bytes, *, keep_unknown: bool = False, check_memory: bool = True,
             f"{where or 'this archive'} is {kind}: its metadata lives in named "
             "parts a plain-archive scrub would keep as text; not supported")
     if check_memory:
-        _check_memory(archive, where)
+        check_memory_for(archive, where)
     d = dispatcher or default_dispatcher()
 
     files: dict[bytes, zipwrite.Member] = {}
@@ -246,7 +250,7 @@ def scrub(data: bytes, *, keep_unknown: bool = False, check_memory: bool = True,
             if not body or b"\x00" in body:
                 raise ParseError(f"{path}: a symbolic link with no usable target")
         elif body:
-            body = _scrub_member(body, path, d, keep_unknown, check_memory, depth,
+            body = scrub_member(body, path, d, keep_unknown, check_memory, depth,
                                  unknown)
         if name in files:
             raise ParseError(f"{path}: two members with one name")
@@ -267,7 +271,7 @@ def scrub(data: bytes, *, keep_unknown: bool = False, check_memory: bool = True,
     return zipwrite.write_archive([files[n] for n in sorted(files)])
 
 
-def _scrub_member(body: bytes, path: str, d, keep_unknown: bool,
+def scrub_member(body: bytes, path: str, d, keep_unknown: bool,
                   check_memory: bool, depth: int, unknown: list[str]) -> bytes:
     try:
         handler = d.resolve(body)

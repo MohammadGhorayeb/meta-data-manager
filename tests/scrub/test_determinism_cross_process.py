@@ -97,6 +97,12 @@ def _build(kind: str, tmpdir: str) -> str | None:
         from . import svg_corpus as svc  # noqa: PLC0415
         open(p, "wb").write(svc.svgz())
         return p
+    if kind == "epub":
+        # The derived identifier hashes members in name order and the fonts are
+        # re-keyed to it: an order taken from a set would show in both.
+        from . import epub_corpus as epc  # noqa: PLC0415
+        open(p, "wb").write(epc.build(1, shape="sigil"))
+        return p
     if kind == "zip":
         # Members are collected into a dict and sorted; the sidecars, folders and
         # nested archive are the most chances for a set to decide an order.

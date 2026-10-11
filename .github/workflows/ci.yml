@@ -173,6 +173,7 @@ jobs:
       #   librsvg2-bin      rsvg-convert: renders SVGs before and after (the check MAT2
       #                     fails), and cairo, a real second SVG writer for E-SVG
       #   zip, libarchive-tools  Info-ZIP `zip` and `bsdtar`: two of E-ZIP's archivers
+      #   pandoc            the second EPUB producer in E-EPUB (LibreOffice is the first)
       # Tests needing a missing tool skip cleanly, so a silent failure here
       # would weaken the suite rather than break it. Hence: no `|| true`.
       - name: Install external tools
@@ -182,7 +183,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools
+            zip libarchive-tools pandoc
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -197,6 +198,20 @@ jobs:
              -o /tmp/shine/shineenc -lm
           sudo install -m 0755 /tmp/shine/shineenc /usr/local/bin/shineenc
           shineenc -h 2>&1 | head -1
+
+      # The W3C's EPUB validator, the judge that a cleaned book gains no error. The
+      # official release, pinned by the checksum Homebrew's formula publishes for
+      # the same file; run on the runner's preinstalled Java.
+      - name: Install epubcheck (EPUB validity judge)
+        run: |
+          curl -fsSL -o /tmp/epubcheck.zip \
+            https://github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip
+          echo "33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c  /tmp/epubcheck.zip" | sha256sum -c -
+          sudo unzip -q /tmp/epubcheck.zip -d /opt
+          printf '#!/bin/sh\nexec java -jar /opt/epubcheck-5.4.0/epubcheck.jar "$@"\n' \
+            | sudo tee /usr/local/bin/epubcheck > /dev/null
+          sudo chmod 0755 /usr/local/bin/epubcheck
+          epubcheck --version | head -1
 
       - name: Install Python dependencies
         run: |
@@ -494,7 +509,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools
+            zip libarchive-tools pandoc
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -549,8 +564,10 @@ jobs:
   report:
     name: QA report
     runs-on: ubuntu-latest
-    # See the evidence job: the same PDF matrix rebuild happens here.
-    timeout-minutes: 30
+    # See the evidence job: the same PDF matrix rebuild happens here, after the same
+    # 434 MB of tools -- which a slow apt mirror once took the whole 30 minutes to
+    # install, cancelling the report of a run whose results were all in.
+    timeout-minutes: 50
     needs: [lint, test, coverage, evidence, macos]
     if: always()
     permissions:
@@ -575,7 +592,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools
+            zip libarchive-tools pandoc
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

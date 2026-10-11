@@ -23,8 +23,10 @@ from `src`.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import plistlib
+import random
 import struct
 import zlib
 from dataclasses import dataclass, field
@@ -39,11 +41,35 @@ def secret(name: str, variant: int = 0) -> str:
     return f"SENTINEL-{name}-V{variant:02d}"
 
 
+def filler(seed: int, per_seed: int = 7) -> str:
+    """`per_seed * seed` characters of hex that differ by seed. Not a repeated
+    character: deflate squeezes `"." * n` to nearly the same size for every n, and
+    equal compressed sizes in diverse inputs are equal header bytes in their
+    outputs -- which the fingerprint guard rightly cannot tell from a mark (found
+    on Linux, whose zlib made three nested archives one size)."""
+    out, h = "", f"seed{seed}"
+    while len(out) < per_seed * seed:
+        h = hashlib.sha256(h.encode()).hexdigest()
+        out += h
+    return out[:per_seed * seed]
+
+
+def _noise(img, seed: int) -> None:
+    """Seed-dependent pixels in one corner, so a picture's compressed size moves
+    with the seed (a solid colour compresses to one size whatever its width)."""
+    rng = random.Random(seed)
+    for x in range(min(img.width, 4 + seed)):
+        for y in range(min(img.height, 4)):
+            img.putpixel((x, y), tuple(rng.randrange(256) for _ in img.getbands()))
+
+
 # --- member content -----------------------------------------------------------
 
 def photo(variant: int = 0, seed: int = 0) -> bytes:
     img = Image.new("RGB", (32 + seed * 2, 24), (30 + seed * 41 % 200, 140, 90))
     img.paste((200, 30, 60), (0, 0, 10, 24))
+    if seed:
+        _noise(img, seed)
     exif = Image.Exif()
     exif[0x013B] = secret("PHOTO-ARTIST", variant)
     exif[0x0131] = secret("PHOTO-SOFT", variant)
@@ -56,6 +82,8 @@ def photo(variant: int = 0, seed: int = 0) -> bytes:
 
 def png(variant: int = 0, key: str = "PNG-AUTHOR", seed: int = 0) -> bytes:
     img = Image.new("RGB", (10 + seed, 10), (seed * 23 % 250, 60, 200))
+    if seed:
+        _noise(img, seed)
     buf = io.BytesIO()
     img.save(buf, "PNG")
     raw = buf.getvalue()
@@ -69,16 +97,16 @@ def svg(variant: int = 0, seed: int = 0) -> bytes:
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">'
             f'<!-- {secret("SVG-COMMENT", variant)} -->'
             f'<rect width="8" height="{4 + seed % 4}" fill="#3060a0"/>'
-            + '<g/>' * seed + '</svg>').encode()
+            + (f'<g id="g{filler(seed, 9)}"/>' if seed else "") + '</svg>').encode()
 
 
 def text(seed: int = 0) -> bytes:
     return (f"Meeting notes {seed}\nWhat the archive is for: its content.\n"
-            + "." * (seed * 7)).encode()
+            + filler(seed)).encode()
 
 
 def script(seed: int = 0) -> bytes:
-    return f"#!/bin/sh\necho run {seed}{'!' * seed * 5}\n".encode()
+    return f"#!/bin/sh\necho run {seed}{filler(seed, 5)}\n".encode()
 
 
 # --- sidecars -----------------------------------------------------------------

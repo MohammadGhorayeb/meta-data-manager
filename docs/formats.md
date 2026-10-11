@@ -464,6 +464,36 @@ programs given the same folder produce archives that tell them apart on eleven
 points; after cleaning, the four are the same file, byte for byte.
 <!-- FORMAT:zip:END -->
 
+<!-- FORMAT:epub:BEGIN -->
+EPUB e-books — what LibreOffice, pandoc, Calibre, Sigil and InDesign export, and what
+e-book stores sell.
+
+**What goes.** The book's own record of who made it: author, contributors,
+publisher, rights, dates, description, subjects, and the line naming the program —
+LibreOffice's names its exact build, your platform and its source commit. Calibre's
+library details: your library's ID for the book, its private columns, and **the
+bookmark file recording where you stopped reading**. **A random ID made fresh by
+every export**, which ties each copy back to the one export that produced it; it is
+replaced by one computed from the cleaned book, so the same book cleaned twice gets
+the same ID and the ID says nothing the text does not. Authors and generators named
+in each chapter's hidden header and in the table of contents, files the book
+doesn't list (no reader ever shows them), comments, and the archive's own records.
+**And every picture inside**, cleaned by its own rules: a cover photo keeps its
+GPS position when LibreOffice or pandoc packs it into a book.
+
+**What stays.** The book: its text, title, language, pictures, stylesheets, the
+cover, and how it is laid out. A name printed on the title page is the book's text
+and stays; the report says where it still appears. Embedded fonts stay with their
+licence text; a font the publisher scrambled (font obfuscation) is unscrambled and
+scrambled again with the new ID, or it would turn to garbage.
+
+**How it compares.** The W3C's checker (epubcheck) finds no new error in any book we
+have cleaned (two real exports and five test books shaped like other programs'). MAT2's cleaned copies fail it: a valid pandoc book came back with 13 errors.
+The book's title and language were emptied, a date EPUB 3 requires was removed, and
+its ID no longer matches what the book says it is. ExifTool can't write EPUB, and
+reading one it reports nothing about the photos inside.
+<!-- FORMAT:epub:END -->
+
 <!-- FORMAT:exe:BEGIN -->
 Programs — the files a computer runs, on all three systems: Linux (ELF), Mac
 (Mach-O, including the "universal" kind that carries an Intel and an Apple-chip copy

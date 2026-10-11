@@ -68,15 +68,19 @@ class ZipPlugin:
         canonical attribute words; the end record's signature. Every one is the
         crowd's value (`zipwrite`), so declaring them declares conformity: they mark
         a file as canonically rebuilt, never as rebuilt from what (limit #9)."""
-        out = [b"PK\x05\x06"]
+        # Declared in their field pieces -- signature and versions, then flags,
+        # method, time and date -- as well as whole: a run can end partway into a
+        # header when the next member's method differs between outputs (stored in
+        # one, deflated in another), and the cut must still fall on the boundary.
+        local = b"PK\x03\x04" + struct.pack("<H", zipwrite.VERSION)
+        central = b"PK\x01\x02" + struct.pack(
+            "<HH", (zipwrite.UNIX << 8) | zipwrite.VERSION, zipwrite.VERSION)
+        out = [b"PK\x05\x06", local, central]
         for flags in (0, zipwrite.FLAG_UTF8):
             for method in (zipwrite.METHOD_STORED, zipwrite.METHOD_DEFLATE):
                 tail = struct.pack("<HHHH", flags, method, zipwrite.DOS_TIME,
                                    zipwrite.DOS_DATE)
-                out.append(b"PK\x03\x04" + struct.pack("<H", zipwrite.VERSION) + tail)
-                out.append(b"PK\x01\x02" + struct.pack(
-                    "<HH", (zipwrite.UNIX << 8) | zipwrite.VERSION, zipwrite.VERSION)
-                    + tail)
+                out += [tail, local + tail, central + tail]
         out += [struct.pack("<I", a) for a in sorted(f1.CANONICAL_ATTRS)]
         return out + [b"\x00"]
 

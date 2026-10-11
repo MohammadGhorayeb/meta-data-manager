@@ -426,6 +426,7 @@ FORMAT_TEST_PATTERNS = [
     # ZIP first of all: its tests prove a Word document inside an archive goes to
     # the DOCX handler, and the broad "docx" pattern would take them.
     ("zip", ["test_zip", "zip_corpus", "matrix_zip"]),
+    ("epub", ["test_epub", "epub_corpus", "matrix_epub"]),
     ("docx", ["docx", "ooxml", "e_session_id"]),
     ("heic", ["heic"]),
     # RAW before JPEG: `test_raw_f1.py` would otherwise match JPEG's "test_f1".

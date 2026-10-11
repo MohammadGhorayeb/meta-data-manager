@@ -129,11 +129,13 @@ DOS_DIRECTORY = 0x10
 class Member:
     """One archive member as written. `name` is the stored bytes; `utf8` sets bit
     11 (only for a non-ASCII name known to be UTF-8 -- a legacy code-page name is
-    written back as it was, without it). `mode` is one of the MODE_ constants."""
+    written back as it was, without it). `mode` is one of the MODE_ constants;
+    `store` forces the stored method whatever deflate would save."""
     name: bytes
     body: bytes
     mode: int = MODE_FILE
     utf8: bool = False
+    store: bool = False        # never deflate (EPUB's `mimetype`, by OCF's rule)
 
 
 def write_archive(members: list[Member]) -> bytes:
@@ -149,8 +151,9 @@ def write_archive(members: list[Member]) -> bytes:
         if m.mode == MODE_DIR and m.body:
             raise ParseError(f"{m.name!r}: a directory entry has no content")
         attr = (m.mode << 16) | (DOS_DIRECTORY if m.mode == MODE_DIR else 0)
-        packed = _deflate(m.body)
-        method, data = ((METHOD_DEFLATE, packed) if len(packed) < len(m.body)
+        packed = b"" if m.store else _deflate(m.body)
+        method, data = ((METHOD_DEFLATE, packed)
+                        if not m.store and len(packed) < len(m.body)
                         else (METHOD_STORED, m.body))
         entries.append((m.name, FLAG_UTF8 if m.utf8 else 0, method, m.body, data,
                         UNIX, attr))

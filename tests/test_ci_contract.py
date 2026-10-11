@@ -67,6 +67,8 @@ _PACKAGE_FOR = {
     # E-ZIP's archivers besides Python: Info-ZIP and libarchive.
     "zip": "zip",
     "bsdtar": "libarchive-tools",
+    # E-EPUB's second producer.
+    "pandoc": "pandoc",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.
@@ -97,6 +99,10 @@ _OPTIONAL = {
     "sips": "macOS's own image converter, one TIFF writer in E-TIFF's peer set. "
             "Absent on Linux, where Pillow, Pillow-LZW and libtiff's tiffcp still "
             "separate -- the A2 verdict is the same either way, measured on both",
+    "epubcheck": "the W3C's EPUB validator, installed in the test job by a "
+                 "dedicated step (the official release, checksum-pinned) rather than "
+                 "an apt package; the validity tests skip without it, and no "
+                 "published verdict depends on it",
     "ditto": "macOS's archiver (what Finder's Compress runs), one of E-ZIP's peer "
              "set. Absent on Linux, where Info-ZIP, Python and libarchive still "
              "differ raw and collapse after F1 -- the verdict is the same, measured "
