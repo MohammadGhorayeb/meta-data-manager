@@ -5,18 +5,14 @@
     "version": "0.1.0-p4",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-10-04T14:30:53.066538+00:00",
+  "generated_at": "2026-10-13T05:39:19.506888+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {
       "adversary": "A1",
       "fidelity": "F1",
       "verdict": "pass",
-      "noise_floor": {
-        "deterministic": true,
-        "repeats": 3,
-        "variable_loci": []
-      }
+      "reason": "no metadata-correlated byte survives: udta/loci, tag lists, header timestamps, handler names; and position stored as track samples or vendor boxes -- GoPro GPMF telemetry, timecode and camera serial, a 360 camera's camm track, Android's location box, model keys and Samsung trailer"
     },
     {
       "adversary": "A1",

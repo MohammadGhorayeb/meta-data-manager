@@ -6,7 +6,9 @@ Measured here:
   - A1@F1   differential leak oracle over content-identical MP4s whose metadata
             differs only by a sentinel. Everything F1 touches has to collapse:
             `udta/loci`, the tag list, the timestamps in all three header boxes,
-            and the handler names.
+            and the handler names -- and, since §13 of the Phase 6 plan, position
+            stored as media: GoPro's telemetry and timecode tracks and serial, a
+            360 camera's camm track, Android's location box and Samsung trailer.
   - A2@F1   four producers, three of them ffmpeg invocations and one a genuinely
             different muxer (AVFoundation, pass-through so the coded video is
             identical). E-MP4 runs the same comparison at `raw` first, so the cell
@@ -36,6 +38,7 @@ from tests.harness.plugins.mp4 import Mp4Plugin
 from tests.harness.runner import matrix
 from tests.scrub import e_mp4
 from tests.scrub import mp4_iso_corpus as mc
+from tests.scrub import telemetry_corpus as tc
 
 TOOL = {
     "name": "irreversible_scrubber",
@@ -69,6 +72,48 @@ def _a1_variants(tmpdir: str, n_variants: int = 3, n_repeats: int = 3):
             paths.append(path)
         groups.append(paths)
     return groups
+
+
+TELEMETRY_SHAPES = ("gopro", "camm", "android")
+
+
+def _telemetry_variants(tmpdir: str, shape: str, n_variants: int = 3,
+                        n_repeats: int = 3):
+    """The same, for a camera that stores its position as track samples or vendor
+    boxes (`telemetry_corpus`: GoPro, 360 camm, Android)."""
+    groups = []
+    for i in range(n_variants):
+        blob = tc.build(i + 1, shape=shape)
+        paths = []
+        for r in range(n_repeats):
+            path = os.path.join(tmpdir, f"a1_{shape}_v{i}_r{r}.mp4")
+            with open(path, "wb") as f:
+                f.write(blob)
+            paths.append(path)
+        groups.append(paths)
+    return groups
+
+
+def _a1_cell(scrubber, plugin, tmpdir: str) -> Cell:
+    """The hand-built iPhone-style file, then each telemetry shape; one cell."""
+    sets = [("handbuilt", _a1_variants(tmpdir))] + [
+        (shape, _telemetry_variants(tmpdir, shape)) for shape in TELEMETRY_SHAPES]
+    failed, leaks = [], []
+    for label, groups in sets:
+        cell = leak.evaluate_a1(scrubber, plugin, groups, "F1", n=3,
+                                sentinel_field="metadata_variant", modality="bytes")
+        if cell.verdict != V.PASS:
+            failed.append(label)
+            leaks += cell.leaks
+    if failed:
+        return Cell("A1", "F1", V.FAIL, leaks=leaks,
+                    reason="variant-correlated bytes survive in " + ", ".join(failed))
+    return Cell("A1", "F1", V.PASS,
+                reason="no metadata-correlated byte survives: udta/loci, tag lists, "
+                       "header timestamps, handler names; and position stored as "
+                       "track samples or vendor boxes -- GoPro GPMF telemetry, "
+                       "timecode and camera serial, a 360 camera's camm track, "
+                       "Android's location box, model keys and Samsung trailer")
 
 
 def _diverse(tmpdir: str, n: int = 4) -> list[str]:
@@ -140,8 +185,7 @@ def build_doc(tmpdir: str) -> dict:
                     "Phase 4 has not measured")
 
     cells = [
-        leak.evaluate_a1(scrubber, plugin, _a1_variants(tmpdir), "F1", n=3,
-                         sentinel_field="metadata_variant", modality="bytes"),
+        _a1_cell(scrubber, plugin, tmpdir),
         Cell("A1", "F2", V.NOT_TESTED, reason=not_built),
         Cell("A1", "F3", V.NOT_TESTED, reason=f3_not_built),
         e_mp4.evaluate_cell("F1", e_mp4.build_sources(tmpdir, repeats=3), tmpdir),

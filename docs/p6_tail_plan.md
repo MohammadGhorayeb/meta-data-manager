@@ -551,3 +551,135 @@ program, a binary blob, an empty file, a link, a name with an accent and a space
 7 cleaned, 2 kept as text, 2 dropped, 1 not supported, 1 refused (the truncated
 JPEG, with the reason), 1 skipped; the script and the program keep their
 executable bit.
+
+---
+
+## 13. Validation: video telemetry
+
+The iPhone keeps position in metadata boxes (Phase 4 M7). Action cameras, drones and
+360 cameras keep it as **media** -- samples of a track, timed like frames -- and
+Android phones in boxes of their own. None of these were in the MP4 corpus, so the
+question was whether F1 leaks them.
+
+**Models** (`tests/scrub/telemetry_corpus.py`), each from the format's public
+description and each read back by ExifTool's embedded-data mode (`-ee`), so the
+model is real enough to test against: GoPro (a GPMF `gpmd` track with `GPS5`, the
+`GoPro SOS` track, a timecode track, `udta/GPMF` with the camera serial and
+`udta/FIRM`); a drone's subtitle track (`sbtl`/`tx3g`, in Autel's text format, the
+one ExifTool's source documents); Google's camera-motion track (`camm`, GPS
+records); Android (`udta/©xyz`, `mdta` model keys, a Samsung `sefd` trailer).
+
+**Measured before any change: no leak, and three refusals.** Android cleaned with
+everything gone. GoPro, the drone and the 360 camera were refused whole, because
+their timecode, subtitle and camm handlers were not modelled -- the keep-list did
+its job, and made those cameras unusable.
+
+**Decisions:**
+
+- `tmcd` and `camm` tracks are **dropped** (with `meta`): a timecode track's one
+  sample is the time of day recording started; camm holds orientation, motion and
+  GPS; no player displays either. Their `tref` links from the video are pruned.
+- Subtitle and caption tracks (`sbtl`, `text`, `subt`, `clcp`) stay **refused** by
+  default -- a film's text and a drone's telemetry look the same to a container --
+  with a reason naming both, and `--drop-subtitles` drops them (CLI, folder mode).
+- The report names vendor `udta` boxes (`FIRM`, `GPMF`) and labels dropped tracks
+  by kind (timecode, camera-motion, subtitle, timed metadata).
+
+**After:** every shape cleaned (the drone with the flag); no planted value in any
+output; ExifTool `-ee` finds no position; variants collapse to one file. The MP4
+matrix's A1 cell now includes the GoPro, camm and Android shapes.
+
+**Not yet measured, and said so:** real files from these cameras. The models are
+read back by ExifTool, which is evidence they match the formats, not that they match
+every firmware. GoPro publishes sample clips (its `gpmf-parser` repository); DJI and
+Android clips need to come from devices.
+
+---
+
+## 14. Validation pass: deep fuzzing, second readers, real files, a real renderer
+
+The corpora plant values where we already know to look, the checks mostly use one
+independent reader (ExifTool, which has been measured missing things), and the pixel
+tests use a decoder that ignores how a picture is displayed. This pass attacked each.
+
+### 14.1 Deep fuzzing
+
+HEIC, ZIP and EPUB joined the suite's fuzz corpus, and a one-off campaign ran 3 seeds
+x 1,000 mutations on ZIP (two shapes), EPUB (two), HEIC and the telemetry MP4s:
+**22 escapes in ~21,000 files** -- raw `struct.error`/`IndexError` from `zipread.read`
+on a cut end record (reached while *identifying* the file) and from HEIC records cut
+short. Fail-closed held (nothing is written on any exception) but the exit code was
+"unexpected" instead of "parse error". Converted at the boundary, as RAW and TIFF
+already did; three replayed mutations and three cut end records are regression tests
+(they fail without the fix). Re-run: zero escapes. Eight damaged HEICs whose metadata
+item lost its type marker come out of F1 with an orphan item the residual check
+catches -- the CLI refuses them (exit 6): defence in depth working.
+
+### 14.2 Second readers
+
+`tests/scrub/test_second_reader.py`: exiv2 (C++, no code shared with ExifTool) for
+JPEG, TIFF, WebP, HEIC and two raws; MediaInfo for the telemetry shapes; qpdf
+rewriting the PDF with every stream decompressed (`--qdf`) and checking its structure.
+Every case asserts the reader **sees** the planted values first, then sees none after
+F1. All pass. CI installs the three (Ubuntu's exiv2 0.27 lacks BMFF: its HEIC and CR3
+cases skip there, a missing reader rather than a pass).
+
+### 14.3 Real files (`scripts/real_file_sweep.py`)
+
+Up to 150 files per type from `/System/Library` and `/Applications` bundles --
+vendor assets, never a user's files -- cleaned in memory; content judged by the
+DISPLAYED pixels (EXIF rotation applied), page count and text for PDFs; ExifTool's
+identity tags compared by VALUE (TIFF blanks fields in place and MP4 zeroes dates,
+so counting tag presence reported 135 TIFFs and 148 M4As as leaking when none was).
+Aggregates only. Final run:
+
+| type | sampled | cleaned | content |
+|---|---|---|---|
+| JPEG | 150 | 150 | 150 display-identical |
+| PNG | 150 | 150 | 150 display-identical |
+| TIFF | 150 | 150 | 150 display-identical |
+| GIF | 113 | 108 | 108 display-identical (1 truncated, refused; 4 are not GIFs) |
+| WebP | 3 | 3 | 3 display-identical |
+| HEIC | 150 | 149 | 149 display-identical (1 refused by the residual check: macOS's `Sonoma.heic` dynamic wallpaper, 37 extra pictures -- limit #67; 1,740 of all 1,741 vendor HEICs clean) |
+| PDF | 150 | 147 | 147 same pages and text (3 hybrid-xref, refused) |
+| MP3 / M4A / video | 119 / 150 / 150 | 119 / 149 / 143 | no identity value left; 7 videos refused for caption tracks |
+| ZIP | 41 | 30 | 11 refused for members no handler reads |
+
+**Found, and fixed:**
+
+1. **HEIC F1 dropped transparency.** The alpha plane is an auxiliary image
+   (`urn:mpeg:hevc:2015:auxid:1`) and F1 matched aux types by the URN's last
+   component -- `1` -- so it went with the depth maps: 16 of 150 vendor HEICs came out
+   opaque. Alpha is now kept by its full standard URNs (HEVC, AVC, MPEG-B); the
+   depth plane (`auxid:2`) still goes. Limit #32 updated.
+2. **The ISOBMFF pointer check refused a correct M4A.** It compared 64 bytes at each
+   chunk offset before and after; a last chunk of 30 bytes in a file laid out `mdat`
+   first read on into `moov`, which F1 changes. Clamped to the media's extent: all
+   1,414 vendor M4As now clean except 6 that are not audio files with media.
+3. **Display profiles kept their identity.** TIFFs and PDFs embed the profile of the
+   display they were made on -- "Apple Cinema Display", a Mac's built-in "Display" --
+   with Apple's MakeAndModel tag (`mmod`: maker, model, and a per-unit number that
+   differs between two displays of one model); a Mac tags screenshots with it.
+   `icc.sanitize` zeroed only the header. Every profile that is not a published
+   colour space now loses `desc`, `dscm`, `cprt`, `dmnd`, `dmdd`, `mmod`, `calt`,
+   `targ`, `pseq` and `psid` (blanked in place, counts and sizes kept), and a profile
+   holding a device tag is never "standard" whatever it is called. Colour is
+   unchanged by two renderers on eight real display profiles: LittleCMS converting
+   through either profile, and Quick Look drawing the cleaned TIFFs. Limit #14
+   narrowed. One function, so PDF, TIFF, GIF, WebP and HEIC all get it.
+
+### 14.4 A real renderer
+
+`tests/scrub/test_quicklook.py` renders pictures with Quick Look -- what Finder and
+Preview draw with, rotation, colour profile and transparency applied -- before and
+after F1 and requires the same pixels, with a non-vacuity case (the portrait photo
+without its rotation tag renders sideways). It runs in the macOS CI job. EPUB and
+Word documents have no scriptable reader on this machine, so they remain checked by
+validity (epubcheck) and by LibreOffice's render.
+
+### 14.5 Still open
+
+Real files from cameras that are not iPhones (GoPro publishes samples; DJI and
+Android clips need devices), Word-made documents, store-bought books, and a **blind
+test**: someone else plants metadata in files we never see, and judges our output.
+Each removes a bias these checks share -- that we chose what to look for.

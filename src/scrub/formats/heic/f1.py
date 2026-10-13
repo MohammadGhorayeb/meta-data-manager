@@ -51,6 +51,17 @@ DROP_TYPES = {b"Exif", b"mime", b"uri "}
 # is dropped too — the allowlist is deliberately the small side, so a new Apple
 # matte we have never seen fails toward removal.
 KEEP_AUX_KINDS = frozenset({"hdrgainmap"})
+# Transparency: a picture's alpha plane is stored as an auxiliary image too, and it
+# is the picture -- dropping it turned every transparent HEIC opaque (found by the
+# Phase 6 real-file sweep, `docs/p6_tail_plan.md` §14: 16 of 150 vendor HEICs,
+# RGBA in, RGB out). Matched by the whole standard URN, never by its tail: HEVC's
+# `auxid:1` is alpha where `auxid:2` is depth, and a tail of "1" means nothing.
+ALPHA_URNS = frozenset({"urn:mpeg:hevc:2015:auxid:1", "urn:mpeg:avc:2015:auxid:1",
+                        "urn:mpeg:mpegb:cicp:systems:auxiliary:alpha"})
+
+
+def _kept_aux(urn: str) -> bool:
+    return urn.strip().lower() in ALPHA_URNS or _aux_kind(urn) in KEEP_AUX_KINDS
 
 
 def _aux_kind(urn: str) -> str:
@@ -72,7 +83,7 @@ def _policy_drops(layout: w.Layout, drop_auxiliary: bool) -> set[int]:
     drop |= layout.thumbnail_ids()
     if drop_auxiliary:
         drop |= {a for a in layout.auxiliary_ids()
-                 if _aux_kind(layout.aux_types.get(a, "")) not in KEEP_AUX_KINDS}
+                 if not _kept_aux(layout.aux_types.get(a, ""))}
     drop.discard(layout.primary_id)          # never the picture itself
     return drop
 
@@ -334,6 +345,15 @@ def _meta_body(layout: w.Layout, dropped: set[int], iloc_body: bytes,
 
 
 def scrub(data: bytes, *, drop_auxiliary: bool = True) -> bytes:
+    """F1, with a damaged file refused as one: Phase 6's deep fuzz found item and
+    box records cut short escaping as `struct.error`/`IndexError`."""
+    try:
+        return _scrub(data, drop_auxiliary=drop_auxiliary)
+    except (struct.error, IndexError, ValueError) as e:
+        raise ParseError(f"HEIC: malformed file ({type(e).__name__}: {e})") from None
+
+
+def _scrub(data: bytes, *, drop_auxiliary: bool = True) -> bytes:
     """Remove the metadata items and rebuild `iinf`, `iloc`, `iref` and `ipma`."""
     layout = w.walk(data)
     dropped = _dropped_ids(layout, drop_auxiliary)
@@ -513,8 +533,7 @@ def residuals(data: bytes) -> list[str]:
     for thumb in sorted(layout.thumbnail_ids()):
         out.append(f"thumbnail item {thumb} survived")
     for aux in sorted(layout.auxiliary_ids()):
-        kind = _aux_kind(layout.aux_types.get(aux, ""))
-        if kind not in KEEP_AUX_KINDS:
+        if not _kept_aux(layout.aux_types.get(aux, "")):
             out.append(f"auxiliary image item {aux} survived "
                        f"({layout.aux_types.get(aux, 'unnamed')})")
     orphans = sorted(set(layout.items) - layout.connected_to(layout.primary_id))

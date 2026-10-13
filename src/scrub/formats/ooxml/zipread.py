@@ -151,7 +151,16 @@ def _unsafe_name(name: str) -> str | None:
 
 
 def read(data: bytes) -> ZipArchive:
-    """Parse an archive from the central directory outward. Fail closed."""
+    """Parse an archive from the central directory outward. Fail closed: a record
+    cut short is a damaged archive, refused as one (Phase 6's deep fuzz found a
+    truncated end record escaping as `struct.error`)."""
+    try:
+        return _read(data)
+    except (struct.error, IndexError, ValueError) as exc:
+        raise ParseError(f"damaged archive ({type(exc).__name__}: {exc})") from None
+
+
+def _read(data: bytes) -> ZipArchive:
     tail_start = max(0, len(data) - _EOCD_MAX)
     idx = data.rfind(EOCD_SIG, tail_start)
     if idx < 0:

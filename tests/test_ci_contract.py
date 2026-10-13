@@ -41,6 +41,7 @@ _PACKAGE_FOR = {
     "lame": "lame",
     "pdftotext": "poppler-utils",
     "pdftoppm": "poppler-utils",
+    "pdfinfo": "poppler-utils",
     "soffice": "libreoffice-writer",
     # Info-ZIP, the independent implementation that validates our own ZIP writer.
     # `zipfile` accepting our output proves only that two Python views of the format
@@ -69,6 +70,10 @@ _PACKAGE_FOR = {
     "bsdtar": "libarchive-tools",
     # E-EPUB's second producer.
     "pandoc": "pandoc",
+    # Second readers, independent of ExifTool and of us (test_second_reader.py).
+    "exiv2": "exiv2",
+    "mediainfo": "mediainfo",
+    "qpdf": "qpdf",
 }
 
 # Binaries that are genuinely optional, with the reason each is allowed to be absent.
@@ -103,6 +108,11 @@ _OPTIONAL = {
                  "dedicated step (the official release, checksum-pinned) rather than "
                  "an apt package; the validity tests skip without it, and no "
                  "published verdict depends on it",
+    "find": "part of every Unix base system; used only by the macOS real-file "
+            "sweep script (scripts/real_file_sweep.py), never by the scrubber",
+    "qlmanage": "Quick Look, macOS's own renderer: draws pictures before and after "
+                "cleaning in the macOS job (test_quicklook.py). Linux has no "
+                "equivalent; there the decoded-pixel checks stand alone",
     "xattr": "macOS's extended-attribute tool: folder mode's test that a browser's "
              "download address and quarantine record stay with the input. macOS-only "
              "attributes, so the test skips elsewhere; nothing published depends on it",

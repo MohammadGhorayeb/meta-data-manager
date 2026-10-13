@@ -174,6 +174,9 @@ jobs:
       #                     fails), and cairo, a real second SVG writer for E-SVG
       #   zip, libarchive-tools  Info-ZIP `zip` and `bsdtar`: two of E-ZIP's archivers
       #   pandoc            the second EPUB producer in E-EPUB (LibreOffice is the first)
+      #   exiv2, mediainfo, qpdf  second readers sharing no code with ExifTool or us:
+      #                     pictures and raws, video tracks, PDF with every stream
+      #                     decompressed (test_second_reader.py)
       # Tests needing a missing tool skip cleanly, so a silent failure here
       # would weaken the suite rather than break it. Hence: no `|| true`.
       - name: Install external tools
@@ -183,7 +186,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools pandoc
+            zip libarchive-tools pandoc exiv2 mediainfo qpdf
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -350,8 +353,11 @@ jobs:
         continue-on-error: true
         run: |
           status=0
+          # Quick Look: Apple's renderer, drawing each picture before and after
+          # (rotation, colour profile and transparency applied) -- the content
+          # check only a Mac can run.
           python -m pytest tests/scrub/test_exe_macho.py tests/scrub/test_exe_elf.py \
-            tests/scrub/test_exe_pe.py \
+            tests/scrub/test_exe_pe.py tests/scrub/test_quicklook.py \
             -p no:randomly -rs --junit-xml=macos-results.xml || status=$?
           mkdir -p timing
           printf '{"job":"macos","seconds":%s}\n' \
@@ -509,7 +515,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools pandoc
+            zip libarchive-tools pandoc exiv2 mediainfo qpdf
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -592,7 +598,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools pandoc
+            zip libarchive-tools pandoc exiv2 mediainfo qpdf
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

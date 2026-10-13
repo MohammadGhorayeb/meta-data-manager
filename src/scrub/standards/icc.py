@@ -130,17 +130,92 @@ def compute_profile_id(profile: bytes) -> bytes:
     return hashlib.md5(bytes(buf)).digest()
 
 
+# Tags that name a device, a person or a date, and that no colour transform reads.
+# Measured (`docs/p6_tail_plan.md` §14): the real-file sweep found display profiles
+# -- "Apple Cinema Display", a Mac's built-in "Display" -- embedded in vendor TIFFs
+# and PDFs, each with Apple's MakeAndModel tag (`mmod`: the display's maker, model
+# and a per-unit number that differs between two displays of one model). A Mac tags
+# its screenshots with the screen's profile. Blanked in every profile that is not a
+# published colour space, alongside the profile's own name and copyright (a
+# calibration tool names a profile after its owner's screen), the device maker and
+# model descriptions, the calibration date and target, and the profile sequence
+# (which repeats device descriptions).
+IDENTITY_TAGS = frozenset({b"mmod", b"dmnd", b"dmdd", b"desc", b"dscm", b"cprt",
+                           b"calt", b"targ", b"pseq", b"psid"})
+# A profile holding any of these describes one device or one calibration, whatever
+# its description claims, so it is never treated as a published colour space.
+DEVICE_TAGS = frozenset({b"mmod", b"calt", b"targ", b"pseq", b"psid"})
+
+
+def tags(profile: bytes) -> list[tuple[bytes, int, int]]:
+    """(signature, offset, size) for each entry of the tag table that lies inside
+    the profile."""
+    if len(profile) < HEADER_LEN + 4:
+        return []
+    count = struct.unpack_from(">I", profile, HEADER_LEN)[0]
+    out = []
+    for i in range(min(count, 1024)):
+        at = HEADER_LEN + 4 + 12 * i
+        if at + 12 > len(profile):
+            break
+        sig, off, size = struct.unpack_from(">4sII", profile, at)
+        if off + size <= len(profile) and size >= 8:
+            out.append((sig, off, size))
+    return out
+
+
+def _blank_tag(buf: bytearray, off: int, size: int) -> None:
+    """Zero a tag's text or data in place, keeping its type, counts and size, so
+    every reader still parses the profile and shows an empty value."""
+    end = off + size
+    kind = bytes(buf[off:off + 4])
+
+    def zero(a: int, b: int) -> None:
+        a, b = max(a, off + 8), min(b, end)
+        if b > a:
+            buf[a:b] = b"\x00" * (b - a)
+
+    if kind == b"mluc" and size >= 16:
+        n, rsize = struct.unpack_from(">II", buf, off + 8)
+        for i in range(min(n, 256)):
+            rec = off + 16 + i * rsize
+            if rsize < 12 or rec + 12 > end:
+                break
+            length, start = struct.unpack_from(">II", buf, rec + 4)
+            zero(off + start, off + start + length)
+    elif kind == b"desc" and size >= 12:
+        n = struct.unpack_from(">I", buf, off + 8)[0]
+        zero(off + 12, off + 12 + n)                  # the ASCII name
+        p = off + 12 + n
+        if p + 8 <= end:                              # the Unicode name
+            uc = struct.unpack_from(">I", buf, p + 4)[0]
+            zero(p + 8, p + 8 + 2 * uc)
+            q = p + 8 + 2 * uc
+            zero(q + 3, q + 3 + 67)                   # the Macintosh name
+    else:                                             # text, dtim, mmod, pseq...
+        zero(off + 8, end)
+
+
 def sanitize(profile: bytes) -> bytes:
     """Return a copy with identifying header fields zeroed and the profile ID
-    recomputed so the profile stays self-consistent. Colour data (tag table +
-    tag data after the header) is untouched, so rendering is unchanged; only the
-    provenance in the header is destroyed. Used for wide-gamut keep-paths and by
-    experiment E7."""
+    recomputed so the profile stays self-consistent. A profile that is not a
+    published colour space also has its identity tags blanked in place
+    (`IDENTITY_TAGS`); a published one keeps its tags, which are the same bytes in
+    millions of files. Colour data -- every tag a transform reads -- is untouched,
+    so rendering is unchanged. Used for wide-gamut keep-paths and by experiment
+    E7."""
     if len(profile) < HEADER_LEN:
         raise ValueError("profile too short to sanitize")
     buf = bytearray(profile)
     for off, length in _SANITIZE_SPANS:
         buf[off:off + length] = b"\x00" * length
+    if not is_standard(profile):
+        table = tags(profile)
+        keep = {(o, z) for sig, o, z in table if sig not in IDENTITY_TAGS}
+        for sig, off, size in table:
+            # A data block shared with a colour tag is the colour tag's: left alone.
+            if sig in IDENTITY_TAGS and (off, size) not in keep:
+                _blank_tag(buf, off, size)
     new_id = compute_profile_id(bytes(buf))
     off, length = _F_PROFILE_ID
     buf[off:off + length] = new_id
@@ -195,6 +270,8 @@ def is_standard(profile: bytes) -> bool:
     """Anchored at the start, a non-alphanumeric character ending the name: a
     profile CALLED `sRGB IEC61966-2.1` is the published one; one called
     `Alice sRGB calibration` is not."""
+    if any(sig in DEVICE_TAGS for sig, _o, _z in tags(profile)):
+        return False                  # one device's profile, whatever it is called
     desc = (description(profile) or "").strip().lower()
     for name in STANDARD_DESCRIPTIONS:
         if desc.startswith(name):

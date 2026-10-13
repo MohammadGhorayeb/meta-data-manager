@@ -122,7 +122,7 @@ def _check(report: rep.Report) -> str:
 
 def clean_one(rel: str, src_path: str, dst_path: str, fidelity: str, *,
               dispatcher, keep_unknown: bool, check_memory: bool,
-              verify: bool) -> dict:
+              verify: bool, drop_subtitles: bool = False) -> dict:
     """One file's row; writes the cleaned file when there is one to write."""
     st = os.lstat(src_path)
     if stat.S_ISLNK(st.st_mode):
@@ -144,7 +144,7 @@ def clean_one(rel: str, src_path: str, dst_path: str, fidelity: str, *,
         _adv, report = cli.scrub_file_reported(
             src_path, dst_path, fidelity, dispatcher,
             verify_with_exiftool=verify, check_memory=check_memory,
-            keep_unknown_members=keep_unknown)
+            keep_unknown_members=keep_unknown, drop_subtitles=drop_subtitles)
     except UnsupportedFormatError:
         with open(src_path, "rb") as f:
             data = f.read()
@@ -185,7 +185,8 @@ def clean_one(rel: str, src_path: str, dst_path: str, fidelity: str, *,
 
 def clean_folder(src: str, dst: str, fidelity: str = "F1", *,
                  keep_unknown: bool = False, check_memory: bool = True,
-                 verify: bool = True, progress=None) -> Summary:
+                 verify: bool = True, drop_subtitles: bool = False,
+                 progress=None) -> Summary:
     """Clean every file under `src` into `dst`, writing the sheet as it goes."""
     check_paths(src, dst)
     os.makedirs(dst, exist_ok=True)
@@ -196,14 +197,16 @@ def clean_folder(src: str, dst: str, fidelity: str = "F1", *,
         n += 1
         name = f"scrub-results-{n}.csv"
     summary = Summary(sheet=os.path.join(dst, name))
-    d = default_dispatcher(keep_unknown_members=keep_unknown, check_memory=check_memory)
+    d = default_dispatcher(keep_unknown_members=keep_unknown, check_memory=check_memory,
+                           drop_subtitles=drop_subtitles)
     with open(summary.sheet, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=COLUMNS)
         writer.writeheader()
         for rel, path in entries:
             row = clean_one(rel, path, os.path.join(dst, *rel.split("/")), fidelity,
                             dispatcher=d, keep_unknown=keep_unknown,
-                            check_memory=check_memory, verify=verify)
+                            check_memory=check_memory, verify=verify,
+                            drop_subtitles=drop_subtitles)
             summary.rows.append(row)
             writer.writerow(row)
             f.flush()

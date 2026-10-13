@@ -68,8 +68,11 @@ class Mp4Handler(BaseHandler):
     # every structural tag to excuse this one.
     expected_residual_tags = frozenset({"MajorBrand"})
 
+    def __init__(self, drop_subtitles: bool = False) -> None:
+        self.drop_subtitles = drop_subtitles
+
     def scrub_f1(self, data: bytes) -> bytes:
-        return f1.scrub(data)
+        return f1.scrub(data, drop_subtitles=self.drop_subtitles)
 
     def scrub_f2(self, data: bytes) -> bytes:
         raise FidelityError(

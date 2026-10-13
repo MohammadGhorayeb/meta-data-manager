@@ -77,8 +77,10 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import corpus as imgc
     from . import docx_corpus as dc
     from . import elf_corpus as ec
+    from . import epub_corpus as epc
     from . import flac_corpus as fc
     from . import gif_corpus as gfc
+    from . import heic_corpus as hc
     from . import m4a_corpus as mc
     from . import macho_corpus as mc_
     from . import mp3_corpus as m3c
@@ -89,6 +91,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import svg_corpus as svc
     from . import tiff_corpus as tfc
     from . import webp_corpus as wbc
+    from . import zip_corpus as zc
     from .test_png import _png
 
     out: dict[str, tuple[bytes, tuple[str, ...]]] = {
@@ -114,7 +117,15 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
                 ("F1", "F2", "F3")),
         "docx": (open(dc.synthetic(str(tmp_path / "s.docx")), "rb").read(),
                  ("F1", "F2")),
+        # Containers whose members are files of their own: a mutation lands in the
+        # container, a member's header or a member's body, and each must still
+        # end in a ScrubError (Phase 6's validation pass added these three).
+        "zip": (zc.build(1, shape="ditto"), ("F1",)),
+        "epub": (epc.build(1, shape="sigil"), ("F1",)),
     }
+    if hc.HAVE_HEIF:
+        out["heic"] = (open(hc.torture(str(tmp_path / "t.heic")), "rb").read(),
+                       ("F1",))
     if m3c.HAVE_FFMPEG:
         out["mp3"] = (open(m3c.torture_mp3(str(tmp_path / "t.mp3")), "rb").read(),
                       ("F1", "F3"))
@@ -211,3 +222,35 @@ def test_the_mutator_actually_produces_files_we_still_claim(corpus_files):
     assert claimed > MUTATIONS // 4, (
         f"only {claimed} of {MUTATIONS} mutants were claimed by a handler — the "
         f"mutator is too destructive to be testing anything")
+
+
+# Found by the deep campaign of Phase 6's validation pass (3 seeds x 1,000
+# mutations on ZIP, EPUB, HEIC and the telemetry MP4s; `docs/p6_tail_plan.md` §14):
+# records cut short escaping as `struct.error` / `IndexError`. Replayed exactly.
+@pytest.mark.parametrize("seed,label", [(1, "flip-643"), (2, "flip-113"),
+                                        (3, "flip-372")])
+def test_damaged_heic_records_are_refusals(tmp_path, seed, label):
+    from . import heic_corpus as hc
+    if not hc.HAVE_HEIF:
+        pytest.skip("pillow-heif not installed")
+    data = open(hc.torture(str(tmp_path / "t.heic")), "rb").read()
+    blob = dict(_mutations(data, random.Random(seed), 1000))[label]
+    try:
+        default_dispatcher().resolve(blob).scrub(blob, "F1")
+    except ScrubError:
+        pass
+
+
+@pytest.mark.parametrize("cut", [3, 9, 15])
+def test_an_end_record_cut_short_is_a_refusal(cut):
+    from src.scrub.formats.ooxml import zipread
+
+    from . import zip_corpus as zc
+    data = zc.build(1, shape="ditto")
+    with pytest.raises(ScrubError):
+        zipread.read(data[:-cut])
+    for blob in (data[:-cut], data[:-cut] + b"\x00" * cut):
+        try:
+            default_dispatcher().resolve(blob).scrub(blob, "F1")
+        except ScrubError:
+            pass

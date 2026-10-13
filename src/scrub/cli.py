@@ -98,7 +98,8 @@ def _write_atomic(path: str, data: bytes, mode: int | None = None) -> None:
 
 def scrub_file(in_path: str, out_path: str, fidelity: str,
                dispatcher=None, check_memory: bool = True,
-               keep_unknown_members: bool = False) -> list[str]:
+               keep_unknown_members: bool = False,
+               drop_subtitles: bool = False) -> list[str]:
     """Scrub in_path -> out_path at the given fidelity. Raises ScrubError
     (fail-closed) on any problem; writes output only on full success.
 
@@ -107,13 +108,15 @@ def scrub_file(in_path: str, out_path: str, fidelity: str,
     """
     return scrub_file_reported(in_path, out_path, fidelity, dispatcher,
                                check_memory=check_memory,
-                               keep_unknown_members=keep_unknown_members)[0]
+                               keep_unknown_members=keep_unknown_members,
+                               drop_subtitles=drop_subtitles)[0]
 
 
 def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
                         dispatcher=None, verify_with_exiftool: bool = False,
                         check_memory: bool = True,
-                        keep_unknown_members: bool = False
+                        keep_unknown_members: bool = False,
+                        drop_subtitles: bool = False
                         ) -> tuple[list[str], rep.Report]:
     """The same scrub, also returning a before/after account of the metadata.
 
@@ -124,7 +127,8 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
     """
     fid.validate(fidelity)
     dispatcher = dispatcher or default_dispatcher(
-        keep_unknown_members=keep_unknown_members, check_memory=check_memory)
+        keep_unknown_members=keep_unknown_members, check_memory=check_memory,
+        drop_subtitles=drop_subtitles)
     if check_memory:
         # Before the read: loading a file the machine cannot hold is itself the
         # failure this check exists to prevent.
@@ -213,6 +217,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="in an archive, keep members of a type no handler reads "
                         "byte for byte, UNSCRUBBED, instead of refusing the archive. "
                         "The report lists every member kept this way")
+    p.add_argument("--drop-subtitles", action="store_true",
+                   help="in a video, drop subtitle and caption tracks instead of "
+                        "refusing the file. Drones and dash cams print their "
+                        "position on every frame there; for a film they are the "
+                        "subtitles, and they are lost")
     p.add_argument("--no-verify", action="store_true",
                    help="skip the independent exiftool check at the end of the "
                         "report (it reads the file twice, which costs a moment)")
@@ -225,7 +234,8 @@ def main(argv: list[str] | None = None) -> int:
             args.input, args.output, args.fidelity,
             verify_with_exiftool=not (args.no_report or args.no_verify),
             check_memory=not args.skip_memory_check,
-            keep_unknown_members=args.keep_unknown_members)
+            keep_unknown_members=args.keep_unknown_members,
+            drop_subtitles=args.drop_subtitles)
     except ScrubError as e:
         print(f"scrub: {type(e).__name__}: {e}", file=sys.stderr)
         return _EXIT.get(type(e), 1)
@@ -258,6 +268,7 @@ def _main_folder(args) -> int:
         summary = folder.clean_folder(
             args.input, args.output, args.fidelity,
             keep_unknown=args.keep_unknown_members,
+            drop_subtitles=args.drop_subtitles,
             check_memory=not args.skip_memory_check,
             verify=not (args.no_report or args.no_verify),
             progress=None if args.no_report else line)

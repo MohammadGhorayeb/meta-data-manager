@@ -17,6 +17,7 @@ from src.scrub.dispatch import default_dispatcher  # noqa: E402
 from src.scrub.errors import ParseError  # noqa: E402
 from src.scrub.formats.gif import f1  # noqa: E402
 from src.scrub.formats.gif.handler import GifHandler  # noqa: E402
+from src.scrub.standards import icc  # noqa: E402
 from tests.scrub import gif_corpus as gc  # noqa: E402
 from tests.scrub import tiff_corpus as tfc  # noqa: E402
 
@@ -71,7 +72,13 @@ def test_what_draws_the_picture_stays():
 def test_a_published_profile_stays_and_a_personal_one_is_sanitized():
     assert tfc.STANDARD_ICC in f1.scrub(gc.build(icc="standard"))
     out = f1.scrub(gc.build(icc="custom"))
-    assert tfc.CUSTOM_ICC[128:200] in out and tfc.CUSTOM_ICC[:84] not in out
+    at = out.index(b"ICCRGBG1012") + 11              # then the sub-blocks
+    kept = b""
+    while out[at]:
+        kept += out[at + 1:at + 1 + out[at]]
+        at += 1 + out[at]
+    assert kept == icc.sanitize(tfc.CUSTOM_ICC)
+    assert _colour_tags_unchanged(kept, tfc.CUSTOM_ICC) and b"SENTINEL" not in kept
 
 
 def test_two_files_that_differ_only_in_metadata_come_out_identical():
@@ -114,3 +121,13 @@ def test_the_survey_gifs_scrub_clean(name):
     data = open(path, "rb").read()
     out = f1.scrub(data)
     assert f1.residuals(out) == [] and b"SENTINEL" not in out and _same(data, out)
+
+
+def _colour_tags_unchanged(clean: bytes, original: bytes) -> bool:
+    """Every tag a colour transform reads, byte for byte; the tag table too."""
+    from src.scrub.standards import icc as _icc
+    table = _icc.tags(original)
+    end = 128 + 4 + 12 * len(table)
+    return clean[128:end] == original[128:end] and all(
+        clean[o:o + z] == original[o:o + z]
+        for sig, o, z in table if sig not in _icc.IDENTITY_TAGS)

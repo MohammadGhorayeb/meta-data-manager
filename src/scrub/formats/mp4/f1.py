@@ -47,10 +47,17 @@ PROTECTION_BOXES = {b"sinf", b"pssh", b"schm", b"frma", b"senc", b"tenc"}
 PROTECTED_SAMPLE_ENTRIES = {b"encv", b"enca", b"encs", b"drms", b"drmi"}
 
 KEEP_HANDLERS = {b"vide", b"soun"}
-# Measured: Apple's timed metadata (`mebx`). A handler in neither set is refused
-# rather than guessed at -- a subtitle track is content, a timecode track may be a
-# time of day, and neither has been measured.
-DROP_HANDLERS = {b"meta"}
+# Tracks that describe the recording and that no player displays, dropped with
+# their samples (never written). Measured (`docs/p6_tail_plan.md` §13): Apple's timed
+# metadata (`mebx`) and GoPro's GPMF telemetry (`gpmd`: GPS on every sample) and
+# status (`fdsc`), all under handler `meta`; a timecode track (`tmcd`), whose one
+# sample is the time of day recording started; Google's camera-motion track
+# (`camm`: orientation, motion and GPS records).
+DROP_HANDLERS = {b"meta", b"tmcd", b"camm"}
+# Subtitles and captions are a film's text and a drone's telemetry (Autel, Yuneec
+# and dash cams print the position in them): there is no telling which from the
+# container, so they are refused unless the caller asks for them to be dropped.
+SUBTITLE_HANDLERS = {b"sbtl", b"text", b"subt", b"clcp"}
 
 
 @dataclass
@@ -154,7 +161,7 @@ def _layout(data: bytes) -> tuple[list[iso.Box], iso.Box, iso.Box]:
     return tops, moov, mdat
 
 
-def scrub(data: bytes) -> bytes:
+def scrub(data: bytes, drop_subtitles: bool = False) -> bytes:
     tops, moov_hdr, mdat_hdr = _layout(data)
     ftyp = iso.parse(data[tops[0].offset:tops[0].end])[0] \
         if tops[0].type == b"ftyp" else None
@@ -166,14 +173,21 @@ def scrub(data: bytes) -> bytes:
     _check_unprotected(moov)
 
     tracks = _tracks(moov)
-    unknown = {t.handler for t in tracks} - KEEP_HANDLERS - DROP_HANDLERS
+    handlers = {t.handler for t in tracks}
+    if handlers & SUBTITLE_HANDLERS and not drop_subtitles:
+        raise ParseError(
+            "MP4: a subtitle or caption track -- a film's text, or a drone's or dash "
+            "cam's position on every frame; refused rather than guessed at. "
+            "--drop-subtitles drops such tracks")
+    drop = DROP_HANDLERS | (SUBTITLE_HANDLERS if drop_subtitles else set())
+    unknown = handlers - KEEP_HANDLERS - drop
     if unknown:
         raise ParseError(f"MP4: track handler(s) {sorted(unknown)} not modelled -- "
                          "refusing rather than guessing whether they are content")
     kept = [t for t in tracks if t.handler in KEEP_HANDLERS]
     if not kept:
         raise ParseError("MP4: no audio or video track to preserve")
-    dropped_ids = {t.track_id for t in tracks if t.handler in DROP_HANDLERS}
+    dropped_ids = {t.track_id for t in tracks if t.handler in drop}
 
     lo, hi = mdat_hdr.offset + mdat_hdr.header_len, mdat_hdr.end
     for t in kept:
@@ -198,7 +212,7 @@ def scrub(data: bytes) -> bytes:
     moov.children = [c for c in moov.children
                      if not (c.type == b"trak"
                              and any(c is t.box for t in tracks
-                                     if t.handler in DROP_HANDLERS))]
+                                     if t.handler in drop))]
     for t in kept:
         _prune_tref(t.box, dropped_ids)
     moov.children = iso.strip_tree(moov.children, DROP_IN_MOOV,

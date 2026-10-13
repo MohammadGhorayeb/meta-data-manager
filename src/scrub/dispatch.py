@@ -42,14 +42,15 @@ class Dispatcher:
 
 
 def default_dispatcher(keep_unknown_members: bool = False,
-                       check_memory: bool = True) -> Dispatcher:
+                       check_memory: bool = True,
+                       drop_subtitles: bool = False) -> Dispatcher:
     """The production registry. Handlers are imported lazily so a broken/optional
     handler can't take down dispatch of the others.
 
-    The options reach the two handlers that have any, ZIP and EPUB, which keep
-    members no handler reads only when asked, and check the memory their members
-    inflate to unless told not to (the CLI's `--keep-unknown-members`,
-    `--skip-memory-check`).
+    The options reach the handlers that have any: ZIP and EPUB keep members no
+    handler reads only when asked, and check the memory their members inflate to
+    unless told not to (`--keep-unknown-members`, `--skip-memory-check`); MP4/MOV
+    drops subtitle tracks only when asked (`--drop-subtitles`).
     """
     d = Dispatcher()
     from .formats.jpeg.handler import JpegHandler
@@ -77,7 +78,7 @@ def default_dispatcher(keep_unknown_members: bool = False,
     # requires one, so the two claims are mutually exclusive whatever order they run
     # in, and a test asserts that.
     from .formats.mp4.handler import Mp4Handler
-    d.register(Mp4Handler())
+    d.register(Mp4Handler(drop_subtitles=drop_subtitles))
     # Camera RAW (TIFF family). Its prefix is TIFF's, shared with plain TIFF
     # pictures, so `claims()` requires the file to say it is a raw.
     from .formats.raw.handler import RawHandler

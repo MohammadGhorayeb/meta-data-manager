@@ -108,7 +108,9 @@ def test_a_personal_colour_profile_keeps_its_colours_and_loses_its_maker():
     data = tc.build(icc="custom")
     profile = _icc(f1.scrub(data))
     assert profile != tc.CUSTOM_ICC and len(profile) == len(tc.CUSTOM_ICC)
-    assert profile[128:] == tc.CUSTOM_ICC[128:], "the colour tables changed"
+    assert _colour_tags_unchanged(profile, tc.CUSTOM_ICC), "the colour tables changed"
+    # Its name is the owner's screen, and goes with the maker (§14 of the plan).
+    assert b"SENTINEL" not in profile and icc.description(profile) == ""
     header = icc.parse_header(profile)
     assert not header.creator.strip(b"\0") and not header.manufacturer.strip(b"\0")
     assert profile[84:100] == icc.compute_profile_id(profile), "stale profile ID"
@@ -203,3 +205,13 @@ def test_the_survey_tiffs_scrub_clean(name):
 def test_the_survey_list_is_the_survey():
     present = {os.path.basename(p) for p in glob.glob(os.path.join(SURVEY, "*.tiff"))}
     assert not present or set(SURVEY_FILES) <= present
+
+
+def _colour_tags_unchanged(clean: bytes, original: bytes) -> bool:
+    """Every tag a colour transform reads, byte for byte; the tag table too."""
+    from src.scrub.standards import icc as _icc
+    table = _icc.tags(original)
+    end = 128 + 4 + 12 * len(table)
+    return clean[128:end] == original[128:end] and all(
+        clean[o:o + z] == original[o:o + z]
+        for sig, o, z in table if sig not in _icc.IDENTITY_TAGS)

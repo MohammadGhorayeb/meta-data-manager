@@ -123,6 +123,13 @@ def describe(data: bytes) -> dict[str, str]:
             out[f"udta:{atom.type[1:].decode('latin-1')}"] = \
                 atom.payload[4:].decode("utf-8", "replace").strip() \
                 or f"({len(atom.payload)} bytes)"
+        else:
+            # Vendors' own boxes: GoPro's `GPMF` (the camera's serial), `FIRM`,
+            # `LENS`, `CAME`... F1 drops all of `udta`; the report names each.
+            text = atom.payload.rstrip(b"\x00").decode("latin-1")
+            out[f"udta:{atom.type.decode('latin-1')}"] = (
+                text if text and text.isascii() and text.isprintable()
+                else f"({len(atom.payload)} bytes)")
 
     names: set[str] = set()
     for i, t in enumerate(f1._tracks(moov), start=1):
@@ -133,12 +140,18 @@ def describe(data: bytes) -> dict[str, str]:
             name = _handler_name(h.payload)
             if name:
                 names.add(name.decode("utf-8", "replace"))
-        if t.handler in f1.DROP_HANDLERS:
+        if t.handler in f1.DROP_HANDLERS | f1.SUBTITLE_HANDLERS:
             stbl = t.box.find(b"mdia/minf/stbl")
             n = (sum(len(c.sample_sizes) for c in iso.chunks(stbl, limit=len(data)))
                  if stbl else 0)
-            keys = ", ".join(_timed_metadata_keys(t.box)) or "unnamed"
-            out[f"Timed metadata track {t.track_id}"] = f"{keys} ({n} samples)"
+            stsd = t.box.find(b"mdia/minf/stbl/stsd")
+            entry = (stsd.payload[12:16].decode("latin-1", "replace")
+                     if stsd is not None and len(stsd.payload) >= 16 else "?")
+            keys = ", ".join(_timed_metadata_keys(t.box)) or f"'{entry}'"
+            label = {b"tmcd": "Timecode track", b"camm": "Camera-motion track"}.get(
+                t.handler, "Subtitle track" if t.handler in f1.SUBTITLE_HANDLERS
+                else "Timed metadata track")
+            out[f"{label} {t.track_id}"] = f"{keys} ({n} samples)"
     if names:
         out["Handler names"] = ", ".join(sorted(names))
 

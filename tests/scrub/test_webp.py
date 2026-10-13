@@ -24,6 +24,7 @@ from src.scrub.dispatch import default_dispatcher  # noqa: E402
 from src.scrub.errors import ParseError  # noqa: E402
 from src.scrub.formats.webp import f1  # noqa: E402
 from src.scrub.formats.webp.handler import WebpHandler  # noqa: E402
+from src.scrub.standards import icc  # noqa: E402
 from tests.scrub import tiff_corpus as tfc  # noqa: E402
 from tests.scrub import webp_corpus as wc  # noqa: E402
 
@@ -85,7 +86,8 @@ def test_the_flags_and_the_size_are_rewritten():
 def test_a_published_profile_stays_and_a_personal_one_is_sanitized():
     assert _iccp(f1.scrub(wc.build(icc="standard"))) == tfc.STANDARD_ICC
     kept = _iccp(f1.scrub(wc.build(icc="custom")))
-    assert kept != tfc.CUSTOM_ICC and kept[128:] == tfc.CUSTOM_ICC[128:]
+    assert kept != tfc.CUSTOM_ICC and kept == icc.sanitize(tfc.CUSTOM_ICC)
+    assert _colour_tags_unchanged(kept, tfc.CUSTOM_ICC) and b"SENTINEL" not in kept
 
 
 def test_two_files_that_differ_only_in_metadata_come_out_identical():
@@ -144,3 +146,13 @@ def test_the_survey_webps_scrub_clean(name):
     out = f1.scrub(data)
     assert f1.residuals(out) == [] and b"SENTINEL" not in out
     assert _same(data, out)
+
+
+def _colour_tags_unchanged(clean: bytes, original: bytes) -> bool:
+    """Every tag a colour transform reads, byte for byte; the tag table too."""
+    from src.scrub.standards import icc as _icc
+    table = _icc.tags(original)
+    end = 128 + 4 + 12 * len(table)
+    return clean[128:end] == original[128:end] and all(
+        clean[o:o + z] == original[o:o + z]
+        for sig, o, z in table if sig not in _icc.IDENTITY_TAGS)

@@ -639,7 +639,8 @@ def strip_and_repack(data: bytes, drop_types: set[bytes], *, label: str,
     # duration, and decodes to noise, which is indistinguishable from success by
     # every check that does not do this one.
     _verify_chunks_still_point_at_the_media(
-        data, chunks_before, out, chunk_offset_tables(check), label)
+        data, chunks_before, out, chunk_offset_tables(check), label,
+        src_end=before + len(media), out_end=after + len(media))
     return out
 
 
@@ -660,7 +661,15 @@ def chunk_offset_tables(boxes: list[Box]) -> list[list[int]]:
 
 def _verify_chunks_still_point_at_the_media(src: bytes, before: list[list[int]],
                                             out: bytes, after: list[list[int]],
-                                            label: str, probe: int = 64) -> None:
+                                            label: str, probe: int = 64, *,
+                                            src_end: int, out_end: int) -> None:
+    """Each chunk offset, followed into input and output, must find the same bytes.
+
+    The probe stops at the end of the media: a last chunk shorter than the probe,
+    in a file laid out `mdat` first, would otherwise read on into `moov` -- which F1
+    changed, legitimately -- and refuse a correct scrub. Found by the Phase 6
+    real-file sweep on a 30-byte final chunk (`docs/p6_tail_plan.md` §14).
+    """
     if len(before) != len(after):
         raise ScrubError(f"{label}: chunk tables appeared or vanished")
     # strict: a silently truncating zip would let a table-count mismatch
@@ -669,7 +678,8 @@ def _verify_chunks_still_point_at_the_media(src: bytes, before: list[list[int]],
         if len(old_offsets) != len(new_offsets):
             raise ScrubError(f"{label}: a chunk table changed length")
         for old, new in zip(old_offsets, new_offsets, strict=True):
-            if src[old:old + probe] != out[new:new + probe]:
+            n = min(probe, src_end - old)
+            if n <= 0 or new + n > out_end or src[old:old + n] != out[new:new + n]:
                 raise ScrubError(
                     f"{label}: chunk offset {old} -> {new} no longer points at "
                     "the same media -- the file would parse and decode to noise")

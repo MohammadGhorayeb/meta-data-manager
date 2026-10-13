@@ -202,3 +202,23 @@ def test_the_report_names_what_it_removed(tmp_path):
     described = HeicHandler().describe(data)
     assert any(k.startswith("EXIF:") for k in described)
     assert described != HeicHandler().describe(f1.scrub(data))
+
+
+@pytest.mark.skipif(not hc.HAVE_HEIF, reason="pillow-heif not installed")
+def test_transparency_is_kept(tmp_path):
+    """The alpha plane is an auxiliary image (`urn:mpeg:hevc:2015:auxid:1`) and it
+    is the picture. F1 dropped it with the depth maps until the Phase 6 real-file
+    sweep found 16 of 150 vendor HEICs turned opaque (`docs/p6_tail_plan.md` §14)."""
+    import io
+
+    from PIL import Image
+    img = Image.new("RGBA", (64, 48), (200, 40, 40, 255))
+    img.paste((0, 0, 0, 0), (0, 0, 32, 48))               # half transparent
+    path = tmp_path / "alpha.heic"
+    img.save(path, format="HEIF", quality=90, exif=hc._exif_payload())
+    data = path.read_bytes()
+    out = f1.scrub(data)
+    a, b = Image.open(io.BytesIO(data)), Image.open(io.BytesIO(out))
+    assert (a.mode, b.mode) == ("RGBA", "RGBA")
+    assert a.tobytes() == b.tobytes()
+    assert f1.residuals(out) == []

@@ -232,3 +232,19 @@ def test_the_audio_handler_declines_mp4_video(tmp_path):
     data = open(p, "rb").read()
     assert not M4aHandler().claims(data)
     assert default_dispatcher().resolve(data).format_id == "mp4"
+
+
+def test_a_last_chunk_shorter_than_the_probe_is_not_refused():
+    """mdat first, a final chunk of a few bytes, a box removed before mdat: the
+    pointer check read 64 bytes from each chunk and ran past the media into moov,
+    which F1 changes. A real 8.5 KB GarageBand loop was refused this way (found by
+    the Phase 6 real-file sweep, `docs/p6_tail_plan.md` §14)."""
+    from src.scrub.dispatch import default_dispatcher
+    from tests.scrub import mp4_iso_corpus as c
+    audio = ({"track_id": 1, "handler": b"soun", "name": "SoundHandler",
+              "fmt": b"mp4a", "samples": 3},)
+    data = c.handbuilt(media=bytes(range(30)), tracks=audio, free_before_mdat=True)
+    handler = default_dispatcher().resolve(data)
+    assert handler.format_id == "m4a"
+    out = handler.scrub(data, "F1")
+    assert bytes(range(30)) in out and len(out) < len(data)
