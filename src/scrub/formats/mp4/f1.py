@@ -60,6 +60,38 @@ DROP_HANDLERS = {b"meta", b"tmcd", b"camm"}
 SUBTITLE_HANDLERS = {b"sbtl", b"text", b"subt", b"clcp"}
 
 
+def encoder_name_spans(stsd: iso.Box) -> list[int]:
+    """Offsets, in an `stsd` payload, of each visual sample entry's 32-byte
+    `compressorname`: a label no decoder reads, where a camera writes its maker
+    (`GoPro AVC encoder`, measured on all ten of GoPro's published samples) and an
+    encoder its name. After the entry's 8-byte header: 6 reserved, data reference,
+    16 bytes of pre-defined/reserved, width, height, two resolutions, 4 reserved
+    and a frame count -- 42 bytes -- then the name."""
+    out, p = [], stsd.payload
+    count = int.from_bytes(p[4:8], "big") if len(p) >= 8 else 0
+    at = 8
+    for _ in range(count):
+        if at + 8 > len(p):
+            break
+        size = int.from_bytes(p[at:at + 4], "big")
+        if size < 8 or at + size > len(p):
+            break
+        if size >= 8 + 42 + 32:
+            out.append(at + 8 + 42)
+        at += size
+    return out
+
+
+def _blank_encoder_names(track_box: iso.Box) -> None:
+    stsd = track_box.find(b"mdia/minf/stbl/stsd")
+    if stsd is None:
+        return
+    buf = bytearray(stsd.payload)
+    for at in encoder_name_spans(stsd):
+        buf[at:at + 32] = bytes(32)
+    stsd.payload = bytes(buf)
+
+
 @dataclass
 class _Track:
     box: iso.Box
@@ -215,6 +247,8 @@ def scrub(data: bytes, drop_subtitles: bool = False) -> bytes:
                                      if t.handler in drop))]
     for t in kept:
         _prune_tref(t.box, dropped_ids)
+        if t.handler == b"vide":
+            _blank_encoder_names(t.box)
     moov.children = iso.strip_tree(moov.children, DROP_IN_MOOV,
                                    blank_handler_names=True)
 
@@ -314,6 +348,11 @@ def residuals(data: bytes) -> list[str]:
     for t in tracks:
         if t.handler not in KEEP_HANDLERS:
             out.append(f"a {t.handler.decode('latin-1')} track survived")
+        stsd = t.box.find(b"mdia/minf/stbl/stsd")
+        if t.handler == b"vide" and stsd is not None and any(
+                stsd.payload[a:a + 32].strip(b"\x00")
+                for a in encoder_name_spans(stsd)):
+            out.append("a video encoder name survived")
 
     # The locus this tier exists for: bytes in mdat that no kept table reaches.
     lo, hi = mdat_hdr.offset + mdat_hdr.header_len, mdat_hdr.end

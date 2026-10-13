@@ -5,7 +5,7 @@
     "version": "0.1.0-p4",
     "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
   },
-  "generated_at": "2026-10-13T05:39:19.506888+00:00",
+  "generated_at": "2026-10-13T11:19:20.683188+00:00",
   "harness_version": "0.1.0",
   "cells": [
     {

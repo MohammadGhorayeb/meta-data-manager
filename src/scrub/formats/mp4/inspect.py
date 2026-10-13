@@ -140,6 +140,13 @@ def describe(data: bytes) -> dict[str, str]:
             name = _handler_name(h.payload)
             if name:
                 names.add(name.decode("utf-8", "replace"))
+        stsd = t.box.find(b"mdia/minf/stbl/stsd")
+        if t.handler == b"vide" and stsd is not None:
+            for a in f1.encoder_name_spans(stsd):
+                field = stsd.payload[a:a + 32]
+                name = field[1:1 + field[0]].decode("latin-1", "replace").strip()
+                if name:
+                    out[f"Video encoder name (track {t.track_id})"] = name
         if t.handler in f1.DROP_HANDLERS | f1.SUBTITLE_HANDLERS:
             stbl = t.box.find(b"mdia/minf/stbl")
             n = (sum(len(c.sample_sizes) for c in iso.chunks(stbl, limit=len(data)))

@@ -23,11 +23,23 @@ Planted values derive from `variant`.
 """
 from __future__ import annotations
 
+import os
 import struct
 
 from tests.scrub import mp4_iso_corpus as c
 
 SHAPES = ("gopro", "drone", "android", "camm")
+ENCODER_NAME = b"GoPro AVC encoder"     # measured in all ten of GoPro's samples
+GOPRO_DIR = os.path.expanduser("~/metadata-research/step2/video/gopro")
+
+
+def gopro_samples() -> list[str]:
+    """GoPro's own published sample clips (github.com/gopro/gpmf-parser, downloaded
+    to the research folder, never into the repo), or []."""
+    if os.environ.get("SCRUB_IGNORE_REAL_SAMPLES") or not os.path.isdir(GOPRO_DIR):
+        return []
+    return sorted(os.path.join(GOPRO_DIR, f) for f in os.listdir(GOPRO_DIR)
+                  if f.endswith(".mp4"))
 
 
 def coords(variant: int = 0) -> tuple[float, float]:
@@ -142,7 +154,14 @@ def build(variant: int = 0, *, shape: str = "gopro", tmcd: bool = True) -> bytes
         offset += len(payload)
     extra = android_meta(variant) if shape == "android" else b""
     moov = c.box(b"moov", c.mvhd(0, 0, len(tracks) + 1) + traks + user + extra)
-    return head + c.box(b"mdat", mdat_payload) + moov + trailer
+    out = head + c.box(b"mdat", mdat_payload) + moov + trailer
+    if shape == "gopro":
+        # The video sample entry's `compressorname`: a Pascal string at 42 bytes
+        # into the `avc1` entry's payload, as GoPro writes it.
+        at = out.index(b"avc1", len(head) + 8 + len(mdat_payload)) + 4 + 42
+        name = bytes([len(ENCODER_NAME)]) + ENCODER_NAME
+        out = out[:at] + name + out[at + len(name):]
+    return out
 
 
 def planted(variant: int = 0, shape: str = "gopro") -> list[bytes]:
@@ -151,7 +170,7 @@ def planted(variant: int = 0, shape: str = "gopro") -> list[bytes]:
     out = []
     if shape == "gopro":
         out += [struct.pack(">i", round(lat * 1e7)), secret("SERIAL", variant).encode(),
-                tmcd_sample(variant)]
+                tmcd_sample(variant), ENCODER_NAME]
     elif shape == "drone":
         out += [f"{lat:.6f}".encode()]
     elif shape == "android":

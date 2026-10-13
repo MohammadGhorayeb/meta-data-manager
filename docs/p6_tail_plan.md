@@ -589,10 +589,28 @@ its job, and made those cameras unusable.
 output; ExifTool `-ee` finds no position; variants collapse to one file. The MP4
 matrix's A1 cell now includes the GoPro, camm and Android shapes.
 
-**Not yet measured, and said so:** real files from these cameras. The models are
-read back by ExifTool, which is evidence they match the formats, not that they match
-every firmware. GoPro publishes sample clips (its `gpmf-parser` repository); DJI and
-Android clips need to come from devices.
+**Real GoPro files** (added after the models): the ten clips GoPro publishes in its
+`gpmf-parser` repository -- HERO5, 6 (three variants), 7, 8, the Karma drone, Fusion,
+MAX in 360 and hero mode -- downloaded to the research folder (sizes verified against
+GitHub's listing, checksums recorded), never into the repo. Every one has exactly
+the modelled layout: video, audio, a timecode track, GPMF telemetry and the SOS
+track, and a `udta` holding firmware, the lens serial (`LENS`), a camera ID (`CAME`),
+a media unique ID (`MUID`), highlight marks (`HMMT`) and a 25 KB GPMF block with the
+camera serial (`CASN`). Before §13 all ten would have been refused. Now all ten
+clean: no GPMF structure left (`DEVC`, `GPS5`, `GPSU`, `CASN`, `MUID` -- thousands of
+GPS records before, none after), only picture and sound tracks (MediaInfo), none of
+ExifTool's identity values anywhere in the bytes, ExifTool's cross-check clean, and
+the decoded audio and video identical (ffmpeg's decoded-stream MD5).
+
+**Found by them:** one string survived -- `GoPro AVC encoder`, the video sample
+entry's 32-byte `compressorname`, a label no decoder reads. It names the camera's
+maker, which F1 removes everywhere else (EXIF `Make`), so it is now blanked in place
+in every kept video track, checked by the residual pass and listed in the report.
+The GoPro model gained the field; a local test runs the ten clips when they are
+present (11 tests fail without the change).
+
+**Still not measured:** DJI and Android clips (they need devices), and other GoPro
+firmware than these ten.
 
 ---
 
@@ -679,7 +697,6 @@ validity (epubcheck) and by LibreOffice's render.
 
 ### 14.5 Still open
 
-Real files from cameras that are not iPhones (GoPro publishes samples; DJI and
-Android clips need devices), Word-made documents, store-bought books, and a **blind
-test**: someone else plants metadata in files we never see, and judges our output.
+Real files from DJI drones and Android phones (GoPro's ten published clips are done,
+§13), Word-made documents, store-bought books, and a **blind test**: someone else plants metadata in files we never see, and judges our output.
 Each removes a bias these checks share -- that we chose what to look for.

@@ -109,3 +109,33 @@ def test_the_flag_reaches_the_handler_from_the_cli_and_folder_mode(tmp_path):
     rows = folder.clean_folder(str(folder_in), str(tmp_path / "out"), verify=False,
                                drop_subtitles=True).rows
     assert rows[0]["outcome"] == folder.CLEANED
+
+
+GOPRO = tc.gopro_samples()
+
+
+@pytest.mark.skipif(not GOPRO, reason="GoPro's sample clips not downloaded")
+@pytest.mark.parametrize("path", GOPRO, ids=[os.path.basename(p) for p in GOPRO])
+def test_gopros_published_samples(path, tmp_path):
+    """The ten clips GoPro publishes (Hero 5-8, Karma, Fusion, MAX): every one
+    holds video, audio, a timecode track, GPMF telemetry (GPS) and the SOS track,
+    and a `udta` with serials, lens, firmware and a media ID. All must come out
+    with picture and sound only, no telemetry structure, no maker string, and the
+    decoded audio and video unchanged."""
+    out = tmp_path / "clean.mp4"
+    cli.scrub_file(path, str(out), "F1")
+    data = out.read_bytes()
+    for mark in (b"DEVC", b"GPS5", b"GPSU", b"CASN", b"MUID", b"GPMF", b"FIRM",
+                 b"LENS", b"GoPro", b"HERO"):
+        assert mark not in data, mark
+    moov = iso.parse(data[next(b.offset for b in iso.scan(data)
+                               if b.type == b"moov"):])[0]
+    assert {t.handler for t in f1._tracks(moov)} == {b"vide", b"soun"}
+    if shutil.which("ffmpeg"):
+        def decoded(p):
+            return subprocess.run(["ffmpeg", "-v", "error", "-i", str(p), "-map",
+                                   "0:v", "-map", "0:a", "-f", "md5", "-"],
+                                  capture_output=True, text=True).stdout
+        assert decoded(path) == decoded(out)
+    if HAVE_EXIFTOOL:
+        assert _exiftool_gps(out) == {}
