@@ -119,8 +119,58 @@ def emf(variant: int = 0) -> bytes:
     return header[:108] + desc
 
 
+def template_settings(variant: int = 0) -> tuple[str, str]:
+    """settings.xml naming its template and a mail-merge source by relationship, and
+    the relationships holding the paths -- measured in 24 and 3 of 784 real Word
+    documents, where F1 removed the elements and kept the paths."""
+    user = secret("USER", variant)
+    settings_xml = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                    f'<w:settings xmlns:w="{W}" xmlns:r="{R}">'
+                    '<w:attachedTemplate r:id="rId1"/>'
+                    '<w:mailMerge><w:mainDocumentType w:val="formLetters"/>'
+                    '<w:dataSource r:id="rId2"/></w:mailMerge>'
+                    '<w:defaultTabStop w:val="720"/></w:settings>')
+    rels = _rels([("rId1", f"{R}/attachedTemplate",
+                   f"file:///C:\\Users\\{user}\\AppData\\Roaming\\Microsoft\\"
+                   "Templates\\Letter.dotm"),
+                  ("rId2", f"{R}/mailMergeSource",
+                   f"file:///C:\\Users\\{user}\\Documents\\clients.xlsx")])
+    rels = rels.replace('"/>', '" TargetMode="External"/>')
+    return settings_xml, rels
+
+
+def drawing(variant: int = 0) -> str:
+    """A picture as Word inserts it: the file's own name in `pic:cNvPr name`, its
+    full path in `wp:docPr descr` (both measured in real documents), embedded AND
+    linked (`r:embed` + `r:link`); and a VML picture with `o:title`/`o:href`."""
+    path = f"C:\\Users\\{secret('USER', variant)}\\Pictures\\IMG_2034.JPG"
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    pic = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+    wp = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+    return ('<w:r><w:drawing>'
+            f'<wp:inline xmlns:wp="{wp}"><wp:extent cx="952500" cy="952500"/>'
+            f'<wp:docPr id="1" name="Picture 1" descr="{path}"/>'
+            f'<a:graphic xmlns:a="{a}"><a:graphicData uri="{pic}">'
+            f'<pic:pic xmlns:pic="{pic}"><pic:nvPicPr>'
+            '<pic:cNvPr id="0" name="IMG_2034.JPG"/><pic:cNvPicPr/></pic:nvPicPr>'
+            '<pic:blipFill><a:blip r:embed="rId20" r:link="rId21"/></pic:blipFill>'
+            '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>'
+            '<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml" '
+            'xmlns:o="urn:schemas-microsoft-com:office:office" id="s1" '
+            'style="width:10pt;height:10pt" alt="A short caption">'
+            f'<v:imagedata r:id="rId20" o:title="IMG_2034" o:href="file:///{path}"/>'
+            '</v:shape></w:pict></w:r>')
+
+
+def goback() -> str:
+    """Word's cursor bookmark: collapsed, start next to end, at the last cursor."""
+    return ('<w:bookmarkStart w:id="0" w:name="_GoBack"/><w:bookmarkEnd w:id="0"/>'
+            '<w:r><w:t>after the cursor</w:t></w:r>')
+
+
 LOCI = ("formatting_change", "permission", "settings", "webextensions",
-        "printer_settings", "activex", "pictures", "emf")
+        "printer_settings", "activex", "pictures", "emf", "template", "drawing",
+        "goback")
 
 
 def build(variant: int = 0, *, loci: tuple[str, ...] = LOCI) -> bytes:
@@ -129,6 +179,10 @@ def build(variant: int = 0, *, loci: tuple[str, ...] = LOCI) -> bytes:
         body += f"<w:p>{formatting_change(variant)}</w:p>"
     if "permission" in loci:
         body += f"<w:p>{permission(variant)}</w:p>"
+    if "drawing" in loci:
+        body += f"<w:p>{drawing(variant)}</w:p>"
+    if "goback" in loci:
+        body += f"<w:p>{goback()}</w:p>"
     body += paragraph("Its last paragraph.")
 
     parts: dict[str, bytes] = {"word/document.xml": _doc(body).encode()}
@@ -139,6 +193,21 @@ def build(variant: int = 0, *, loci: tuple[str, ...] = LOCI) -> bytes:
     defaults = [("rels", "application/vnd.openxmlformats-package.relationships+xml"),
                 ("xml", "application/xml")]
 
+    if "template" in loci:
+        settings_xml, rels = template_settings(variant)
+        parts["word/settings.xml"] = settings_xml.encode()
+        parts["word/_rels/settings.xml.rels"] = rels.encode()
+        overrides.append(("/word/settings.xml", "application/vnd.openxmlformats-"
+                          "officedocument.wordprocessingml.settings+xml"))
+        doc_rels.append(("rId2", REL_SETTINGS, "settings.xml"))
+    if "drawing" in loci:
+        from tests.scrub import zip_corpus
+        parts["word/media/image20.jpeg"] = zip_corpus.photo(variant)
+        doc_rels.append(("rId20", REL_IMAGE, "media/image20.jpeg"))
+        doc_rels.append(("rId21", REL_IMAGE,
+                         f"file:///C:\\Users\\{secret('USER', variant)}\\Pictures\\"
+                         "IMG_2034.JPG\" TargetMode=\"External"))
+        defaults.append(("jpeg", "image/jpeg"))
     if "settings" in loci:
         parts["word/settings.xml"] = settings(variant).encode()
         overrides.append(("/word/settings.xml", "application/vnd.openxmlformats-"
@@ -210,7 +279,8 @@ def planted(variant: int = 0, locus: str = "settings") -> list[bytes]:
     names = {"formatting_change": ["REVIEWER"], "permission": ["EDITOR"],
              "settings": ["HASH", "SALT", "MATTER", "TYPIST"],
              "webextensions": ["ADDIN"], "printer_settings": [], "activex": [],
-             "pictures": [], "emf": []}[locus]
+             "pictures": [], "emf": [], "template": ["USER"], "drawing": ["USER"],
+             "goback": []}[locus]
     out = [secret(n, variant).encode() for n in names]
     if locus == "printer_settings":
         out.append(secret("PRINTER", variant).encode("utf-16-le"))

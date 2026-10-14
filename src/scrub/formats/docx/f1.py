@@ -149,6 +149,86 @@ def _scrub_media(name: str, body: bytes) -> bytes:
         raise
 
 
+# Pictures' names and descriptions (docs/word_plan.md §5, measured on 784 real Word
+# documents): Word writes the inserted file's own name into `pic:cNvPr name` and
+# `wp:docPr descr` -- 151 times, 53 of them WITH the folder it came from, some naming
+# a user (`C:\Users\<name>\...`). A value that is a file name or a path is blanked;
+# "Picture 3" and a real description stay.
+_NAME_ATTRS = ("name", "descr", "title", "o:title", "alt")
+_FILE_LIKE = re.compile(
+    rb"\.(?:jpe?g|jpe|png|gif|bmp|tiff?|emf|wmf|heic|webp|svg|wdp)\b"
+    rb"|(?:^|[\s(\"'])(?:[A-Za-z]:\\|\\\\[\w$.-]+\\|file:/)"
+    rb"|/(?:Users|home)/", re.I)
+# Any non-visual properties element, whatever its prefix (`pic:`, `wps:`, `wpg:`,
+# and `a:` -- missed by a first list, found holding a full path under a user's
+# folder in a real document), and VML's picture and shape elements.
+_DRAWING_TAG = rb"(?:[\w]+:)?cNvPr|wp:docPr|v:imagedata|v:shape"
+
+
+def _blank_file_names(body: bytes) -> bytes:
+    """Blank picture names and descriptions that are file names or paths; keep the
+    rest (a description a person wrote is alt text). VML `v:imagedata o:title` is
+    blanked whatever it holds: Word writes the inserted file's name there without
+    its extension (30 of 69 in real Word documents were non-empty), and nothing
+    draws or reads it -- a VML picture's alt text is `v:shape alt`."""
+    tag_rx = re.compile(rb"<(" + _DRAWING_TAG + rb")(\s[^>]*?)?(/?)>")
+    attr_rx = re.compile(rb'(\s(?:' + b"|".join(re.escape(a.encode()) for a in _NAME_ATTRS)
+                         + rb')\s*=\s*")([^"]*)(")')
+
+    def tag(m):
+        attrs = m.group(2) or b""
+        always = m.group(1) == b"v:imagedata"
+
+        def value(a):
+            blank = (always and a.group(1).strip().startswith(b"o:title")
+                     or _FILE_LIKE.search(a.group(2)))
+            return a.group(1) + (b"" if blank else a.group(2)) + a.group(3)
+        return b"<" + m.group(1) + attr_rx.sub(value, attrs) + m.group(3) + b">"
+    return tag_rx.sub(tag, body)
+
+
+def _drop_linked_paths(body: bytes) -> bytes:
+    """A picture both embedded and linked shows the embedded copy; the link is a
+    path on the author's machine. `r:link` goes from a DrawingML `a:blip` that has
+    an `r:embed`, `o:href` from a VML `v:imagedata` that has an `r:id`. A picture
+    that is ONLY linked keeps its link (it would show nothing without it)."""
+    def blip(m):
+        t = m.group(0)
+        return re.sub(rb'\s+r:link="[^"]*"', b"", t) if b"r:embed=" in t else t
+
+    def imagedata(m):
+        t = m.group(0)
+        return re.sub(rb'\s+o:href="[^"]*"', b"", t) if b"r:id=" in t else t
+    body = re.sub(rb"<a:blip\s[^>]*>", blip, body)
+    return re.sub(rb"<v:imagedata\s[^>]*>", imagedata, body)
+
+
+def _prune_unreferenced(kept: dict[str, bytes]) -> None:
+    """Relationships nothing refers to any more, after the parts are cleaned:
+    every EXTERNAL one (a path or a URL serving no element), and every one from
+    `settings.xml`. Measured: F1 removed `w:attachedTemplate` and `w:mailMerge`
+    while their relationships -- holding the template's path and the data source's
+    -- stayed in `settings.xml.rels` (25 templates, 3 mail-merge sources and 1
+    recipient list in 784 real Word documents). Internal relationships elsewhere
+    are left alone: Word finds styles, settings and fonts by relationship TYPE, not
+    by a reference in the text."""
+    for name in [n for n in kept if n.endswith(".rels")]:
+        source = _rels_source(name)
+        if source not in kept:
+            continue
+        used = set(re.findall(rb'="([^"]*)"', kept[source]))
+        every = name == "word/_rels/settings.xml.rels"
+
+        def unused(tag: bytes, every: bool = every, used: set = used) -> bool:
+            rid = re.search(rb'\sId="([^"]*)"', tag)
+            external = re.search(rb'TargetMode="External"', tag) is not None
+            return (every or external) and rid is not None and rid.group(1) not in used
+        written = re.search(rb"<([\w.-]*:)?Relationship[\s/>]", kept[name])
+        if written:
+            tag = (written.group(1) or b"").decode() + "Relationship"
+            kept[name], _ = xs.remove_elements_where(kept[name], tag, unused)
+
+
 def _scrub_xml(name: str, body: bytes) -> bytes:
     # Comments first: they are never rendered, so removing them cannot change what a
     # reader sees, and they are reached by none of the name-based rules below.
@@ -160,10 +240,18 @@ def _scrub_xml(name: str, body: bytes) -> bytes:
     # `_GoBack` is where the cursor sat at the last save. Other bookmark names are
     # link targets that hyperlinks and TOC fields reference by name, so removing them
     # would break the document -- they survive, and are recorded as a residual.
+    goback = {xs.attribute_value(m.group(0), "w:id")
+              for m in re.finditer(rb"<w:bookmarkStart\s[^>]*>", body)
+              if xs.attribute_value(m.group(0), "w:name") == b"_GoBack"}
     body, _ = xs.remove_elements_where(
         body, "w:bookmarkStart",
         lambda tag: xs.attribute_value(tag, "w:name") == b"_GoBack")
-    return body
+    # Its end marker too: removing only the start left a dangling `w:bookmarkEnd`
+    # (found rendering 60 real Word documents, docs/word_plan.md §5).
+    body, _ = xs.remove_elements_where(
+        body, "w:bookmarkEnd", lambda tag: xs.attribute_value(tag, "w:id") in goback)
+    body = _blank_file_names(body)
+    return _drop_linked_paths(body)
 
 
 def _prune_content_types(body: bytes, dropped: set[str]) -> bytes:
@@ -262,6 +350,7 @@ def scrub(data: bytes) -> bytes:
             body = _scrub_xml(entry.name, body)
         kept[entry.name] = body
 
+    _prune_unreferenced(kept)
     # A .rels part that now declares nothing is itself removable, and leaving an empty
     # one behind is a tell that something was taken out of it.
     for name in [n for n in kept if n.endswith(".rels")]:
@@ -314,6 +403,12 @@ def residuals(data: bytes) -> list[str]:
         if _is_dropped(entry.name):
             out.append(f"{entry.name}: a part that F1 drops is still present")
             continue
+        if entry.name == "word/_rels/settings.xml.rels":
+            rels = entry.content()
+            for kind in (b"attachedTemplate", b"mailMergeSource",
+                         b"mailMergeHeaderSource", b"recipientData"):
+                if kind in rels:
+                    out.append(f"{entry.name}: a {kind.decode()} relationship survived")
         if not entry.name.endswith(".xml"):
             continue
         try:
@@ -328,6 +423,10 @@ def residuals(data: bytes) -> list[str]:
         for tag in DROP_ELEMENTS:
             if re.search(rb"<" + re.escape(tag.encode()) + rb"[\s/>]", body):
                 out.append(f"{entry.name}: <{tag}> survived")
+        if _blank_file_names(body) != body:
+            out.append(f"{entry.name}: a picture's name or description is a file name")
+        if _drop_linked_paths(body) != body:
+            out.append(f"{entry.name}: an embedded picture kept its link path")
         _, n = xs.remove_comments(body)
         if n:
             out.append(f"{entry.name}: {n} XML comment(s) survived")

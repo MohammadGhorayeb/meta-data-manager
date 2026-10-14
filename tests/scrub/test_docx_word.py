@@ -116,3 +116,48 @@ def test_a_picture_is_identified_by_content_not_by_its_name():
 def test_an_emf_picture_is_refused_by_name():
     with pytest.raises(Exception, match="EMF pictures have no handler"):
         f1.scrub(wc.build(1, loci=("emf",)))
+
+
+# --- W1b: measured on 784 real Word documents (docs/word_plan.md §5) ---------------
+
+def test_template_and_mail_merge_paths_go_with_their_elements():
+    data = wc.build(1, loci=("template",))
+    out = wc.members(f1.scrub(data))
+    assert b"attachedTemplate" not in out["word/settings.xml"]
+    assert "word/_rels/settings.xml.rels" not in out          # nothing left in it
+    assert not [n for n, b in out.items() if wc.secret("USER", 1).encode() in b]
+    assert f1.residuals(f1.scrub(data)) == []
+
+
+def test_picture_file_names_and_paths_are_blanked_and_descriptions_kept():
+    out = wc.members(f1.scrub(wc.build(1, loci=("drawing",))))
+    doc = out["word/document.xml"]
+    assert wc.secret("USER", 1).encode() not in doc and b"IMG_2034" not in doc
+    assert b'name="Picture 1"' in doc and b'alt="A short caption"' in doc
+    assert b'descr=""' in doc and b'name=""' in doc
+
+
+def test_an_embedded_picture_loses_its_link_and_the_link_relationship():
+    out = wc.members(f1.scrub(wc.build(1, loci=("drawing",))))
+    doc, rels = out["word/document.xml"], out["word/_rels/document.xml.rels"]
+    assert b'r:embed="rId20"' in doc and b"r:link" not in doc and b"o:href" not in doc
+    assert b'Id="rId21"' not in rels and b'Id="rId20"' in rels
+
+
+def test_a_picture_that_is_only_linked_keeps_its_link():
+    from src.scrub.formats.docx.f1 import _drop_linked_paths
+    only = b'<a:blip r:link="rId21"/>'
+    assert _drop_linked_paths(only) == only
+
+
+def test_the_cursor_bookmark_goes_with_its_end_marker():
+    doc = wc.members(f1.scrub(wc.build(1, loci=("goback",))))["word/document.xml"]
+    assert b"_GoBack" not in doc and b"bookmarkEnd" not in doc
+    assert b"after the cursor" in doc
+
+
+def test_f2_applies_the_same_rules():
+    data = wc.build(1, loci=("template", "drawing", "goback"))
+    out = wc.members(f2.scrub(data))
+    assert not [n for n, b in out.items() if wc.secret("USER", 1).encode() in b]
+    assert not [n for n, b in out.items() if b"_GoBack" in b or b"IMG_2034" in b]

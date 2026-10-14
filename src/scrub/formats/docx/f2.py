@@ -110,6 +110,7 @@ def scrub(data: bytes) -> bytes:
             body = xmlcanon.canonicalize(body)
         kept[entry.name] = body
 
+    f1._prune_unreferenced(kept)
     for name in [n for n in kept if n.endswith(".rels")]:
         if not re.search(rb"<[\w.-]*:?Relationship[\s/>]", kept[name]):
             del kept[name]

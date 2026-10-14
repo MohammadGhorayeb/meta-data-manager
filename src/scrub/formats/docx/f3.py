@@ -23,6 +23,7 @@ and that is stated wherever it is offered rather than after it is used.
 from __future__ import annotations
 
 import os
+import pathlib
 import shutil
 import subprocess
 import tempfile
@@ -42,6 +43,17 @@ def available() -> bool:
     return shutil.which(ENGINE) is not None
 
 
+def profile_arg(workdir: str) -> str:
+    """A LibreOffice profile of our own, in the work directory. Conversions sharing
+    the user's profile hand requests to each other's instance, and one that exits
+    takes the other's request with it: four F3 scrubs at once wrote 5 of 12
+    documents (the rest refused -- no output, or LibreOffice crashing); with a
+    profile each, 12 of 12, byte-identical to the shared-profile output. A
+    LibreOffice window left open is harmless either way (measured). Costs ~1.5 s
+    per call, the profile's first start."""
+    return "-env:UserInstallation=" + pathlib.Path(workdir, "profile").as_uri()
+
+
 def _round_trip(data: bytes, workdir: str) -> bytes:
     src = os.path.join(workdir, "in.docx")
     with open(src, "wb") as f:
@@ -50,7 +62,8 @@ def _round_trip(data: bytes, workdir: str) -> bytes:
     os.makedirs(out, exist_ok=True)
     try:
         proc = subprocess.run(
-            [ENGINE, "--headless", "--convert-to", FILTER, "--outdir", out, src],
+            [ENGINE, "--headless", profile_arg(workdir), "--convert-to", FILTER,
+             "--outdir", out, src],
             capture_output=True, timeout=TIMEOUT)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ContentError(f"{ENGINE} failed to re-typeset the document: {exc}") from exc

@@ -18,6 +18,7 @@ import subprocess
 import tempfile
 import zipfile
 
+from src.scrub.formats.docx import f3
 from tests.harness.oracle import fields, variance
 from tests.harness.plugins.epub import CHANNELS, EpubPlugin
 from tests.scrub import docx_corpus as dc
@@ -59,9 +60,9 @@ def producers() -> dict:
     if shutil.which("soffice"):
         def libreoffice(docx, dst):
             work = os.path.dirname(dst)
-            subprocess.run(["soffice", "--headless", "--convert-to", "epub",
-                            "--outdir", work, docx], check=True, capture_output=True,
-                           timeout=180)
+            subprocess.run(["soffice", "--headless", f3.profile_arg(work),
+                            "--convert-to", "epub", "--outdir", work, docx],
+                           check=True, capture_output=True, timeout=180)
             shutil.move(os.path.join(work, os.path.splitext(
                 os.path.basename(docx))[0] + ".epub"), dst)
         out["libreoffice"] = libreoffice
