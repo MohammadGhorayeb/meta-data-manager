@@ -43,6 +43,11 @@ DROP_PARTS = (
     re.compile(r"^docProps/thumbnail\.[A-Za-z0-9]+$"),
     re.compile(r"^word/people\.xml$"),
     re.compile(r"^customXml/"),
+    # Word's other hidden parts (docs/word_plan.md §2): task-pane add-ins -- which
+    # add-ins, from which store, with their saved settings -- and printer settings, a
+    # binary DEVMODE naming the printer. Neither draws anything.
+    re.compile(r"^word/webextensions/"),
+    re.compile(r"^word/printerSettings/"),
     re.compile(r"^__MACOSX/"),
     re.compile(r"(^|/)\._"),
 )
@@ -76,6 +81,15 @@ DROP_ELEMENTS = (
     "w:lastRenderedPageBreak",  # pagination from whichever renderer last opened it
     "w:documentProtection",     # a password hash and salt: a credential, not a setting
     "w:mailMerge",              # an absolute path to a file on the author's machine
+    # docs/word_plan.md §2 (W1). The "read-only recommended" password: another hash.
+    "w:writeProtection",
+    # Template and document-management variables (client, matter, user): read only by
+    # a DOCVARIABLE field, whose result is already in the text until it is updated.
+    "w:docVars",
+    # Editing permissions: range markers naming who may edit (`w:ed`, an e-mail
+    # address -- measured surviving F1). They draw nothing; the text between stays.
+    "w:permStart",
+    "w:permEnd",
 )
 
 # Content that is not currently displayed, and therefore is not ours to delete.
@@ -85,17 +99,34 @@ REFUSE_ELEMENTS = {
     "w:moveFrom": "tracked move",
     "w:moveTo": "tracked move",
     "w:commentReference": "comment anchor",
+    # Tracked FORMATTING changes and table-cell revisions carry the same reviewer's
+    # name and date, and were measured passing through F1 untouched (docs/word_plan.md
+    # §2): only insertions and deletions had been looked for.
+    "w:rPrChange": "tracked formatting change",
+    "w:pPrChange": "tracked formatting change",
+    "w:sectPrChange": "tracked formatting change",
+    "w:tblPrChange": "tracked formatting change",
+    "w:tblPrExChange": "tracked formatting change",
+    "w:trPrChange": "tracked formatting change",
+    "w:tcPrChange": "tracked formatting change",
+    "w:tblGridChange": "tracked formatting change",
+    "w:numberingChange": "tracked numbering change",
+    "w:cellIns": "tracked table-cell insertion",
+    "w:cellDel": "tracked table-cell deletion",
+    "w:cellMerge": "tracked table-cell merge",
 }
 REFUSE_PARTS = (
     re.compile(r"^word/comments.*\.xml$"),
     re.compile(r"^word/threadedComments/"),
 )
 
-# Image parts we recurse into, by extension. EMF/WMF has no handler in this project
-# and can carry text and a printer name, so it is refused rather than passed through.
-_RECURSE_JPEG = (".jpeg", ".jpg", ".jpe")
-_RECURSE_PNG = (".png",)
-_UNHANDLED_MEDIA = (".emf", ".wmf", ".tiff", ".tif", ".bmp", ".gif", ".svg")
+# Pictures are cleaned by their own format's handler, found by CONTENT through the
+# shared `embedded.py` (docs/word_plan.md W2): JPEG, PNG, GIF, TIFF, WebP, SVG and
+# anything else a handler claims. Until W2 this went by extension, recursed only
+# into JPEG and PNG, refused GIF/TIFF/SVG outright -- and passed any extension it did
+# not list straight through. EMF/WMF have no handler: refused, named, as before.
+_NO_HANDLER_HINT = {".emf": "EMF", ".wmf": "WMF", ".wdp": "HD Photo (JPEG XR)",
+                    ".bmp": "BMP"}
 
 
 def _is_dropped(name: str) -> bool:
@@ -103,24 +134,19 @@ def _is_dropped(name: str) -> bool:
 
 
 def _scrub_media(name: str, body: bytes) -> bytes:
-    """Recurse into an embedded image through the Phase 1 handlers.
-
-    The invariant is the one PDF F1 established: an embedded file is scrubbed at
-    *its own* format's F1, not merely passed through. A JPEG's entropy-coded scan
-    comes back byte-identical while its EXIF and thumbnail are gone.
-    """
-    ext = posixpath.splitext(name)[1].lower()
-    if ext in _RECURSE_JPEG:
-        from ..jpeg import f1 as jpeg_f1
-        return jpeg_f1.scrub(body)
-    if ext in _RECURSE_PNG:
-        from ..png import f1 as png_f1
-        return png_f1.scrub(body)
-    if ext in _UNHANDLED_MEDIA:
-        raise ParseError(
-            f"{name}: {ext} media has no handler in this project (EMF/WMF can carry "
-            f"text and a printer name); refused rather than passed through unscrubbed")
-    return body
+    """An embedded picture at its own format's F1. The invariant PDF F1 established:
+    an embedded file is scrubbed by its own handler, never passed through."""
+    from ... import embedded
+    try:
+        return embedded.scrub_bytes(body, name)
+    except ParseError as exc:
+        kind = _NO_HANDLER_HINT.get(posixpath.splitext(name)[1].lower())
+        if kind and "no handler" in str(exc):
+            raise ParseError(f"{name}: {kind} pictures have no handler in this "
+                             "project (EMF/WMF can carry an application and file name "
+                             "in their header); refused rather than passed through "
+                             "unscrubbed") from None
+        raise
 
 
 def _scrub_xml(name: str, body: bytes) -> bytes:

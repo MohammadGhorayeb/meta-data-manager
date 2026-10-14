@@ -34,7 +34,17 @@ _UNWRAP = ("w:ins", "w:moveTo", "w:moveToRangeStart", "w:moveToRangeEnd",
 # have nothing left to point at once `word/comments*.xml` is gone.
 _REMOVE = ("w:del", "w:moveFrom", "w:moveFromRangeStart", "w:moveFromRangeEnd",
            "w:commentRangeStart", "w:commentRangeEnd", "w:commentReference",
-           "w:customXmlDelRangeStart", "w:customXmlDelRangeEnd")
+           "w:customXmlDelRangeStart", "w:customXmlDelRangeEnd",
+           # A tracked formatting change holds the OLD properties and who changed
+           # them; accepting it keeps the new formatting and drops the record.
+           "w:rPrChange", "w:pPrChange", "w:sectPrChange", "w:tblPrChange",
+           "w:tblPrExChange", "w:trPrChange", "w:tcPrChange", "w:tblGridChange",
+           "w:numberingChange",
+           # An inserted table cell, accepted, is just a cell: the marker goes.
+           "w:cellIns")
+# Accepting a deleted or merged table cell means rebuilding the table; not modelled.
+_REFUSE_AT_F2 = {"w:cellDel": "tracked table-cell deletion",
+                 "w:cellMerge": "tracked table-cell merge"}
 
 # Attributes that survive only on a revision wrapper; once the wrappers are gone any
 # left behind are an author name or a date on some other element.
@@ -67,6 +77,13 @@ def scrub(data: bytes) -> bytes:
     # tier exists to accept.
     problems = [p for p in f1._preflight(pkg)
                 if "content displayed" not in p and "comments are content" not in p]
+    for entry in pkg.archive.entries:
+        if entry.is_dir or not entry.name.endswith(".xml"):
+            continue
+        for tag, what in _REFUSE_AT_F2.items():
+            if re.search(rb"<" + re.escape(tag.encode()) + rb"[\s/>]", entry.content()):
+                problems.append(f"{entry.name}: {what} ({tag}); accepting it means "
+                                "rebuilding the table, which is not modelled")
     if problems:
         raise ContentError("; ".join(sorted(set(problems))))
 

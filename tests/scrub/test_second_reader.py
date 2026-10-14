@@ -97,8 +97,10 @@ def test_mediainfo_sees_the_telemetry_before_and_only_picture_and_sound_after(
     kinds_before = {t["@type"] for t in before["track"]}
     kinds_after = {t["@type"] for t in after["track"]}
     text_before = json.dumps(before)
-    assert kinds_before - {"General", "Video", "Audio"} or PLANTED.search(text_before), \
-        "MediaInfo sees no telemetry and no planted value: vacuous"
+    if not (kinds_before - {"General", "Video", "Audio"} or PLANTED.search(text_before)):
+        # Ubuntu's MediaInfo does not show Android's location and model keys (the
+        # Mac's 26.10 does): a missing reader, not a pass.
+        pytest.skip("this MediaInfo build does not read the planted values")
     assert kinds_after <= {"General", "Video", "Audio"}
     assert not PLANTED.findall(json.dumps(after))
 

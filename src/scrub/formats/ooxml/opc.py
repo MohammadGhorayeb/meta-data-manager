@@ -57,6 +57,9 @@ REFUSE_PARTS: list[tuple[re.Pattern, str]] = [
      "embedded OLE object: a whole document of its own, needing its own pass"),
     (re.compile(r"(^|/)EncryptedPackage$|(^|/)EncryptionInfo$"),
      "encrypted package"),
+    (re.compile(r"^word/activeX/|^xl/activeX/|^ppt/activeX/"),
+     "ActiveX controls: binary controls with data of their own, which we do not "
+     "parse -- refused as macros are"),
 ]
 
 

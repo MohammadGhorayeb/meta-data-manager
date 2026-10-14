@@ -234,7 +234,12 @@ def test_damaged_heic_records_are_refusals(tmp_path, seed, label):
     if not hc.HAVE_HEIF:
         pytest.skip("pillow-heif not installed")
     data = open(hc.torture(str(tmp_path / "t.heic")), "rb").read()
-    blob = dict(_mutations(data, random.Random(seed), 1000))[label]
+    # By number, not label: libheif on Linux writes other bytes, the random stream
+    # diverges, and mutation 643 may be a different kind there -- still a valid
+    # damaged file to hold to the contract, and the exact replay where bytes match.
+    n = label.rsplit("-", 1)[1]
+    blob = next(b for lbl, b in _mutations(data, random.Random(seed), 1000)
+                if lbl.endswith(f"-{n}"))
     try:
         default_dispatcher().resolve(blob).scrub(blob, "F1")
     except ScrubError:
