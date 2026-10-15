@@ -84,7 +84,10 @@ def test_every_format_readme_claims_has_a_published_matrix():
              for p in m.group(1).replace("_·_", "|").replace("_", "|").split("|")
              if p.strip()}
     measured = set(qr.published_matrices())
-    missing = named - measured
+    # One matrix measures both Windows metafile formats (W2b): the badge names
+    # what a reader looks for, the matrix id the handler.
+    aliases = {"emf": "metafile", "wmf": "metafile"}
+    missing = {n for n in named if aliases.get(n, n) not in measured}
     assert not missing, (
         "README's formats badge names "
         f"{', '.join(sorted(missing))} with no Pareto matrix on disk")

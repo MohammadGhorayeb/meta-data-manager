@@ -1,0 +1,72 @@
+{
+  "format": "metafile",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-w2b",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-10-15T06:26:18.552923+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no metadata-correlated byte survives in EMF (header description, private/string/group comments, the hidden WMF copy, EMF+ comments, EMF+ pictures' EXIF -- one split across records -- trailing bytes) or WMF (private comments, the embedded source EMF, trailing bytes)"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "metafile_f2_f3_not_built: a canonical rewrite (one header layout, one reference device, records re-emitted by one writer) is not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "metafile_f2_f3_not_built: a canonical rewrite (one header layout, one reference device, records re-emitted by one writer) is not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "metafile_a2_no_peer_set: Office writes these and does not run here; LibreOffice alone is no peer set. Kept by F1, so the F2 specification: the EMF header's size and version, the reference device (a screen's or printer's pixels and millimetres), EMF+ DPI and flags, the kinds and order of records a writer emits, a WMF's units per inch"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "metafile_f2_f3_not_built: a canonical rewrite (one header layout, one reference device, records re-emitted by one writer) is not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "metafile_f2_f3_not_built: a canonical rewrite (one header layout, one reference device, records re-emitted by one writer) is not built"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [],
+    "signatures": []
+  }
+}

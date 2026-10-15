@@ -103,6 +103,11 @@ def _build(kind: str, tmpdir: str) -> str | None:
         from . import epub_corpus as epc  # noqa: PLC0415
         open(p, "wb").write(epc.build(1, shape="sigil"))
         return p
+    if kind == "metafile":
+        # EMF+ pictures split across records are regrouped by index into dicts.
+        from . import metafile_corpus as mfc  # noqa: PLC0415
+        open(p, "wb").write(mfc.emf(1, chunk=300))
+        return p
     if kind == "zip":
         # Members are collected into a dict and sorted; the sidecars, folders and
         # nested archive are the most chances for a set to decide an order.

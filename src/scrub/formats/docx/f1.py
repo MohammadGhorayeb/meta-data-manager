@@ -124,9 +124,9 @@ REFUSE_PARTS = (
 # shared `embedded.py` (docs/word_plan.md W2): JPEG, PNG, GIF, TIFF, WebP, SVG and
 # anything else a handler claims. Until W2 this went by extension, recursed only
 # into JPEG and PNG, refused GIF/TIFF/SVG outright -- and passed any extension it did
-# not list straight through. EMF/WMF have no handler: refused, named, as before.
-_NO_HANDLER_HINT = {".emf": "EMF", ".wmf": "WMF", ".wdp": "HD Photo (JPEG XR)",
-                    ".bmp": "BMP"}
+# not list straight through. EMF/WMF have their own handler since W2b
+# (`formats/metafile/`); HD Photo and BMP have none: refused, named.
+_NO_HANDLER_HINT = {".wdp": "HD Photo (JPEG XR)", ".bmp": "BMP"}
 
 
 def _is_dropped(name: str) -> bool:
@@ -143,8 +143,7 @@ def _scrub_media(name: str, body: bytes) -> bytes:
         kind = _NO_HANDLER_HINT.get(posixpath.splitext(name)[1].lower())
         if kind and "no handler" in str(exc):
             raise ParseError(f"{name}: {kind} pictures have no handler in this "
-                             "project (EMF/WMF can carry an application and file name "
-                             "in their header); refused rather than passed through "
+                             "project; refused rather than passed through "
                              "unscrubbed") from None
         raise
 

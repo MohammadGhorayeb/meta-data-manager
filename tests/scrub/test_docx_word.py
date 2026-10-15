@@ -113,9 +113,18 @@ def test_a_picture_is_identified_by_content_not_by_its_name():
     assert renamed[:2] == b"\xff\xd8" and zc.secret("PHOTO-ARTIST", 1).encode() not in renamed
 
 
-def test_an_emf_picture_is_refused_by_name():
-    with pytest.raises(Exception, match="EMF pictures have no handler"):
-        f1.scrub(wc.build(1, loci=("emf",)))
+def test_emf_and_wmf_pictures_are_cleaned_by_their_own_handler():
+    """W2b: refused by name until the metafile handler existed (limit #68)."""
+    data = wc.build(1, loci=("emf",))
+    media = {n: b for n, b in wc.members(data).items() if n.startswith("word/media/")}
+    assert all(b"SENTINEL" in b or "SENTINEL".encode("utf-16-le") in b
+               for b in media.values())
+    out = {n: b for n, b in wc.members(f1.scrub(data)).items()
+           if n.startswith("word/media/")}
+    assert sorted(out) == sorted(media)
+    assert not [n for n, b in out.items()
+                if b"SENTINEL" in b or "SENTINEL".encode("utf-16-le") in b]
+    assert f1.residuals(f1.scrub(data)) == []
 
 
 # --- W1b: measured on 784 real Word documents (docs/word_plan.md §5) ---------------

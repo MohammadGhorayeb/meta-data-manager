@@ -103,6 +103,11 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
         # a bookmark file to drop -- and a second pass must find nothing to do.
         from . import epub_corpus as epc  # noqa: PLC0415
         return epc.build(1, shape="calibre")
+    if fmt == "metafile":
+        # A WMF carrying its source EMF: the most rebuilding (chunks re-cut, the
+        # checksum recomputed, the inner EMF's own comments and EMF+ pictures).
+        from . import metafile_corpus as mfc  # noqa: PLC0415
+        return mfc.wmf(1, loci=("comment", "embedded_emf", "trailing"))
     if fmt == "zip":
         # Info-ZIP's shape: every container field to normalise, a .DS_Store to drop,
         # and a nested archive whose own scrub must also be a fixed point.

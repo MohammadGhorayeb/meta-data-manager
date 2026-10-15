@@ -184,7 +184,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer gcc clang binutils git golang-go \
+            libreoffice-writer libreoffice-draw gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
             zip libarchive-tools pandoc exiv2 mediainfo qpdf
 
@@ -513,7 +513,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer gcc clang binutils git golang-go \
+            libreoffice-writer libreoffice-draw gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
             zip libarchive-tools pandoc exiv2 mediainfo qpdf
 
@@ -596,7 +596,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
-            libreoffice-writer gcc clang binutils git golang-go \
+            libreoffice-writer libreoffice-draw gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
             zip libarchive-tools pandoc exiv2 mediainfo qpdf
 

@@ -83,6 +83,7 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import heic_corpus as hc
     from . import m4a_corpus as mc
     from . import macho_corpus as mc_
+    from . import metafile_corpus as mfc
     from . import mp3_corpus as m3c
     from . import mp4_corpus as vc
     from . import pdf_corpus as pc
@@ -106,6 +107,8 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
         "gif": (gfc.build(frames=3), ("F1",)),
         "svg": (svc.build(shape="inkscape"), ("F1",)),
         "svgz": (svc.svgz(shape="illustrator"), ("F1",)),
+        "emf": (mfc.emf(1, chunk=300), ("F1",)),
+        "wmf": (mfc.wmf(1), ("F1",)),
         "exe-macho": (mc_.build("alice", go=True), ("F1",)),
         "exe-fat": (mc_.fat("alice"), ("F1",)),
         "exe-pe-msvc": (pec.build("alice", dll=True), ("F1",)),

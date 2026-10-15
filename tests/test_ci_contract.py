@@ -272,3 +272,12 @@ def test_poppler_specifically_because_this_is_how_it_was_missed():
         "poppler-utils is missing from the CI workflow. PDF F3 renders with pdftoppm "
         "and every PDF content check reads the document back with pdftotext, so "
         "without it the PDF tests skip and all six PDF verdicts go unchallenged.")
+
+
+def test_the_draw_module_is_installed_for_metafile_renders():
+    """`soffice` is one binary; which documents it can open depends on the modules
+    installed. EMF/WMF render checks (`test_metafile.py`) convert a picture with
+    Draw, because Writer's page layout shifts by a pixel between identical runs
+    (measured) while Draw's render is stable -- and without the package the
+    conversion writes nothing, which the test reports as a failure, not a skip."""
+    assert "libreoffice-draw" in installed_packages()

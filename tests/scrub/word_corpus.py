@@ -110,13 +110,16 @@ def pictures(variant: int = 0) -> dict[str, bytes]:
 
 
 def emf(variant: int = 0) -> bytes:
-    """An EMF header record whose description names the application and the file,
-    as Office writes it: no handler exists, so the document is refused."""
-    desc = f"Microsoft Office\x00{secret('EMF', variant)}.emf\x00\x00".encode("utf-16-le")
-    header = (struct.pack("<II", 1, 108 + len(desc)) + bytes(32)
-              + struct.pack("<IIIHH", 0x464D4520, 0x10000, 108 + len(desc), 1, 0)
-              + struct.pack("<II", len(desc) // 2, 108) + bytes(24))
-    return header[:108] + desc
+    """An EMF as Office writes it -- EMF+ dual, with a picture inside -- every locus
+    the survey found planted (`metafile_corpus`)."""
+    from tests.scrub import metafile_corpus
+    return metafile_corpus.emf(variant)
+
+
+def wmf(variant: int = 0) -> bytes:
+    """A placeable WMF carrying a private comment and its source EMF in chunks."""
+    from tests.scrub import metafile_corpus
+    return metafile_corpus.wmf(variant)
 
 
 def template_settings(variant: int = 0) -> tuple[str, str]:
@@ -242,12 +245,13 @@ def build(variant: int = 0, *, loci: tuple[str, ...] = LOCI) -> bytes:
         media = dict(pictures(variant)) if "pictures" in loci else {}
         if "emf" in loci:
             media["image9.emf"] = emf(variant)
+            media["image8.wmf"] = wmf(variant)
         for k, (name, body) in enumerate(sorted(media.items()), start=10):
             parts[f"word/media/{name}"] = body
             doc_rels.append((f"rId{k}", REL_IMAGE, f"media/{name}"))
         for ext, ctype in (("gif", "image/gif"), ("tif", "image/tiff"),
                            ("webp", "image/webp"), ("svg", "image/svg+xml"),
-                           ("emf", "image/x-emf")):
+                           ("emf", "image/x-emf"), ("wmf", "image/x-wmf")):
             if any(n.endswith("." + ext) for n in media):
                 defaults.append((ext, ctype))
 

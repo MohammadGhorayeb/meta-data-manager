@@ -46,7 +46,7 @@ Word cannot run here, so the census is built from four sources, strongest first:
 | pictures' source names (`*:cNvPr name`, `wp:docPr descr/title`, VML `o:title`) | the inserted file's name (a camera counter, a screenshot timestamp), sometimes its full path | kept | blank names and descriptions that are file names or paths; blank VML `o:title` always | **W1b** (measured, §5) |
 | linked pictures (`r:link` to `file:///C:/Users/...`) | a path naming the user | kept, advised | where an embedded copy exists, drop the link | **W1b** |
 | images other than JPEG/PNG (GIF, TIFF, WebP, SVG) | each image's own metadata | **refused** | clean through `embedded.py` by content | **W2** |
-| EMF/WMF pictures (pasted charts, Visio, clip art) | a description string (application, file name) | **refused** | survey, then a handler or a documented refusal | W2 |
+| EMF/WMF pictures (pasted charts, Visio, clip art) | a description string, private comments (paths), a hidden second copy | refused -> **cleaned (§6)** | own handler, `formats/metafile/` | **W2b done** |
 | embedded fonts (`word/fonts/*.odttf`, key in `fontTable.xml`) | a GUID key per font -- possibly per save | kept | measure whether the key is random per save; if so, re-key | W3 |
 | charts' workbooks, OLE objects (`word/embeddings/`) | a whole Excel file with its own author and company | **refused** | measure; clean embedded OOXML packages' properties, or keep refusing | W4 |
 | fields showing metadata (`AUTHOR`, `FILENAME \p`, `USERNAME`, `LASTSAVEDBY`, `DOCPROPERTY`, dates, `INCLUDEPICTURE` paths) | the author's name, a path, shown as text | kept (displayed content) | advise where they are | W5 |
@@ -149,3 +149,89 @@ cursor position is metadata, so the removal stays: limit #69.
 
 Tests: `tests/scrub/test_docx_word.py` (W1b block) plants each locus in
 `word_corpus.py` the way the real files wire it; all 6 fail without the change.
+
+## 6. W2b — EMF and WMF pictures
+
+Office stores pasted charts, Visio drawings, clip art and equations as Windows
+metafiles: a list of drawing records (EMF: 32-bit records, a header naming its
+size; WMF: 16-bit, often behind a "placeable" header). Limit #68 refused them.
+
+**Survey** (`~/metadata-research/step2/emf/`: every distinct metafile inside the
+784 real Word documents -- 50 EMF, 361 WMF, all from Word; aggregates only):
+
+| locus | found | what it is | drawn? |
+|---|---|---|---|
+| EMF header description | 2 of 48 non-empty | the producing application, optionally the picture's name | no |
+| EMF private comments (any identifier but `EMF+`/`GDIC`) | 25: **4 paths, 2 file names**, 14 text, 5 binary | whatever the producing program kept | no -- GDI skips comments |
+| EMF public comment `WINDOWS_METAFILE` | 19 EMFs, up to 340 KB | **a whole second copy of the picture**, as the WMF it was converted from | no |
+| EMF public `BEGINGROUP` | 2 (empty) | a group's description string | no |
+| EMF+ records (inside comments) | 21 EMFs | the GDI+ drawing; Office draws these, not the EMF records | **yes** |
+| EMF+ image objects | 1 JPEG (APP12 "Ducky", APP14), 1 PNG | a whole embedded picture, with its own metadata | yes |
+| EMF+ comment records | 0 | private data | no |
+| WMF `MFCOMMENT` escapes | 'WMFC' in 2 files; 'MGXI' 1; binary 3 | 'WMFC' chunks = **the original EMF, embedded** (Windows and LibreOffice draw it instead of the WMF records when present); others private | WMFC: yes |
+| bytes after the end record | 3 WMF (1 non-zero), 0 EMF | anything | no |
+| reference device (EMF `szlDevice`/`szlMillimeters`, EMF+ DPI, WMF `Inch`) | 29 distinct devices in 48 EMFs; DPI 94-1200; WMF Inch 94/95/129 among 96s | the author's screen or printer | **geometry** -- the picture's coordinates are expressed in it |
+| DIB bitmaps (`BITBLT`, `STRETCHDIBITS`, ...) | 32, all 40-byte headers | pixels; a V5 header could link a colour profile by PATH | yes |
+| colour-space records (filenames), printer escapes | 0 | a profile path; a driver name | -- |
+
+Header counts: all 48 EMFs' `nBytes` match; 3 carry a wrong `nRecords`. All WMF
+sizes, maximum record sizes and placeable checksums are consistent.
+
+**F1 decisions.** Rebuilt record by record (EMF has no absolute offsets: every
+offset is relative to its own record); counts and sizes recomputed.
+
+- EMF: header description removed, `sReserved` zeroed; private comments,
+  `WINDOWS_METAFILE` copies and string comments dropped; `BEGINGROUP` description
+  removed (the group stays: an `ENDGROUP` pairs with it); EMF+ comment records
+  dropped, EMF+ image objects cleaned by their own handlers (`embedded.py`; an
+  object split across records is reassembled, cleaned and split again); nested
+  metafiles recurse. Bytes after `EOF` dropped.
+- WMF: private `MFCOMMENT`s dropped; the embedded EMF ('WMFC') cleaned by the EMF
+  rules and re-chunked with its checksum recomputed; placeable header's reserved
+  fields zeroed, checksum recomputed; header `Size`/`MaxRecord` recomputed; bytes
+  after `META_EOF` dropped.
+- Refused, by name (none in the survey): `MULTIFORMATS` comments (may hold EPS
+  with its own `%%For`), colour-space records (profile paths), printer escapes,
+  other WMF escapes, V5 bitmaps linking or embedding a profile, unknown public
+  comments or EMF+ record types.
+- Kept, documented: the reference device and DPI -- the coordinates are expressed
+  in them, so changing them moves the drawing (residual, A2).
+
+**Safety net on every scrub:** every drawing record (EMF, EMF+ and WMF) is in the
+output byte for byte, in order; pictures inside are checked by their own handlers.
+Content check: LibreOffice renders before and after.
+
+### 6.1 As built, and what it measured
+
+`src/scrub/formats/metafile/` (`emf.py`, `wmf.py`, one handler, matrix id
+`metafile`), reached from Word documents -- and SVG, ZIP, EPUB -- through
+`embedded.py`. Measured:
+
+- **The 409 real metafiles**: 32 cleaned, 374 had nothing to remove and come back
+  byte for byte, 3 differ only in a corrected record count (they left the end
+  record out of it -- a writer's off-by-one, so also a fingerprint). A second clean
+  finds nothing in any. The two WMFs carrying their source EMF come back exactly as
+  Word wrote them, chunk sizes and checksum included -- the checksum rule (the
+  metafile's 16-bit words sum to zero; LibreOffice's own writer uses a different
+  one) was inferred from them and is now reproduced. LibreOffice draws all 35 that
+  changed identically (the rest are unchanged bytes).
+- **Word documents**: of the 784, 685 now clean (678 before W2b) and 99 are refused;
+  no refusal is for an EMF or WMF, 3 are for HD Photo. Two documents that used to
+  stop at their EMF now stop at an older check (relationships pointing at parts the
+  file does not contain). The 7 newly cleaned documents holding EMF/WMF render with
+  identical text and pixels.
+- **Synthetic corpus** (`tests/scrub/metafile_corpus.py`): every survey locus
+  planted; A1@F1 passes for EMF and WMF, and a scrubber that removes nothing fails
+  the same check (the control is a test). EMF+ pictures are drawn (`DrawImage`), so
+  the render check covers a picture split across continuation records.
+- **Deep fuzz**: 9,000 damaged EMF/WMF files; every one ends as a refusal, a
+  decline or a clean output -- no exception escapes.
+
+**A measurement finding: LibreOffice Writer's page layout is not deterministic.**
+The same `.docx`, converted 6 times, gave 2 different renders -- the whole page
+shifted by a pixel or two, with or without a fresh profile. A single before/after
+page comparison can therefore mistake noise for a change. The metafile render test
+converts the picture alone with Draw (6 of 6 identical); page renders of real
+documents now render each side several times and compare the sets. Re-checked
+this way, the 4 documents of §5 that differ after the `_GoBack` removal render one
+way, 4 times in 4, before and never that way after: limit #69 stands.

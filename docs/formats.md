@@ -435,6 +435,28 @@ References to files on your computer are kept (the drawing needs them to display
 reported, so you can remove them in the editor.
 <!-- FORMAT:svg:END -->
 
+<!-- FORMAT:metafile:BEGIN -->
+EMF and WMF pictures — what Office stores when you paste a chart, a Visio drawing,
+an equation or clip art into a Word document. Cleaned on their own or inside a Word
+document.
+
+**What goes.** The program's description line; private notes programs leave in them
+(in pictures from real Word documents we found folder paths and file names there); a
+**hidden second copy of the whole picture**, in the older format it was converted
+from, which 19 of the 48 newer-format pictures we surveyed carried; a group's name;
+anything stuck on after the end; and photos placed inside the drawing, which keep
+their own camera details until each is cleaned by its own format's rules — one we
+found carried Photoshop's notes.
+
+**What stays.** Every shape, line, text and bitmap, exactly as written — checked on
+every clean, and by drawing it: all 409 pictures from real Word documents look the
+same after. An older-format (WMF) picture can carry the newer one it was made from,
+and Windows and LibreOffice draw that copy instead — so it is kept, and cleaned by
+the same rules. The size and resolution of the
+screen or printer the picture was made for stay: the drawing's coordinates are
+written in them, so changing them would move it.
+<!-- FORMAT:metafile:END -->
+
 <!-- FORMAT:zip:BEGIN -->
 ZIP archives — what "Compress" on a Mac, "Send to → Compressed folder" on Windows, and
 `zip` on Linux make.

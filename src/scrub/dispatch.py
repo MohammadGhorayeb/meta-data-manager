@@ -95,6 +95,10 @@ def default_dispatcher(keep_unknown_members: bool = False,
     # SVG is text: it claims only a document whose root element is <svg>.
     from .formats.svg.handler import SvgHandler
     d.register(SvgHandler())
+    # Windows metafiles: EMF's prefix is its header record's type (1), which says
+    # little, so the handler confirms the signature at byte 40 before claiming.
+    from .formats.metafile.handler import MetafileHandler
+    d.register(MetafileHandler())
     # Executables (Phase 5). `\x7fELF` is shared with nothing else here.
     from .formats.exe.handler import ExeHandler
     d.register(ExeHandler())
