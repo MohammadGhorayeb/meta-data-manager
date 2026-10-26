@@ -92,6 +92,10 @@ def default_dispatcher(keep_unknown_members: bool = False,
     d.register(WebpHandler())
     from .formats.gif.handler import GifHandler
     d.register(GifHandler())
+    # BMP: `BM` is only two bytes, so it claims a file only when a known header size
+    # follows the file header.
+    from .formats.bmp.handler import BmpHandler
+    d.register(BmpHandler())
     # SVG is text: it claims only a document whose root element is <svg>.
     from .formats.svg.handler import SvgHandler
     d.register(SvgHandler())

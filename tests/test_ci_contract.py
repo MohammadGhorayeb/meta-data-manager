@@ -64,6 +64,8 @@ _PACKAGE_FOR = {
     "cwebp": "webp",
     "webpmux": "webp",
     "gifsicle": "gifsicle",
+    # E-BMP's Linux writer besides Pillow and ffmpeg (ImageMagick 6 is `convert`).
+    "convert": "imagemagick",
     "rsvg-convert": "librsvg2-bin",
     # E-ZIP's archivers besides Python: Info-ZIP and libarchive.
     "zip": "zip",
@@ -103,7 +105,12 @@ _OPTIONAL = {
              "The Linux legs need no Rust compiler",
     "sips": "macOS's own image converter, one TIFF writer in E-TIFF's peer set. "
             "Absent on Linux, where Pillow, Pillow-LZW and libtiff's tiffcp still "
-            "separate -- the A2 verdict is the same either way, measured on both",
+            "separate -- the A2 verdict is the same either way, measured on both. "
+            "Also E-GIF's and E-BMP's Mac writer (BMP: rows stored top-down), and "
+            "the BMP tests' second decoder (macOS ImageIO); on Linux ImageMagick is "
+            "E-BMP's separating writer and Pillow decodes alone",
+    "magick": "ImageMagick 7's name for the writer Ubuntu installs as `convert` "
+              "(ImageMagick 6); E-BMP uses whichever is present",
     "epubcheck": "the W3C's EPUB validator, installed in the test job by a "
                  "dedicated step (the official release, checksum-pinned) rather than "
                  "an apt package; the validity tests skip without it, and no "
@@ -140,6 +147,9 @@ _REQUIRED_FOR_PUBLISHED_CLAIMS = {
     "ffmpeg": "MP3 and M4A F3 re-encode through it; without it those tiers cannot run",
     "lame": "the MP3 encoder behind the published cross-engine A2 evidence",
     "jpegtran": "JPEG F2's lossless re-encode",
+    "convert": "ImageMagick: on Linux the only BMP writer in E-BMP that still separates "
+               "after F1 (a V5 header); without it Pillow and ffmpeg write the same "
+               "bytes and the published A2@F1 fail would be re-measured as a pass",
     "pdftotext": "how a PDF scrub's content preservation is verified — without it no "
                  "PDF cell can claim anything",
     "pdftoppm": "the whole of PDF F3, and the renderer E-PDF-RASTER attacks",

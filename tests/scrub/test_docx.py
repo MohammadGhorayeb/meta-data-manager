@@ -277,9 +277,9 @@ def test_an_xml_comment_is_removed_and_cdata_is_not(tmp_path):
 
 
 def test_unhandled_media_is_refused_rather_than_passed_through(tmp_path):
-    """A picture in a format this project has no handler for (BMP) is a refusal,
-    not a silent pass-through -- and so is one claiming to be EMF that is not."""
-    src = str(tmp_path / "bmp.docx")
+    """A picture no handler claims -- here a bare BMP file header with no bitmap
+    behind it, named as an EMF -- is a refusal, not a silent pass-through."""
+    src = str(tmp_path / "stub.docx")
     C.synthetic(src)
     with zipfile.ZipFile(src, "a", zipfile.ZIP_DEFLATED) as z:
         zi = zipfile.ZipInfo("word/media/image1.emf", (1980, 1, 1, 0, 0, 0))

@@ -74,6 +74,7 @@ def _mutations(data: bytes, rnd: random.Random, n: int):
 
 
 def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
+    from . import bmp_corpus as bmc
     from . import corpus as imgc
     from . import docx_corpus as dc
     from . import elf_corpus as ec
@@ -105,6 +106,8 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
         "tiff": (tfc.build(), ("F1",)),
         "webp": (wbc.build(frames=3), ("F1",)),
         "gif": (gfc.build(frames=3), ("F1",)),
+        "bmp": (bmc.build(1, header="v5", icc="custom"), ("F1",)),
+        "bmp-rle8": (bmc.build(1, header="info", bpp=8, compression="rle8"), ("F1",)),
         "svg": (svc.build(shape="inkscape"), ("F1",)),
         "svgz": (svc.svgz(shape="illustrator"), ("F1",)),
         "emf": (mfc.emf(1, chunk=300), ("F1",)),

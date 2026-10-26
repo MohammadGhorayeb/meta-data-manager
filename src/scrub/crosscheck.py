@@ -53,6 +53,10 @@ _READ_ARGS = ["-a", "-G1:4", "-s"]
 # values decoded from the image structure, and its computed composites. None of them
 # is stored metadata, so counting them would make every file look dirty forever.
 DERIVED_GROUPS = {"ExifTool", "System", "File", "Composite"}
+# ...except a tag ExifTool files under `File` that is STORED in the file: a BMP's
+# linked colour profile is a file name -- a path on the machine that saved it
+# (docs/bmp_plan.md §2). Counted and searched like any other metadata.
+STORED_IN_DERIVED = frozenset({"LinkedProfileName"})
 
 TIMEOUT = 60
 # Short values produce false positives when searched for in the output ("1", "RGB"),
@@ -151,7 +155,8 @@ def _read(path: str) -> tuple[dict[str, str], str, str]:
     entry = payload[0]
     ver = str(entry.get("ExifTool:ExifToolVersion", "")).strip()
     return ({k: str(v) for k, v in entry.items()
-             if ":" in k and group_of(k) not in DERIVED_GROUPS}, "", ver)
+             if ":" in k and (group_of(k) not in DERIVED_GROUPS
+                              or k.rsplit(":", 1)[-1] in STORED_IN_DERIVED)}, "", ver)
 
 
 def group_of(key: str) -> str:
