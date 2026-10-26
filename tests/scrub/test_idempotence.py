@@ -95,6 +95,11 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
     if fmt == "gif":
         from . import gif_corpus as gfc  # noqa: PLC0415
         return gfc.build(frames=3)
+    if fmt == "bmp":
+        # A linked profile, a gap, padding, an unused palette and trailing bytes:
+        # the second pass must find the linked-profile tag already sRGB.
+        from . import bmp_corpus as bmc  # noqa: PLC0415
+        return bmc.build(1, header="v5", icc="linked")
     if fmt == "svg":
         from . import svg_corpus as svc  # noqa: PLC0415
         return svc.build(shape="illustrator")

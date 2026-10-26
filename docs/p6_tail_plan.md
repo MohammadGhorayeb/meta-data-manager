@@ -663,6 +663,11 @@ Aggregates only. Final run:
 | MP3 / M4A / video | 119 / 150 / 150 | 119 / 149 / 143 | no identity value left; 7 videos refused for caption tracks |
 | ZIP | 41 | 30 | 11 refused for members no handler reads |
 
+Re-run 2026-10-26 after the BMP handler ([`bmp_plan.md`](bmp_plan.md)): ZIP 41 → **32
+cleaned, 9 refused**, every one for a `.metallib` member (GPU code, out of scope); the
+two that held Office's 55 pattern-fill BMPs clean. The sweep now samples BMP too (1
+found, display identical).
+
 **Found, and fixed:**
 
 1. **HEIC F1 dropped transparency.** The alpha plane is an auxiliary image

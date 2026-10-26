@@ -1,0 +1,87 @@
+{
+  "format": "bmp",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-p6",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-10-26T08:27:53.804184+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no metadata-correlated byte survives in 7 layouts (V5 with a personal profile, V5 with a linked profile, V5 with a published profile before the pixels, V4 calibrated, 8-bit palette, RLE8, core header): reserved fields, resolution, important colours, palette reserved bytes, a gap, row padding, trailing bytes, an unused palette, unused colour-space fields, a personal ICC profile, a linked profile's path, RLE pad bytes and slack. A do-nothing scrubber fails the same check in every layout (control)"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "bmp_f2_f3_not_built: a canonical bitmap (one header version, rows bottom-up) is not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "bmp_f2_f3_not_built: a canonical bitmap (one header version, rows bottom-up) is not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "writer still identifiable: top_down. Peer set = pillow, ffmpeg, macos_sips (decoded colours identical).",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:top_down",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "BMP writer",
+          "evidence": "struct:top_down constant within a writer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "bmp_f2_f3_not_built: a canonical bitmap (one header version, rows bottom-up) is not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "bmp_f2_f3_not_built: a canonical bitmap (one header version, rows bottom-up) is not built"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [],
+    "signatures": []
+  }
+}

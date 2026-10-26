@@ -87,15 +87,17 @@ def test_activex_controls_are_refused():
 
 
 def test_every_picture_is_cleaned_by_its_own_handler():
-    """W2: GIF, TIFF, WebP and SVG were refused outright, by extension. Each corpus
-    plants SENTINEL values in its own loci (comments, XMP, EXIF, editor names)."""
+    """W2: GIF, TIFF, WebP and SVG were refused outright, by extension; BMP was
+    refused by name until its handler existed (limit #68). Each corpus plants
+    SENTINEL values in its own loci (comments, XMP, EXIF, editor names, a linked
+    colour profile's path)."""
     data = wc.build(1, loci=("pictures",))
     media = {n: b for n, b in wc.members(data).items() if n.startswith("word/media/")}
-    assert len(media) == 4 and all(b"SENTINEL" in b for b in media.values())
+    assert len(media) == 5 and all(b"SENTINEL" in b for b in media.values())
     out = {n: b for n, b in wc.members(f1.scrub(data)).items()
            if n.startswith("word/media/")}
     assert sorted(out) == sorted(media)
-    assert not [n for n, b in out.items() if b"SENTINEL" in b]
+    assert not [n for n, b in out.items() if b"SENTINEL" in b.upper()]
     assert f1.residuals(f1.scrub(data)) == []
 
 

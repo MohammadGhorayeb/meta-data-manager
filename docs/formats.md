@@ -413,6 +413,33 @@ are copied as compressed, the program that made the GIF can still be told apart
 from another by how it laid them out.
 <!-- FORMAT:gif:END -->
 
+<!-- FORMAT:bmp:BEGIN -->
+BMP pictures — Windows bitmaps: what Paint saves, and what older programs keep their
+icons and pattern fills in (Office ships 55 of them).
+
+**What goes.** A BMP has few named fields but many places to hide bytes, and every
+one of them is emptied: the two "reserved" fields at the top of the file, the
+resolution it was saved at (a scanner's or a camera's setting, copied across by the
+converters we measured), a palette in a picture that has no use for one, the spare
+bytes at the end of each row and in the palette, anything between the headers and
+the picture or after it, and fields the picture's own colour setting says nobody
+reads. **A colour profile named by its file** — which is a path on the computer that
+saved the picture, often with the user's name in it — is removed, and the picture
+is marked as ordinary sRGB, which is what every other computer showed it as anyway.
+The standard tools do none of this: ExifTool cannot write BMP at all, and MAT2
+treats BMP as a type that "cannot contain metadata" and copies it unchanged, path
+and all.
+
+**What stays.** Every pixel exactly as it was stored, the palette's colours, and how
+the picture is laid out — the header version and whether rows run top to bottom —
+because changing either means rewriting the picture. A colour profile stored inside
+the picture follows the same rule as everywhere else: standard ones stay as they
+are, others keep their colours and lose the details of who made them. That layout is
+how the program that saved a BMP can still be told apart from another: macOS's
+converter stores rows top to bottom, ImageMagick writes a newer header than Pillow
+or ffmpeg.
+<!-- FORMAT:bmp:END -->
+
 <!-- FORMAT:svg:BEGIN -->
 SVG drawings — logos, icons, diagrams and charts, as drawing programs and websites
 save them.

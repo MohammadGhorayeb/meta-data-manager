@@ -133,6 +133,8 @@ ROADMAP = [
     ("epub", "EPUB books"),
     # Word's own pictures (docs/word_plan.md W2b): pasted charts, Visio, clip art.
     ("metafile", "EMF/WMF pictures (Office charts and drawings)"),
+    # The last picture type the real-file sweep found refused (docs/bmp_plan.md).
+    ("bmp", "BMP pictures"),
 ]
 
 # What is coming that is not a file type, listed after the formats still to come and
@@ -155,7 +157,7 @@ FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
                 "raw": "Camera RAW", "exe": "Programs", "zip": "ZIP archives",
                 "epub": "EPUB (books)",
                 "tiff": "TIFF", "webp": "WebP", "svg": "SVG", "gif": "GIF",
-                "metafile": "EMF / WMF (Office drawings)"}
+                "metafile": "EMF / WMF (Office drawings)", "bmp": "BMP"}
 
 # The three cleaning strengths, in words a reader can act on. "F1/F2/F3" is the
 # project's internal shorthand and stays in the technical docs; nobody outside
@@ -407,7 +409,8 @@ def load_format_stories() -> dict[str, str]:
 # unit because they share a story; each audio format gets its own because their
 # outcomes genuinely differ.
 FORMAT_GROUPS = [
-    ("Images", "🖼️", ["jpeg", "png", "tiff", "webp", "gif", "svg", "metafile"]),
+    ("Images", "🖼️", ["jpeg", "png", "tiff", "webp", "gif", "bmp", "svg",
+                      "metafile"]),
     ("MP3 audio", "🎵", ["mp3"]),
     ("FLAC audio", "🎶", ["flac"]),
     ("M4A audio", "🎬", ["m4a"]),
@@ -438,6 +441,7 @@ FORMAT_TEST_PATTERNS = [
     # Before DOCX: Word documents carry these pictures, so DOCX's broad pattern
     # would otherwise be first to see a test that mentions both.
     ("metafile", ["test_metafile", "metafile_corpus", "matrix_metafile"]),
+    ("bmp", ["test_bmp", "bmp_corpus", "matrix_bmp"]),
     ("epub", ["test_epub", "epub_corpus", "matrix_epub"]),
     ("docx", ["docx", "ooxml", "e_session_id"]),
     ("heic", ["heic"]),

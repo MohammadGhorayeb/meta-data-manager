@@ -102,11 +102,12 @@ REL_IMAGE = f"{R}/image"
 def pictures(variant: int = 0) -> dict[str, bytes]:
     """Pictures Word holds in `word/media/`, each from its own format's corpus with
     that corpus's planted values (W2: cleaned by their own handlers, by content)."""
-    from tests.scrub import gif_corpus, svg_corpus, tiff_corpus, webp_corpus
+    from tests.scrub import bmp_corpus, gif_corpus, svg_corpus, tiff_corpus, webp_corpus
     return {"image1.gif": gif_corpus.build(variant),
             "image2.tif": tiff_corpus.build(variant),
             "image3.webp": webp_corpus.build(variant),
-            "image4.svg": svg_corpus.build(variant)}
+            "image4.svg": svg_corpus.build(variant),
+            "image5.bmp": bmp_corpus.build(variant, header="v5", icc="linked")}
 
 
 def emf(variant: int = 0) -> bytes:
@@ -250,6 +251,7 @@ def build(variant: int = 0, *, loci: tuple[str, ...] = LOCI) -> bytes:
             parts[f"word/media/{name}"] = body
             doc_rels.append((f"rId{k}", REL_IMAGE, f"media/{name}"))
         for ext, ctype in (("gif", "image/gif"), ("tif", "image/tiff"),
+                           ("bmp", "image/bmp"),
                            ("webp", "image/webp"), ("svg", "image/svg+xml"),
                            ("emf", "image/x-emf"), ("wmf", "image/x-wmf")):
             if any(n.endswith("." + ext) for n in media):

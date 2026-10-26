@@ -170,6 +170,9 @@ jobs:
       #   webp              cwebp/webpmux: a second WebP encoder (E-WEBP), and libwebp's
       #                     own reader of what F1 writes
       #   gifsicle          a second GIF writer for E-GIF (A2)
+      #   imagemagick       `convert`, the BMP writer that keeps E-BMP's A2 cell measured on
+      #                     Linux: Pillow and ffmpeg write the same bytes once F1 has run,
+      #                     ImageMagick a V5 header
       #   librsvg2-bin      rsvg-convert: renders SVGs before and after (the check MAT2
       #                     fails), and cairo, a real second SVG writer for E-SVG
       #   zip, libarchive-tools  Info-ZIP `zip` and `bsdtar`: two of E-ZIP's archivers
@@ -186,7 +189,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer libreoffice-draw gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools pandoc exiv2 mediainfo qpdf
+            zip libarchive-tools pandoc exiv2 mediainfo qpdf imagemagick
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -515,7 +518,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer libreoffice-draw gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools pandoc exiv2 mediainfo qpdf
+            zip libarchive-tools pandoc exiv2 mediainfo qpdf imagemagick
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine
@@ -598,7 +601,7 @@ jobs:
             libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
             libreoffice-writer libreoffice-draw gcc clang binutils git golang-go \
             wine64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle librsvg2-bin \
-            zip libarchive-tools pandoc exiv2 mediainfo qpdf
+            zip libarchive-tools pandoc exiv2 mediainfo qpdf imagemagick
 
       # A SECOND MP3 engine, built rather than installed because no distribution
       # packages one. Every LAME front-end shares a single engine, so without shine

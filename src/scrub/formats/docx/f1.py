@@ -125,8 +125,9 @@ REFUSE_PARTS = (
 # anything else a handler claims. Until W2 this went by extension, recursed only
 # into JPEG and PNG, refused GIF/TIFF/SVG outright -- and passed any extension it did
 # not list straight through. EMF/WMF have their own handler since W2b
-# (`formats/metafile/`); HD Photo and BMP have none: refused, named.
-_NO_HANDLER_HINT = {".wdp": "HD Photo (JPEG XR)", ".bmp": "BMP"}
+# (`formats/metafile/`), BMP since `docs/bmp_plan.md`; HD Photo has none: refused,
+# named.
+_NO_HANDLER_HINT = {".wdp": "HD Photo (JPEG XR)"}
 
 
 def _is_dropped(name: str) -> bool:

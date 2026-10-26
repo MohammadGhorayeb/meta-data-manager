@@ -16,6 +16,7 @@ import sys
 import pytest
 
 from src.scrub.dispatch import default_dispatcher
+from tests.scrub import bmp_corpus as bmc
 from tests.scrub import gif_corpus as gfc
 from tests.scrub import heic_corpus as hc
 from tests.scrub import tiff_corpus as tfc
@@ -52,7 +53,12 @@ def _alpha_heic() -> bytes:
 FILES = {"portrait.jpg": _portrait_jpeg, "photo.jpg": lambda: zc.photo(1),
          "icon.png": lambda: zc.png(1), "scan.tif": tfc.build,
          "anim.gif": lambda: gfc.build(frames=3), "pic.webp": wbc.build,
-         "alpha.heic": _alpha_heic}
+         "alpha.heic": _alpha_heic,
+         # BMP layouts Quick Look can open: it cannot open a bitmap that embeds or
+         # links a colour profile (docs/bmp_plan.md §1), and hangs on one.
+         "srgb.bmp": lambda: bmc.build(1, header="v5", icc="none"),
+         "rle.bmp": lambda: bmc.build(1, header="info", bpp=8, compression="rle8"),
+         "core.bmp": lambda: bmc.build(1, header="core", bpp=24)}
 
 
 def _render(tmp_path, name: str, data: bytes, tag: str) -> bytes:

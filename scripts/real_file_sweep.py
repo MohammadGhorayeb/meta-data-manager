@@ -36,7 +36,8 @@ from src.scrub.errors import ScrubError, UnsupportedFormatError  # noqa: E402
 
 ROOTS = ["/System/Library", "/Applications"]
 TYPES = {"jpeg": ("jpg", "jpeg"), "png": ("png",), "tiff": ("tif", "tiff"),
-         "gif": ("gif",), "webp": ("webp",), "heic": ("heic",), "pdf": ("pdf",),
+         "gif": ("gif",), "webp": ("webp",), "bmp": ("bmp",), "heic": ("heic",),
+         "pdf": ("pdf",),
          "mp3": ("mp3",), "m4a": ("m4a",), "video": ("mp4", "mov"), "zip": ("zip",),
          "svg": ()}
 PER_TYPE = int(sys.argv[1]) if len(sys.argv) > 1 else 150
@@ -146,7 +147,7 @@ def main():
             open(a, "wb").write(data)
             open(b, "wb").write(out)
             pairs.append((a, b))
-            if kind in ("jpeg", "png", "tiff", "gif", "webp", "heic"):
+            if kind in ("jpeg", "png", "tiff", "gif", "webp", "bmp", "heic"):
                 try:
                     same = displayed(data) == displayed(out)
                 except Exception:                         # noqa: BLE001
