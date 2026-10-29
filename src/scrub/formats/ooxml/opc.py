@@ -162,6 +162,11 @@ def _parse(name: str, body: bytes) -> ET.Element:
         return ET.fromstring(body)
     except ET.ParseError as exc:
         raise ParseError(f"{name}: malformed XML ({exc})") from exc
+    except LookupError:
+        # An XML declaration naming an encoding Python does not know (found by
+        # fuzzing, docs/office_plan.md O2): the parser raises LookupError, which no
+        # caller maps -- a crash instead of a refusal.
+        raise ParseError(f"{name}: declares an unknown character encoding") from None
 
 
 def _read_content_types(arc: zipread.ZipArchive) -> tuple[dict, dict]:

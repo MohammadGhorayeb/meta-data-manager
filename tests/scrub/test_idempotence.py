@@ -108,6 +108,11 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
         # a bookmark file to drop -- and a second pass must find nothing to do.
         from . import epub_corpus as epc  # noqa: PLC0415
         return epc.build(1, shape="calibre")
+    if fmt == "xlsx":
+        # Every removable locus at once: the shared strings are blanked in place,
+        # so a second pass must find every remaining string still used.
+        from . import xlsx_corpus as xc  # noqa: PLC0415
+        return xc.build(1)
     if fmt == "metafile":
         # A WMF carrying its source EMF: the most rebuilding (chunks re-cut, the
         # checksum recomputed, the inner EMF's own comments and EMF+ pictures).

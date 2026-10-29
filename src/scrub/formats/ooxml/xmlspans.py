@@ -98,6 +98,9 @@ def parse(data: bytes, what: str = "XML") -> list[Element]:
         p.Parse(data, True)
     except xml.parsers.expat.ExpatError as exc:
         raise ParseError(f"{what}: not well-formed XML ({exc})") from None
+    except LookupError:
+        # `encoding="K8"`: expat asks Python for the codec and gets LookupError.
+        raise ParseError(f"{what}: declares an unknown character encoding") from None
     return els
 
 

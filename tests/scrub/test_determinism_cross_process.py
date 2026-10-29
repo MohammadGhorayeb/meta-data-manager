@@ -108,6 +108,12 @@ def _build(kind: str, tmpdir: str) -> str | None:
         from . import epub_corpus as epc  # noqa: PLC0415
         open(p, "wb").write(epc.build(1, shape="sigil"))
         return p
+    if kind == "xlsx":
+        # The removed relationships are collected into sets per part, and the
+        # used shared strings into a set: either could leak an order.
+        from . import xlsx_corpus as xc  # noqa: PLC0415
+        open(p, "wb").write(xc.build(1))
+        return p
     if kind == "metafile":
         # EMF+ pictures split across records are regrouped by index into dicts.
         from . import metafile_corpus as mfc  # noqa: PLC0415

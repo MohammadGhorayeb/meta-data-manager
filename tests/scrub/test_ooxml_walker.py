@@ -259,13 +259,14 @@ def test_handler_claims_every_producer_and_no_plain_zip(real, tmp_path):
 
 def test_docx_comes_after_every_distinctive_prefix_and_before_plain_archives():
     """`PK\x03\x04` is shared with every ZIP ever made, so the DOCX handler is asked
-    only after every format with a distinctive prefix has declined -- then EPUB,
-    and last the plain-archive handler (Phase 6), which takes every ZIP the
-    packages decline. Registration itself waited for F1 (M10): until a tier
-    existed, the tool did not advertise a format it could not scrub."""
+    only after every format with a distinctive prefix has declined -- then Excel
+    (docs/office_plan.md O2), EPUB, and last the plain-archive handler (Phase 6),
+    which takes every ZIP the packages decline. Registration itself waited for F1
+    (M10): until a tier existed, the tool did not advertise a format it could not
+    scrub."""
     from src.scrub.dispatch import default_dispatcher
     ids = [h.format_id for h in default_dispatcher()._handlers]
-    assert ids[-3:] == ["docx", "epub", "zip"]
+    assert ids[-4:] == ["docx", "xlsx", "epub", "zip"]
 
 
 def test_preflight_reports_input_side_refusals(tmp_path):
@@ -274,3 +275,32 @@ def test_preflight_reports_input_side_refusals(tmp_path):
                     [("word/vbaProject.bin", b"\xd0\xcf\x11\xe0macro")])
     assert any("macro" in r for r in DocxHandler().preflight(data))
     assert DocxHandler().preflight(_minimal(str(tmp_path / "clean.docx"))) == []
+
+
+def test_an_unknown_character_encoding_is_a_refusal_not_a_crash():
+    """Found fuzzing Excel F1 (docs/office_plan.md O2): `encoding="K8"` in an XML
+    declaration made both parsers raise LookupError, which no caller maps."""
+    import io
+    import zipfile
+
+    from src.scrub.errors import ScrubError
+    from src.scrub.formats.docx import f1 as docx_f1
+    from src.scrub.formats.xlsx import f1 as xlsx_f1
+    from tests.scrub import word_corpus as wc
+    from tests.scrub import xlsx_corpus as xc
+
+    def with_bad_encoding(data: bytes, part: str) -> bytes:
+        members = xc.members(data)
+        members[part] = members[part].replace(b'encoding="UTF-8"', b'encoding="K8"')
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            for name, body in members.items():
+                z.writestr(name, body)
+        return buf.getvalue()
+
+    for scrub, data, part in (
+            (docx_f1.scrub, wc.build(1, loci=("settings",)), "_rels/.rels"),
+            (xlsx_f1.scrub, xc.build(1), "_rels/.rels"),
+            (xlsx_f1.scrub, xc.build(1), "xl/worksheets/sheet1.xml")):
+        with pytest.raises(ScrubError, match="unknown character encoding"):
+            scrub(with_bad_encoding(data, part))

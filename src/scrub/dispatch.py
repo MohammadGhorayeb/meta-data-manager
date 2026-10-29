@@ -111,6 +111,11 @@ def default_dispatcher(keep_unknown_members: bool = False,
     # with a distinctive prefix has declined.
     from .formats.docx.handler import DocxHandler
     d.register(DocxHandler())
+    # Excel: an OOXML package whose main part is `xl/workbook.xml`. After DOCX
+    # (`opc.main_part` asks for Word's main part first) and before the plain-archive
+    # handler, which refuses Office packages by name.
+    from .formats.xlsx.handler import XlsxHandler
+    d.register(XlsxHandler())
     # EPUB: a ZIP whose `mimetype` names it. Before the plain-archive handler,
     # which refuses OCF packages by name.
     from .formats.epub.handler import EpubHandler
