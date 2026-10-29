@@ -138,15 +138,6 @@ def _only_abspath(els: list, index: int) -> bool:
     return True
 
 
-def _drop_rid_refs(body: bytes, ids: set[bytes]) -> bytes:
-    """`r:id` attributes naming a relationship F1 removed (`<pageSetup r:id=…/>` for
-    the printer settings), so no part keeps a reference to nothing."""
-    if not ids:
-        return body
-    return re.sub(rb'\s+r:id="(' + b"|".join(re.escape(i) for i in sorted(ids)) + rb')"',
-                  b"", body)
-
-
 def _referenced_strings(parts: dict[str, bytes]) -> set[int]:
     """Indexes into the shared-string table that some cell uses -- in EVERY part,
     not in the parts named like worksheets: a sheet stored under another path would
@@ -219,7 +210,7 @@ def _scrub_xml(name: str, body: bytes, ctx: dict) -> bytes:
         body, _ = xs.remove_attributes(body, _REFRESH_ATTRS)
     if name == "xl/sharedStrings.xml":
         body = _blank_unused_strings(body, ctx["used_strings"])
-    body = _drop_rid_refs(body, ctx["dropped_rids"].get(name, set()))
+    body = pf.drop_rid_refs(body, ctx["dropped_rids"].get(name, set()))
     body = pf.blank_file_names(body)
     return pf.drop_linked_paths(body)
 
@@ -231,7 +222,7 @@ def _scrub_vml(body: bytes) -> bytes:
 
 
 def _preflight(pkg: Package) -> list[str]:
-    problems = pf.preflight(pkg)
+    problems = pf.preflight(pkg) + pf.malformed_parts(pkg, _is_dropped)
     for name in pkg.parts():
         for pat, why in REFUSE_PARTS:
             if pat.search(name):
@@ -253,15 +244,8 @@ def _context(pkg: Package, dropped: set[str]) -> dict:
     for entry in pkg.archive.entries:
         if not entry.is_dir and entry.name.endswith(".xml"):
             parts[entry.name] = entry.content()
-    dropped_rids = {}
-    for entry in pkg.archive.entries:
-        if entry.is_dir or not entry.name.endswith(".rels"):
-            continue
-        source = pf.rels_source(entry.name)
-        ids = pf.dropped_rel_ids(source, entry.content(), dropped)
-        if ids:
-            dropped_rids[source] = ids
-    return {"used_strings": _referenced_strings(parts), "dropped_rids": dropped_rids}
+    return {"used_strings": _referenced_strings(parts),
+            "dropped_rids": pf.dropped_rids_by_source(pkg, dropped)}
 
 
 def _is_dropped(name: str) -> bool:

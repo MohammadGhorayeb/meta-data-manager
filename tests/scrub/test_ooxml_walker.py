@@ -260,13 +260,13 @@ def test_handler_claims_every_producer_and_no_plain_zip(real, tmp_path):
 def test_docx_comes_after_every_distinctive_prefix_and_before_plain_archives():
     """`PK\x03\x04` is shared with every ZIP ever made, so the DOCX handler is asked
     only after every format with a distinctive prefix has declined -- then Excel
-    (docs/office_plan.md O2), EPUB, and last the plain-archive handler (Phase 6),
-    which takes every ZIP the packages decline. Registration itself waited for F1
-    (M10): until a tier existed, the tool did not advertise a format it could not
-    scrub."""
+    and PowerPoint (docs/office_plan.md O2-O3), EPUB, and last the plain-archive
+    handler (Phase 6), which takes every ZIP the packages decline. Registration
+    itself waited for F1 (M10): until a tier existed, the tool did not advertise a
+    format it could not scrub."""
     from src.scrub.dispatch import default_dispatcher
     ids = [h.format_id for h in default_dispatcher()._handlers]
-    assert ids[-4:] == ["docx", "xlsx", "epub", "zip"]
+    assert ids[-5:] == ["docx", "xlsx", "pptx", "epub", "zip"]
 
 
 def test_preflight_reports_input_side_refusals(tmp_path):

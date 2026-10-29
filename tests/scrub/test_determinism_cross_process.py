@@ -114,6 +114,12 @@ def _build(kind: str, tmpdir: str) -> str | None:
         from . import xlsx_corpus as xc  # noqa: PLC0415
         open(p, "wb").write(xc.build(1))
         return p
+    if kind == "pptx":
+        # Extension spans are collected and cut in sorted order; the removed
+        # relationships per part are sets.
+        from . import pptx_corpus as ppc  # noqa: PLC0415
+        open(p, "wb").write(ppc.build(1))
+        return p
     if kind == "metafile":
         # EMF+ pictures split across records are regrouped by index into dicts.
         from . import metafile_corpus as mfc  # noqa: PLC0415

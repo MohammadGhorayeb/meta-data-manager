@@ -106,7 +106,7 @@ confirmed on real files (O0b) before it is claimed.
 
 | locus | reveals | decision |
 |---|---|---|
-| `a16:creationId` (per shape), `p14:creationId` (per slide) | IDs that travel with a copied shape or slide, linking decks | remove the extension holding them — probe |
+| `a16:creationId` (per shape), `p14:creationId` (per slide) | per-object IDs; by the format's design they stay with a copied shape (copying not measured) | remove the extension holding them — probe |
 | `revisionInfo.xml` | the client GUIDs of every app that saved it | drop — probe |
 | `changesInfos/` | co-authors' names and user IDs | drop — probe |
 | `presProps.xml` recent colours (`clrMru`) | the author's recent picks | remove — spec |
@@ -137,6 +137,19 @@ found an XML declaration naming an unknown encoding (`encoding="K8"`) escaping a
 crashed Word's F1 too. Mapped to a refusal at both; tested. Embedded workbooks are still refused *inside* a
 Word file until O4 wires the recursion.
 
+**PowerPoint (O3, 2026-10-30).** No real PowerPoint-written deck exists on this
+Mac yet (O0b). Measured instead: `tests/scrub/pptx_corpus.py` with every §3 locus
+planted -- two decks differing only in metadata come out byte-identical, every
+slide's text, positions, sizes and crops identical, LibreOffice Impress's page
+renders pixel-identical (and identical across two renders of the same file, so the
+comparison means something); a deck and a workbook re-saved by LibreOffice 26.2
+(a real producer) clean with no residual. **Fuzzed** 3,000 damaged decks: the first
+run cleaned 389 whose kept XML no parser could read -- the PowerPoint rules mostly
+edit bytes in place, so a broken part passed through them. Excel and PowerPoint F1
+now refuse a kept part that is not well-formed (`package_f1.malformed_parts`);
+re-run: 2,231 refused, 769 cleaned, every output parses, nothing escapes. Excel's
+corpus outputs and its 27 real workbooks are unchanged by the rule.
+
 ## 5. Content: how a clean is checked
 
 - **Excel**: every cell's value, type and formula identical before and after, read
@@ -161,7 +174,10 @@ Word file until O4 wires the recursion.
   every locus in §3; two workbooks differing only in metadata come out byte-identical;
   every `<sheetData>` byte-identical; LibreOffice's CSV and page render identical;
   limits #76–#77). Matrix `xlsx` with O5.
-- **O3 — PowerPoint F1** (`formats/pptx/`, matrix `pptx`).
+- **O3 — PowerPoint F1** (**done**, `formats/pptx/`; limits #78–#79). Matrix `pptx`
+  with O5. Open: Word F1 does not yet refuse a kept part that is not well-formed
+  (5 of 946 real Word files hold one, mostly empty parts) -- adopting the rule
+  changes Word's outcomes, so it is measured on its own before it is taken.
 - **O4 — Office packages inside Office packages**: embedded workbooks, documents and
   slides cleaned by their own handler, in all three formats. Closes the 28
   embedded-workbook refusals among Word's 33 (limit #75).

@@ -116,6 +116,9 @@ def default_dispatcher(keep_unknown_members: bool = False,
     # handler, which refuses Office packages by name.
     from .formats.xlsx.handler import XlsxHandler
     d.register(XlsxHandler())
+    # PowerPoint: main part `ppt/presentation.xml`, the same reasoning.
+    from .formats.pptx.handler import PptxHandler
+    d.register(PptxHandler())
     # EPUB: a ZIP whose `mimetype` names it. Before the plain-archive handler,
     # which refuses OCF packages by name.
     from .formats.epub.handler import EpubHandler

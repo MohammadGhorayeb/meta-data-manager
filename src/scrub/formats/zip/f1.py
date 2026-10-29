@@ -33,7 +33,7 @@ Per member:
 Directory entries are written only for directories nothing else lies under (an
 empty folder is content; an entry for a folder its files already imply is a
 producer's habit). Members are sorted by name. Packages that happen to be ZIPs --
-OOXML other than Word and Excel, OpenDocument, EPUB, Java, Android -- are refused by name: a
+OOXML other than Word, Excel and PowerPoint, OpenDocument, EPUB, Java, Android -- are refused by name: a
 plain-archive scrub would keep their metadata parts as text.
 """
 from __future__ import annotations
@@ -107,7 +107,7 @@ def package_kind(archive: zipread.ZipArchive) -> str | None:
     """The kind of package an archive is, when it is one: refused by name."""
     names = set(archive.names)
     if "[Content_Types].xml" in names:
-        return "an Office Open XML package other than Word or Excel (PowerPoint...)"
+        return "an Office Open XML package of no kind this project cleans"
     # Anywhere, not only first: an EPUB whose `mimetype` is out of place is still a
     # book (the EPUB handler claims it and puts it back first); one that reached
     # this handler is a package of another kind, never a plain archive.

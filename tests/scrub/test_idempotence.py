@@ -113,6 +113,11 @@ def _sample(fmt: str, tmp_path) -> bytes | None:
         # so a second pass must find every remaining string still used.
         from . import xlsx_corpus as xc  # noqa: PLC0415
         return xc.build(1)
+    if fmt == "pptx":
+        # Emptied extension lists and custom-data lists are removed with what they
+        # held, so a second pass must find no empty container left to take.
+        from . import pptx_corpus as ppc  # noqa: PLC0415
+        return ppc.build(1)
     if fmt == "metafile":
         # A WMF carrying its source EMF: the most rebuilding (chunks re-cut, the
         # checksum recomputed, the inner EMF's own comments and EMF+ pictures).

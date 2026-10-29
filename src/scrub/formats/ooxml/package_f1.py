@@ -18,7 +18,7 @@ import re
 from collections.abc import Iterable
 
 from ...errors import ContentError, ParseError
-from . import opc, zipwrite
+from . import opc, xmlspans, zipwrite
 from . import xmlsurgery as xs
 from .opc import Package
 
@@ -184,6 +184,35 @@ def dropped_rel_ids(source_part: str, rels: bytes, dropped: set[str]) -> set[byt
     return out
 
 
+def dropped_rids_by_source(pkg: Package, dropped: set[str]) -> dict[str, set[bytes]]:
+    """For every part, the ids of its relationships to parts F1 drops."""
+    out: dict[str, set[bytes]] = {}
+    for entry in pkg.archive.entries:
+        if entry.is_dir or not entry.name.endswith(".rels"):
+            continue
+        source = rels_source(entry.name)
+        ids = dropped_rel_ids(source, entry.content(), dropped)
+        if ids:
+            out[source] = ids
+    return out
+
+
+def drop_rid_refs(body: bytes, ids: set[bytes], owners: tuple[str, ...] = ()) -> bytes:
+    """References to relationships F1 removed, so no part names one that is gone.
+
+    An element in `owners` exists only to hold that reference (PowerPoint's
+    `<p:tags r:id=…/>` naming a dropped add-in part) and goes whole; anywhere else
+    the `r:id` attribute is optional and only it goes (Excel's
+    `<pageSetup r:id=…/>` naming the dropped printer settings)."""
+    if not ids:
+        return body
+    for tag in owners:
+        body, _ = xs.remove_elements_where(
+            body, tag, lambda t: xs.attribute_value(t, "r:id") in ids)
+    return re.sub(rb'\s+r:id="(' + b"|".join(re.escape(i) for i in sorted(ids)) + rb')"',
+                  b"", body)
+
+
 def preflight(pkg: Package) -> list[str]:
     """What makes ANY package impossible to scrub fully, as reasons: the refused
     parts (`opc.REFUSE_PARTS`), a DOCTYPE, and relationships the input already
@@ -211,6 +240,25 @@ def preflight(pkg: Package) -> list[str]:
             "the input already has relationships pointing at parts it does not "
             f"contain: {inherited}")
     return problems
+
+
+def malformed_parts(pkg: Package, is_dropped) -> list[str]:
+    """Kept XML parts that are not well-formed. Most F1 rules edit the bytes in
+    place, so a part no parser can read would pass through them -- and a part we
+    cannot read is a part we cannot vouch for. Found fuzzing PowerPoint F1: 389 of
+    3,000 damaged decks came out "clean" with a broken slide. (Word does not call
+    this yet: 5 of 946 real Word files hold such a part, and changing Word's
+    outcomes is its own decision -- docs/office_plan.md §6.)"""
+    out = []
+    for entry in pkg.archive.entries:
+        if (entry.is_dir or not entry.name.endswith((".xml", ".rels"))
+                or is_dropped(entry.name)):
+            continue
+        try:
+            xmlspans.parse(entry.content(), entry.name)
+        except ParseError as exc:
+            out.append(str(exc))
+    return out
 
 
 def refuse_if(problems: list[str]) -> None:
