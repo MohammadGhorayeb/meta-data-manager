@@ -808,6 +808,67 @@ species:
   resolve, and F2 leaves that one stream alone rather than refusing the document —
   with `residuals()` reporting it, so it fails loudly rather than passing as normalised.
 
+#### A fourth bug, which shipped and was found in use (2026-10-30)
+
+While producing a PDF for the user, F2 visibly corrupted a page printed by headless
+Chrome 156 (Producer `Skia/PDF m156`) and reported a successful scrub. Every "file"
+rendered as "ﬁ" with the "l" drawn on top of it and a gap where the "l" belonged.
+`pdftotext` read "lfi e". It happened on all three pages (about 3,300 / 575 / 322
+differing pixels at 100 DPI, maximum channel difference over 200). F1 of the same
+file was pixel- and text-identical, and an earlier Chrome m153 export had gone through
+F2 unharmed. F1 was used for the deliverable.
+
+**Root cause.** Skia m156 puts every ligature in an `/ActualText` span and shows the
+next glyph with **no positioning operator**:
+
+```
+2.8355865 0 Td <00C4> Tj      % "fi", positioned relative to the line matrix
+EMC
+<0053> Tj                     % "l": wherever the "fi" advance left Tm
+7.5479889 0 Td <004C> Tj      % "e": relative to the line matrix again
+```
+
+`EMC` is not a show, so the canonicaliser closed the run there. It then opened the
+next run with a `Tm` at the current *line* matrix, which is the start of the "fi".
+The "l" was drawn there, one ligature-advance (about 4 pt) to the left. The module
+docstring described the right behaviour ("the run is flushed with no `Tm` prefix and
+the advance is left to the reader"), but the code never did it. `painted()` did not
+catch it because it records the same `_State.marker` for each run, so the original
+and the output both said "the line matrix". This is the failure `painted()`'s own
+docstring warns about: a check that shares the rewriter's state machine proves less
+than it appears to. The m153 export never put a non-show operator between two
+glyphs without a `Td`, so it never reached this path.
+
+**Fix.** `_State.advanced` is set by every show and cleared by `BT`, `Td`, `TD`, `T*`
+and `Tm`. While it is set, a show has no position `canon` can name, and the marker
+says so (`()`). The rewriter now writes such a run with no `Tm`. It also stopped
+closing runs on operators it absorbs (`TL`, a `Tw` restating the value in force),
+because those write nothing, so a split there would break the fixed point. It joins
+a continuation to the open run only when the spacing matches. `painted()` is now one
+ordered event list in which a show is either absolute or "continues", folded only
+where the rewriter is allowed to merge. The shipped bug is in its mutation test.
+
+**Found by reading while fixing it, and closed in the same change:** spacing is
+written lazily, only before the text that needs it. A Form XObject inherits `Tw`/`Tc`
+from the `Do` that invokes it, so a page that set `12 Tw` and then invoked a form
+with no text in between would have handed the form an older spacing. The rewriter
+now syncs spacing at every `Do`, and `painted()` records the spacing at each `Do`, so
+a missed sync fails the check.
+
+**The guard.** Every F2 output is now read back by a second reader before it is
+returned. `pdftotext -bbox -raw` runs on the input and on the output, and every word
+must have the same text and every box edge must agree within 1E-3 pt, or the scrub
+raises `ContentError` and nothing is written. The reader is poppler. It computes real
+glyph advances from the fonts and shares no code with `canon`. Alone, it rejects the
+shipped state (page 1: 639 words in, 652 out). The corrected `painted()` alone
+rejects the old rewriter too. Cost on the repro: about 50 ms for both extractions,
+against about 1.2 s for the canonicaliser. Poppler is now F2's dependency, as it was
+already F3's. A missing `pdftotext` raises rather than skipping the check. The guard
+is word-level: a glyph shifted inside a word, with the word's box and its split into
+words unchanged, is caught only by `painted()`. A glyph-level second reader would
+need a new dependency (e.g. pdfium); that was judged not worth it while poppler is
+already here. Limit #80 states all of this in plain words.
+
 **The fingerprint guard failed the moment F2 landed, and it was right to.** The
 signature was ` 0 obj\n<< /Filter /FlateDecode /Length ` and ` >>\nstream\nx\xda` —
 every stream re-encoded at deflate level 9. Two separate fixes came out of it, and the

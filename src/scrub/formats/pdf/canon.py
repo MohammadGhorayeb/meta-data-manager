@@ -28,8 +28,18 @@ only `Tm` — so tracking `Tlm` exactly requires no glyph widths. The one place 
 would be needed is a second show operation after the first has advanced `Tm`, and
 that case is handled by *merging* the run into a single `TJ` instead of computing
 where it got to. When something interrupts a run that we cannot merge across (a font
-change mid-line), the run is flushed with no `Tm` prefix and the advance is left to
-the reader, exactly as the input left it.
+change mid-line, a marked-content boundary), the next run is written with no `Tm`
+prefix and the advance is left to the reader, exactly as the input left it.
+
+**That last sentence was a promise the first version did not keep**, and it shipped:
+the run after the interruption was given a `Tm` at the line matrix, so it was drawn
+at the start of the text before it instead of after it. Chrome 156 (Skia/PDF m156)
+writes every ligature inside an `/ActualText` span and shows the next glyph with no
+positioning operator — `2.8 0 Td <00C4> Tj EMC <0053> Tj` — so every "file" on a page
+came out as "ﬁ" with the "l" printed on top of it. `painted()` replayed the same
+wrong model and agreed. `_State.advanced` is the fix in both places: a show whose
+`Tm` has moved past `Tlm` has *no* position this module can name, and both the
+rewriter and the invariant now say so instead of naming the line start.
 
 **Leading is graphics state, not text-object state.** `TL` survives `ET` and is saved
 and restored by `q`/`Q` (ISO 32000 §9.3), so a `T*` in one text object can depend on a
@@ -218,6 +228,9 @@ class _State:
 
     def __init__(self, inherits: bool = False) -> None:
         self.tlm: tuple | None = None
+        # True once text has been shown since `Tm` was last set equal to `Tlm`: the
+        # reader's `Tm` is then `Tlm` plus glyph advances we do not compute.
+        self.advanced = False
         start = None if inherits else Decimal(0)
         self.leading = start
         self.word = start
@@ -235,12 +248,24 @@ class _State:
     # -- text object -------------------------------------------------------- #
     def begin_text(self) -> None:
         self.tlm = _IDENTITY
+        self.advanced = False
 
     def end_text(self) -> None:
         self.tlm = None
+        self.advanced = False
+
+    def set_line(self, matrix: tuple) -> None:
+        """`Td`, `TD`, `T*` and `Tm` all set `Tm` *and* `Tlm` to one matrix, which is
+        what makes the next show's position nameable again."""
+        self.tlm = matrix
+        self.advanced = False
+
+    def shown(self) -> None:
+        """A show moves `Tm` by the advance of its glyphs and leaves `Tlm` alone."""
+        self.advanced = True
 
     def td(self, tx: Decimal, ty: Decimal) -> None:
-        self.tlm = _translate(tx, ty, self.tlm or _IDENTITY)
+        self.set_line(_translate(tx, ty, self.tlm or _IDENTITY))
 
     def next_line(self) -> None:
         if self.leading is None:
@@ -253,8 +278,15 @@ class _State:
     def marker(self) -> tuple:
         """Everything a show operation's appearance depends on that this module may
         rewrite. Comparing these across a rewrite is what proves the rewrite moved
-        nothing — `painted()` cannot see position, and position is the whole risk."""
-        return (tuple(fmt_number(v) for v in (self.tlm or _IDENTITY)),
+        nothing — the glyphs alone cannot see position, and position is the whole risk.
+
+        The position is the absolute line matrix, or `()` when text has been shown
+        since it was set: the show then starts wherever the previous glyphs ended,
+        which is a fact about the reader's `Tm`, not a matrix this module may write.
+        """
+        position = () if self.advanced else tuple(
+            fmt_number(v) for v in (self.tlm or _IDENTITY))
+        return (position,
                 None if self.word is None else fmt_number(self.word),
                 None if self.char is None else fmt_number(self.char))
 
@@ -304,7 +336,7 @@ class _State:
             return True
         if name == b"Tm":
             _expect(numbers, 6, name)
-            self.tlm = tuple(numbers)
+            self.set_line(tuple(numbers))
             return True
         return False
 
@@ -314,6 +346,25 @@ def _expect(numbers: list, count: int, name: bytes) -> None:
         raise ParseError(
             f"PDF content: {name.decode('latin-1')} needs {count} numeric operand(s), "
             f"got {len(numbers)}")
+
+
+def show_elements(op: ct.Operation) -> list[bytes]:
+    """The `TJ`-array elements a show operator contributes.
+
+    `Tj`, `'` and `"` each show one string, so each becomes a one-element array;
+    a `TJ` contributes its array's contents unchanged, kerning numbers included —
+    those are geometry and are deliberately carried through untouched.
+    """
+    if op.operator == b"TJ":
+        inner = [t for t in op.operands
+                 if t.kind not in ("array_open", "array_close")]
+        if len(inner) != len(op.operands) - 2:
+            raise ParseError("PDF content: TJ operand is not a single array")
+        return [fmt_token(t) for t in inner]
+    if not op.operands or op.operands[-1].kind not in ("string", "hexstring"):
+        raise ParseError(
+            f"PDF content: {op.operator.decode('latin-1')} without a string operand")
+    return [fmt_token(op.operands[-1])]
 
 
 # --------------------------------------------------------------------------- #
@@ -340,9 +391,20 @@ class _Canonicalizer:
     def _emit(self, *parts: bytes) -> None:
         self.out.append(b" ".join(p for p in parts if p))
 
+    def _sync_spacing(self, word: bytes | None, char: bytes | None) -> None:
+        """Bring the reader's word and char spacing to `word`/`char` where they are
+        known and differ — never otherwise, for the `0 Tw 0 Tc` reason above."""
+        if word is not None and word != self.shown_word:
+            self._emit(word, b"Tw")
+            self.shown_word = word
+        if char is not None and char != self.shown_char:
+            self._emit(char, b"Tc")
+            self.shown_char = char
+
     def _flush(self) -> None:
-        """Write the accumulated show-run as one `TJ`, restoring the spacing and the
-        absolute position it began at.
+        """Write the accumulated show-run as one `TJ`, restoring the spacing it was
+        shown with and, when it has one, the absolute position it began at. A run
+        that continues from earlier glyphs gets no `Tm` (see the module docstring).
 
         An **empty** run must leave `pending_marker` alone. Clearing it here was the
         first version's bug: a `Tf` between the `Td` and the text it positions would
@@ -351,51 +413,34 @@ class _Canonicalizer:
         """
         if not self.run:
             return
-        if self.pending_marker is not None:
-            matrix, word, char = self.pending_marker
-            if word is not None and word != self.shown_word:
-                self._emit(word, b"Tw")
-                self.shown_word = word
-            if char is not None and char != self.shown_char:
-                self._emit(char, b"Tc")
-                self.shown_char = char
+        matrix, word, char = self.pending_marker
+        self._sync_spacing(word, char)
+        if matrix:
             self._emit(b" ".join(matrix), b"Tm")
         self._emit(b"[" + b"".join(self.run) + b"]", b"TJ")
         self.run = []
         self.pending_marker = None
 
     # -- show operators ------------------------------------------------------ #
-    def _show_elements(self, op: ct.Operation) -> list[bytes]:
-        """The `TJ`-array elements a show operator contributes.
-
-        `Tj`, `'` and `"` each show one string, so each becomes a one-element array;
-        a `TJ` contributes its array's contents unchanged, kerning numbers included —
-        those are geometry and are deliberately carried through untouched.
-        """
-        if op.operator == b"TJ":
-            inner = [t for t in op.operands
-                     if t.kind not in ("array_open", "array_close")]
-            if len(inner) != len(op.operands) - 2:
-                raise ParseError("PDF content: TJ operand is not a single array")
-            return [fmt_token(t) for t in inner]
-        if not op.operands or op.operands[-1].kind not in ("string", "hexstring"):
-            raise ParseError(
-                f"PDF content: {op.operator.decode('latin-1')} without a string operand")
-        return [fmt_token(op.operands[-1])]
-
     def _show(self, op: ct.Operation) -> None:
         if op.operator == b'"':
             if len(op.operands) < 3:
                 raise ParseError('PDF content: " needs aw, ac and a string')
-            self._flush()
             self.state.word = _decimal(op.operands[0].raw)
             self.state.char = _decimal(op.operands[1].raw)
         if op.operator in (b"'", b'"'):
-            self._flush()
             self.state.next_line()
+        marker = self.state.marker
+        # A show joins the open run only when it starts where the run's glyphs end
+        # (no position of its own) and is spaced the same. A rewritten operator in
+        # between — a `TL`, a `Tw` restating the value in force — emits nothing, so
+        # it must not break the run either, or the output would not be a fixed point.
+        if self.run and (marker[0] or marker[1:] != self.pending_marker[1:]):
+            self._flush()
         if not self.run:
-            self.pending_marker = self.state.marker
-        self.run.extend(self._show_elements(op))
+            self.pending_marker = marker
+        self.run.extend(show_elements(op))
+        self.state.shown()
 
     # -- driver -------------------------------------------------------------- #
     def _operation(self, op: ct.Operation) -> None:
@@ -405,16 +450,23 @@ class _Canonicalizer:
             self._show(op)
             return
 
-        # Anything that is not a show has to land after the pending run, so the run
-        # is closed first and the operator emitted (or absorbed) afterwards.
+        if self.state.apply(op):
+            return                      # absorbed; the next run carries its effect
+
+        # Anything else has to land after the pending run, so the run is closed
+        # first and the operator emitted afterwards.
         self._flush()
         if name == b"q":
             self._shown_stack.append((self.shown_word, self.shown_char))
         elif name == b"Q" and self._shown_stack:
             self.shown_word, self.shown_char = self._shown_stack.pop()
-        rewritten = self.state.apply(op)
-        if not rewritten:
-            self._emit(*[fmt_token(t) for t in op.operands], name)
+        elif name == b"Do":
+            # A form starts in its caller's text state and `_State(inherits=True)`
+            # leaves its spacing to the reader, so the reader has to hold the value
+            # the original had here — the lazy emission above would otherwise hand
+            # the form whatever spacing the last run happened to need.
+            self._sync_spacing(*self.state.marker[1:])
+        self._emit(*[fmt_token(t) for t in op.operands], name)
 
     def _inline_image(self, img: ct.InlineImage) -> None:
         """Re-emitted with a sorted, canonically-spelled dictionary and a recomputed
@@ -461,28 +513,27 @@ def canonicalize(data: bytes, inherits: bool = False) -> bytes:
 def painted(data: bytes, inherits: bool = False) -> tuple:
     """What the stream paints, in a form the rewrite must not change.
 
-    Two halves, because neither alone is sufficient:
+    One ordered list of events, so the ink and the geometry are checked *together*
+    and an operator that moved relative to the text around it is caught too:
 
-    * **the ink** — the glyph bytes shown in order, plus every non-rewritten operator
-      with its operands, so a lost `re`/`f` or a reordered `Do` is caught;
-    * **the geometry** — the absolute line matrix and the spacing in force at each
-      show, replayed through the same `_State` the rewriter uses, so a mis-tracked
-      `Tlm` that still paints every glyph in the right order is caught too. That is
-      the failure mode `Td` → `Tm` actually risks, and the ink check is blind to it.
+    * **every non-rewritten operator** with its canonical operands, so a lost
+      `re`/`f`, a reordered `Do` or a dropped `EMC` is caught;
+    * **every show**, as the glyphs and kerning it paints plus where it starts and
+      the spacing in force — where "where" is either the absolute line matrix,
+      replayed through the same `_State` the rewriter uses, or "straight after the
+      previous glyphs" when text has been shown since that matrix was set. A
+      mis-tracked `Tlm` that still paints every glyph in order is the failure
+      `Td` → `Tm` risks; a continuation given the line start instead is the failure
+      it actually shipped (module docstring), and both change this list.
 
     Blind on purpose to everything the module is allowed to rewrite: which operator
-    expressed a move, how a number was spelled, where a show run was broken.
+    expressed a move, how a number was spelled, where a show run was broken. The last
+    is why a continuation show at unchanged spacing, with no visible operator since
+    the previous show, is folded into it — `(A) Tj (B) Tj` and `[(A)(B)] TJ` are one
+    event. No `None` appears in an event, because `f2._marks` sorts these.
     """
-    shown = bytearray()
-    ops: list[tuple] = []
-    positions: list[tuple] = []
+    events: list[tuple] = []
     state = _State(inherits)
-    # One position per *run* of shows, not per show — because merging `(A) Tj (B) Tj`
-    # into `[(A)(B)] TJ` is a rewrite this function must tolerate, and a per-show list
-    # would differ in length between the two sides for that reason alone. Showing text
-    # does not move `Tlm`, so every show in an uninterrupted run sits at one position
-    # and recording it once loses nothing.
-    run_open = False
     with localcontext() as ctx:
         ctx.prec = _PRECISION
         for item in ct.walk_ops(data):
@@ -492,10 +543,9 @@ def painted(data: bytes, inherits: bool = False) -> tuple:
                 # this invariant fail on the scrub it is meant to be checking. The
                 # payload itself is already covered — `f1._jpeg_scan` asserts the
                 # entropy-coded data survives byte for byte.
-                ops.append(("BI", tuple(sorted(
+                events.append(("BI", tuple(sorted(
                     (k, v) for k, v in item.params.items()
                     if k not in ("/L", "/Length")))))
-                run_open = False
                 continue
             name = item.operator
             if name in SHOW_OPS and state.tlm is not None:
@@ -504,16 +554,21 @@ def painted(data: bytes, inherits: bool = False) -> tuple:
                     state.char = _decimal(item.operands[1].raw)
                 if name in (b"'", b'"'):
                     state.next_line()
-                    run_open = False          # the advance breaks the run
-                if not run_open:
-                    positions.append(state.marker)
-                    run_open = True
-                for tok in item.operands:
-                    if tok.kind in ("string", "hexstring"):
-                        shown += _string_value(tok.raw)
+                position, word, char = state.marker
+                spacing = (word or b"", char or b"")
+                glyphs = tuple(show_elements(item))
+                last = events[-1] if events else None
+                if not position and last and last[0] == "show" and last[2] == spacing:
+                    events[-1] = last[:3] + (last[3] + glyphs,)
+                else:
+                    events.append(("show", position, spacing, glyphs))
+                state.shown()
                 continue
-            run_open = False
             if not state.apply(item):
-                ops.append((name.decode("latin-1"),
-                            tuple(fmt_token(t) for t in item.operands)))
-    return bytes(shown), tuple(ops), tuple(positions)
+                event = ("op", name.decode("latin-1"),
+                         tuple(fmt_token(t) for t in item.operands))
+                if name == b"Do":               # a form inherits the spacing here
+                    _, word, char = state.marker
+                    event += ((word or b"", char or b""),)
+                events.append(event)
+    return tuple(events)

@@ -34,15 +34,33 @@ cannot, since rewriting them is the whole job. What it asserts instead is
 operator with its operands, and the replayed absolute position and spacing at each
 show. A rewrite that moved a line while still painting every glyph is precisely the
 failure this tier risks, and that third component is what catches it.
+
+**And then a second reader checks it, because the first check shares the rewriter's
+model.** `painted()` replays the same `canon._State` the rewriter uses, so a wrong
+idea of where text sits is wrong on both sides and the two agree. That happened: a
+Chrome 156 PDF came out with every "file" printed as "ﬁ" with the "l" on top of it,
+and F2 reported a clean scrub (`canon`'s module docstring has the mechanism). So
+before anything is returned, poppler's `pdftotext` reads every word's text and box
+off the original and the output, and any word that reads differently or moved by
+more than `_WORD_TOLERANCE` refuses the file. It shares no code with `canon`, it
+computes real glyph advances from the fonts, and it costs two text extractions —
+tens of milliseconds a page, against a canonicaliser that takes longer. Poppler
+becomes F2's dependency as it already is F3's, on the same footing: a missing
+binary fails closed rather than quietly skipping the check.
 """
 from __future__ import annotations
 
 import io
+import os
+import re
+import shutil
+import subprocess
+import tempfile
 import zlib
 
 import pikepdf
 
-from ...errors import ContentError, ParseError
+from ...errors import ContentError, ParseError, ScrubError
 from . import canon, f1
 from . import serialize as ser
 
@@ -66,6 +84,19 @@ _KEEP_FILTER = frozenset({"/DCTDecode", "/JPXDecode", "/JBIG2Decode",
                           "/CCITTFaxDecode"})
 
 _SUBSET_TAG_LEN = 6
+
+# How far, in points, any edge of a word's box may move between input and output.
+# F2's own change to a coordinate is the `canon` quantisation (5E-9 user-space units
+# times the page's scale) and pdftotext prints six decimals, so 1E-3 pt — 1/72,000 of
+# an inch, 0.004 of a pixel at 300 DPI — clears both by orders of magnitude and is
+# still far below any shift a reader could see. The Chrome 156 corruption moved a
+# glyph by its whole advance, about 4 pt.
+_WORD_TOLERANCE = 1e-3
+
+_BBOX_PAGE = re.compile(rb'<page width="([^"]*)" height="([^"]*)">')
+_BBOX_WORD = re.compile(
+    rb'<word xMin="([^"]*)" yMin="([^"]*)" xMax="([^"]*)" yMax="([^"]*)">(.*?)</word>',
+    re.S)
 
 
 # --------------------------------------------------------------------------- #
@@ -267,6 +298,76 @@ def _assert_paint_identity(original: bytes, scrubbed: bytes) -> None:
             "and their marks differ")
 
 
+def _pdftotext() -> str:
+    path = shutil.which("pdftotext")
+    if path is None:
+        raise ScrubError(
+            "pdftotext required for PDF F2 (brew install poppler). F2 fails closed "
+            "rather than emit a page it could not check.")
+    return path
+
+
+def _words(path: str) -> list[tuple]:
+    """Every page as `(size, words)`, each word `(text, xMin, yMin, xMax, yMax)`, as
+    poppler reads them in content-stream order (`-raw`, so no layout heuristic sits
+    between the glyphs and the comparison).
+
+    Only the `<doc>` body is read: the `<head>` echoes `/Info`, which F1 removes.
+    """
+    result = subprocess.run([_pdftotext(), "-bbox", "-raw", path, "-"],
+                            capture_output=True)
+    if result.returncode != 0:
+        raise ContentError(
+            "PDF F2: pdftotext could not read the document, so its text cannot be "
+            "checked: " + result.stderr.decode("utf-8", "replace").strip()[:200])
+    body = result.stdout.partition(b"<doc>")[2]
+    pages = []
+    try:
+        for chunk in body.split(b"<page ")[1:]:
+            size = _BBOX_PAGE.match(b"<page " + chunk)
+            words = [(m[4],) + tuple(float(v) for v in m[:4])
+                     for m in _BBOX_WORD.findall(chunk)]
+            pages.append(((float(size[1]), float(size[2])) if size else None, words))
+    except ValueError as exc:
+        raise ContentError(f"PDF F2: unreadable pdftotext box: {exc}") from exc
+    return pages
+
+
+def _assert_text_identity(original: bytes, scrubbed: bytes) -> None:
+    """Every word reads the same and sits in the same place, by poppler's reading.
+
+    Messages name a page and a word number, never the word: they reach a folder
+    run's results sheet, which travels with the files and names no values.
+    """
+    with tempfile.TemporaryDirectory(prefix="pdf_f2_") as workdir:
+        sides = []
+        for name, data in (("in.pdf", original), ("out.pdf", scrubbed)):
+            path = os.path.join(workdir, name)
+            with open(path, "wb") as f:
+                f.write(data)
+            sides.append(_words(path))
+    before, after = sides
+    if len(before) != len(after):
+        raise ContentError(f"PDF F2: pdftotext reads {len(before)} page(s) in the "
+                           f"original and {len(after)} in the output")
+    for page, ((size_a, words_a), (size_b, words_b)) in enumerate(
+            zip(before, after, strict=True), start=1):
+        if size_a != size_b:
+            raise ContentError(f"PDF F2: page {page} changed size")
+        if len(words_a) != len(words_b):
+            raise ContentError(
+                f"PDF F2: page {page} reads as {len(words_a)} word(s) before and "
+                f"{len(words_b)} after — text was moved, split or lost")
+        for i, (a, b) in enumerate(zip(words_a, words_b, strict=True), start=1):
+            if a[0] != b[0]:
+                raise ContentError(
+                    f"PDF F2: page {page}, word {i} no longer reads the same")
+            shift = max(abs(x - y) for x, y in zip(a[1:], b[1:], strict=True))
+            if shift > _WORD_TOLERANCE:
+                raise ContentError(
+                    f"PDF F2: page {page}, word {i} moved by {shift:.3g} pt")
+
+
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
@@ -290,6 +391,7 @@ def scrub(data: bytes) -> bytes:
         out = ser.serialize(pdf)
 
     _assert_paint_identity(data, out)
+    _assert_text_identity(data, out)
     return out
 
 
