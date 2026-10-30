@@ -279,8 +279,9 @@ def test_poppler_specifically_because_this_is_how_it_was_missed():
     PDF phase shipped against a workflow that had never heard of poppler.
     """
     assert "poppler-utils" in installed_packages(), (
-        "poppler-utils is missing from the CI workflow. PDF F3 renders with pdftoppm "
-        "and every PDF content check reads the document back with pdftotext, so "
+        "poppler-utils is missing from the CI workflow. PDF F3 renders with pdftoppm, "
+        "PDF F2 refuses to write a page pdftotext has not checked, and every PDF "
+        "content check reads the document back with pdftotext, so "
         "without it the PDF tests skip and all six PDF verdicts go unchallenged.")
 
 

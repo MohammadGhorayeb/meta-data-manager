@@ -15,7 +15,7 @@ import pikepdf
 import pytest
 
 from src.scrub import cli
-from src.scrub.errors import ContentError, FidelityError, ParseError
+from src.scrub.errors import ContentError, FidelityError, ParseError, ScrubError
 from src.scrub.formats.pdf import canon, f1, f2, f3, redaction
 from src.scrub.formats.pdf import content as ct
 from src.scrub.formats.pdf import serialize as ser
@@ -249,6 +249,107 @@ def test_an_unknown_fidelity_is_refused(torture, tmp_path):
 # --------------------------------------------------------------------------- #
 # F2: content-stream canonicalisation
 # --------------------------------------------------------------------------- #
+# What Chrome 156 (Skia/PDF m156) writes for the word "file": the ligature inside an
+# /ActualText span, then the next glyph shown with NO positioning operator, so it sits
+# wherever the ligature's advance left the text matrix. F2 used to give that glyph a
+# `Tm` at the line start, printing the "l" on top of the "fi" (2026-10-30).
+_SKIA_LIGATURE = (b"BT /F1 24 Tf 72 700 Td /Span << /ActualText (fi) >> BDC (fi) Tj "
+                  b"EMC (le) Tj 30 0 Td (x) Tj ET")
+
+
+def _one_page_pdf(path, content: bytes, form: bytes | None = None) -> str:
+    """One Letter page in Helvetica (not embedded: poppler substitutes the same font
+    on both sides of a comparison, which is all a before/after check needs)."""
+    with pikepdf.new() as pdf:
+        page = pdf.add_blank_page(page_size=(612, 792))
+        page.obj.Contents = pikepdf.Stream(pdf, content)
+        font = pdf.make_indirect(pikepdf.Dictionary(
+            Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+            BaseFont=pikepdf.Name.Helvetica))
+        resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font))
+        if form is not None:
+            fm = pikepdf.Stream(pdf, form)
+            fm.Type, fm.Subtype = pikepdf.Name.XObject, pikepdf.Name.Form
+            fm.BBox = [0, 0, 612, 792]
+            fm.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font))
+            resources.XObject = pikepdf.Dictionary(Fm0=pdf.make_indirect(fm))
+        page.obj.Resources = resources
+        pdf.save(path)
+    return str(path)
+
+
+def _render(path: str, tmp_path) -> bytes:
+    stem = str(tmp_path / ("r_" + pathlib.Path(path).stem))
+    subprocess.run(["pdftoppm", "-r", "100", "-png", "-singlefile", path, stem],
+                   check=True, capture_output=True)
+    return pathlib.Path(stem + ".png").read_bytes()
+
+
+def test_f2_keeps_a_glyph_that_continues_after_a_marked_content_span(tmp_path):
+    """The Chrome 156 regression, without Chrome. Pixel- and text-identical at 100
+    DPI, and the canonical form keeps the continuation as a continuation: the run
+    after `EMC` must carry no `Tm` of its own."""
+    _need_poppler()
+    src = _one_page_pdf(tmp_path / "skia.pdf", _SKIA_LIGATURE)
+    out = tmp_path / "f2.pdf"
+    out.write_bytes(f2.scrub(pathlib.Path(src).read_bytes()))
+    assert _render(str(out), tmp_path) == _render(src, tmp_path)
+    assert pc.pdftotext(str(out)) == pc.pdftotext(src)
+    assert "file" in pc.pdftotext(str(out))
+
+    canonical = canon.canonicalize(_SKIA_LIGATURE)
+    assert b"EMC\n[(le)] TJ" in canonical, canonical
+
+
+def test_the_paint_invariant_sees_a_continuation_given_the_line_start():
+    """The shipped bug, as a mutation: `painted()` replayed the rewriter's own model,
+    so it agreed that the "l" sat at the line start. It must now disagree."""
+    good = canon.canonicalize(_SKIA_LIGATURE)
+    broken = good.replace(b"EMC\n[(le)] TJ", b"EMC\n1 0 0 1 72 700 Tm\n[(le)] TJ")
+    assert broken != good, "the mutation did not apply — the test would be vacuous"
+    assert canon.painted(broken) != canon.painted(_SKIA_LIGATURE)
+
+
+def test_canon_gives_an_invoked_form_the_spacing_its_caller_had(tmp_path):
+    """A form inherits word spacing from the `Do` that invokes it. `canon` writes
+    spacing lazily — only before the text that needs it — so without a sync at the
+    `Do` the form would get whatever the last run left behind."""
+    _need_poppler()
+    page = b"5 Tw BT /F1 12 Tf 72 700 Td (a b) Tj ET 0 Tw 12 Tw /Fm0 Do"
+    form = b"BT /F1 12 Tf 72 600 Td (c d e) Tj ET"
+    out = canon.canonicalize(page)
+    assert out.index(b"12 Tw") < out.index(b"/Fm0 Do"), out
+    assert canon.painted(out.replace(b"12 Tw\n", b"")) != canon.painted(page)
+
+    src = _one_page_pdf(tmp_path / "form.pdf", page, form)
+    scrubbed = tmp_path / "f2.pdf"
+    scrubbed.write_bytes(f2.scrub(pathlib.Path(src).read_bytes()))
+    assert _render(str(scrubbed), tmp_path) == _render(src, tmp_path)
+    assert pc.pdftotext(str(scrubbed)) == pc.pdftotext(src)
+
+
+def test_f2_checks_its_output_with_a_reader_that_shares_nothing_with_it(
+        tmp_path, monkeypatch):
+    """The second line of defence. With `painted()` blinded and the rewriter moving a
+    word, the only thing left between the user and a corrupted page is poppler's
+    reading of every word's box — and it must refuse the file."""
+    _need_poppler()
+    src = _one_page_pdf(tmp_path / "p.pdf",
+                        b"BT /F1 12 Tf 72 700 Td (one) Tj 100 0 Td (two) Tj ET")
+    real = canon.canonicalize
+    monkeypatch.setattr(canon, "painted", lambda data, inherits=False: ())
+    monkeypatch.setattr(canon, "canonicalize", lambda data, inherits=False: real(
+        data, inherits).replace(b"1 0 0 1 172 700 Tm", b"1 0 0 1 176 700 Tm"))
+    with pytest.raises(ContentError, match=r"page 1, word 2 moved by 4 pt"):
+        f2.scrub(pathlib.Path(src).read_bytes())
+
+
+def test_f2_refuses_rather_than_skip_its_check_without_poppler(torture, monkeypatch):
+    monkeypatch.setattr(f2.shutil, "which", lambda name: None)
+    with pytest.raises(ScrubError, match="pdftotext required"):
+        f2.scrub(pathlib.Path(torture).read_bytes())
+
+
 def test_canon_collapses_two_spellings_of_the_same_page():
     """The whole premise of the tier, at its smallest. Two producers write the same
     line four ways — `Td` with integers and one `Tj` per word, versus `Tm` with
@@ -268,6 +369,15 @@ def test_canon_collapses_two_spellings_of_the_same_page():
     b"q 1 0 0 RG 10 10 100 100 re f Q",
     b"q 1 0 0 1 0 0 cm BI /W 1 /H 1 /CS /G /BPC 8 /L 1 ID \x00 EI Q BT 0 0 Td (t) Tj ET",
     b"",
+    # Shows that continue from the previous glyphs across something that is not a
+    # move: marked content (Chrome 156), a font change, a spacing change, and
+    # operators F2 absorbs (`TL`, a `Tw` restating the value in force).
+    _SKIA_LIGATURE,
+    b"BT /F1 12 Tf 72 700 Td (A) Tj /F1 9 Tf (B) Tj ET",
+    b"BT /F1 12 Tf 72 700 Td (A B) Tj 5 Tw 2 Tc (C D) Tj 0 0 Td (E) Tj ET",
+    b"BT /F1 12 Tf 72 700 Td (A) Tj 14 TL 0 Tw (B) Tj T* (C) Tj ET",
+    b"BT /F1 12 Tf 72 700 Td [(A) -250 (B)] TJ [] TJ (C) ' ET",
+    b"3 Tw q 7 Tw Q /Fm0 Do BT 1 0 0 1 9 9 Tm (x y) Tj ET 4 Tw /Fm0 Do",
 ])
 def test_canon_preserves_what_the_stream_paints(source):
     out = canon.canonicalize(source)
@@ -280,13 +390,15 @@ def test_canon_preserves_what_the_stream_paints(source):
     (b"1 0 0 1 72 700 Tm", b"1 0 0 1 72 701 Tm"),  # a line moved
     (b"1 0 0 1 72 684 Tm", b"1 0 0 1 72 700 Tm"),  # leading swallowed
     (b"5 5 10 10 re\n", b""),                     # a drawing operator dropped
+    (b"EMC\n", b""),                              # marked content lost its end
+    (b"[(!)] TJ", b"1 0 0 1 72 700 Tm\n[(!)] TJ"),  # a continuation sent back
 ])
 def test_the_paint_invariant_is_not_vacuous(mutation, replacement):
     """A self-check that passes on everything proves nothing. Each mutation is a real
     content change, and `painted()` has to see every one of them — otherwise the F2
     content promise is an assertion that cannot fail."""
-    source = (b"BT /F1 12 Tf 16 TL 72 700 Td (Hello) Tj T* (world) Tj ET "
-              b"1 0 0 RG 5 5 10 10 re f")
+    source = (b"BT /F1 12 Tf 16 TL 72 700 Td (Hello) Tj T* /P BMC (world) Tj EMC "
+              b"(!) Tj ET 1 0 0 RG 5 5 10 10 re f")
     good = canon.canonicalize(source)
     broken = good.replace(mutation, replacement)
     assert broken != good, "the mutation did not apply — the test would be vacuous"
