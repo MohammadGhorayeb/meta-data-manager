@@ -62,6 +62,9 @@ def header_pieces() -> list[bytes]:
     return zip_header_constants() + [local, central, tail, b"\x00"]
 
 
+_FIELD_ID = re.compile(rb'(<[A-Za-z_][\w.-]*:fld\s[^>]*?(?<![\w:.-])id\s*=\s*")\{[^"]*\}')
+
+
 def guard_view(data: bytes) -> bytes:
     """The package as F1 leaves it, in the form a signature could hide in.
 
@@ -73,7 +76,15 @@ def guard_view(data: bytes) -> bytes:
     names, extra fields. Then each XML part DECOMPRESSED, as the EPUB plugin's view
     has it: F1's edits are in the XML, and identical text compresses to identical
     bytes the guard could not trace back to the input it echoes. Pictures are
-    guarded in their own formats' matrices."""
+    guarded in their own formats' matrices.
+
+    Text-field IDs (`<a:fld id="{...}">`) are blanked for the same reason as CRCs:
+    F1 DERIVES them, by hash, from the cleaned part (`package_f1.
+    canonical_field_ids`), so they are computed, never chosen, and with twenty-odd
+    fields a deck, some four hex digits matched across every output by chance --
+    in half the runs on one machine, once on CI on another. What the derivation
+    must guarantee (one form, a fixed point, different parts get different IDs)
+    is tested on its own in `test_pptx.py`."""
     import struct
     try:
         arc = zipread.read(data)
@@ -98,7 +109,7 @@ def guard_view(data: bytes) -> bytes:
     out.append(bytes(end))
     for e in arc.entries:
         if not e.is_dir and e.name.endswith((".xml", ".rels")):
-            out.append(e.content())
+            out.append(_FIELD_ID.sub(rb"\1{}", e.content()))
     return b"".join(out)
 
 

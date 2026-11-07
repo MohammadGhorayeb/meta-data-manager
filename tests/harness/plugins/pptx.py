@@ -98,15 +98,9 @@ class PptxPlugin:
 
     def mandatory_constants(self) -> list[bytes]:
         """The ZIP layer's declared fields and the names and namespaces a
-        presentation must use -- and `id="{`, the braced form the schema requires of
-        every GUID attribute (ST_Guid). F1 derives each text field's GUID from the
-        cleaned part (`package_f1.canonical_field_ids`): hex no input holds, so an
-        output's first hex digit after the brace matched across all three decks in
-        about half the runs and joined the echoed `<a:fld id="{` into a "new" run.
-        The EPUB plugin declares `urn:uuid:` for its derived identifier, for the same
-        reason. A mark of `min_len` or more after the brace is still caught."""
+        presentation must use. (Text-field IDs, which F1 derives by hash, are blanked
+        in the guard's view rather than declared: `plugins/xlsx.guard_view`.)"""
         return header_pieces() + [
-            b'id="{',
             b"[Content_Types].xml", b"_rels/.rels", PRES.encode(),
             b"ppt/_rels/presentation.xml.rels", b"ppt/slides/slide1.xml",
             b"http://schemas.openxmlformats.org/package/2006/content-types",

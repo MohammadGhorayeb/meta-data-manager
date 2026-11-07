@@ -230,10 +230,16 @@ every XML part, as EPUB's does), and with eleven layouts per deck some member al
 sits at a similar offset in every output, so the high bytes of an offset matched
 (the view blanks CRC, sizes and offsets -- computed from content, so no tool constant
 can live there -- and keeps every field a writer chooses). Then the derived field IDs:
-hex no input holds, so in half the runs every output's first digit after `id="{`
-happened to match; `id="{` (the schema's braced form) is declared, as EPUB declares
-`urn:uuid:`. Non-vacuity tests inject a mark into every workbook and presentation part
-and the guard fails on it.
+hash output no input holds, so with twenty-odd fields a deck some hex digits matched
+across every output by chance -- half the runs on this Mac, until `id="{` was
+declared; then once on CI (Python 3.14 job, run 42413762862; the 3.11 job passed),
+not reproducible here with Ubuntu 24.04's LibreOffice re-saving the deck six times or
+with twenty randomised input timestamps. The view now blanks every `a:fld` ID, in
+inputs and outputs, by the CRC argument: computed, never chosen. What the derivation
+must guarantee is tested on its own (`test_pptx.py`: one form, a fixed point,
+different parts get different IDs). A failing guard now prints its signatures in the
+test's message. Non-vacuity tests inject a mark into every workbook and presentation
+part and the guard fails on it.
 
 ### 7.3 Word: a part no parser can read
 

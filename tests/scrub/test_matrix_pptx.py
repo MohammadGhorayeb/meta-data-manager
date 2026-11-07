@@ -26,7 +26,9 @@ def doc(tmp_path_factory):
 def test_matrix_builds_and_validates(doc):
     matrix.validate(doc)
     assert doc["format"] == "pptx"
-    assert doc["scrubber_fingerprint"]["verdict"] == "pass"
+    guard = doc["scrubber_fingerprint"]
+    assert guard["verdict"] == "pass", [(s["decoded"][:80], s["bytes_hex"][:160])
+                                        for s in guard.get("signatures", [])]
 
 
 def test_a1_passes_in_every_producer_shape_this_machine_writes(doc):
