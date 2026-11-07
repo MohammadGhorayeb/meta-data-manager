@@ -292,3 +292,12 @@ def test_the_draw_module_is_installed_for_metafile_renders():
     (measured) while Draw's render is stable -- and without the package the
     conversion writes nothing, which the test reports as a failure, not a skip."""
     assert "libreoffice-draw" in installed_packages()
+
+
+def test_calc_and_impress_are_installed_for_office_renders():
+    """The same trap for Excel and PowerPoint: `test_xlsx.py` reads a workbook back
+    as CSV through Calc and `test_pptx.py` renders a deck to PDF through Impress.
+    Both tests skip only when `soffice` is absent, and Writer alone installs it --
+    so without these modules the conversions write nothing and both tests fail."""
+    packages = installed_packages()
+    assert "libreoffice-calc" in packages and "libreoffice-impress" in packages
