@@ -1,0 +1,260 @@
+<title>On Track for Feature Freeze</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+  /* Same system as the September forecast (schedule_report.html), so the two read as a pair:
+     a timeline of bands, each set against the date the forecast promised. */
+  :root{
+    --paper:#f2f5f7;
+    --panel:#ffffff;
+    --ink:#121e27;
+    --ink-2:#4c5f6d;
+    --ink-3:#7c8d99;
+    --rule:#d2dbe1;
+    --rule-soft:#e4eaee;
+    --accent:#0e6a74;
+    --accent-soft:#e2f0f1;
+    --amber:#8f5d10;
+    --amber-soft:#f6ecd9;
+    --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+    --sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0d141a;
+      --panel:#141f26;
+      --ink:#e3ecf1;
+      --ink-2:#9cb0bd;
+      --ink-3:#728897;
+      --rule:#26343d;
+      --rule-soft:#1d2830;
+      --accent:#4fc0cb;
+      --accent-soft:#14343a;
+      --amber:#d5a24f;
+      --amber-soft:#33280f;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0d141a;
+    --panel:#141f26;
+    --ink:#e3ecf1;
+    --ink-2:#9cb0bd;
+    --ink-3:#728897;
+    --rule:#26343d;
+    --rule-soft:#1d2830;
+    --accent:#4fc0cb;
+    --accent-soft:#14343a;
+    --amber:#d5a24f;
+    --amber-soft:#33280f;
+    color-scheme:dark;
+  }
+
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:920px;
+    margin:0 auto;
+    padding-block:44px 72px;
+    padding-left:max(16px, env(safe-area-inset-left, 0px));
+    padding-right:max(16px, env(safe-area-inset-right, 0px));
+    display:flex;
+    flex-direction:column;
+    gap:38px;
+  }
+  h1,h2,h3{font-family:var(--serif);text-wrap:balance;margin:0;}
+  p{margin:0;}
+
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--ink-3);
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead{display:flex;flex-direction:column;gap:14px;}
+  .masthead h1{font-size:38px;line-height:1.12;font-weight:600;letter-spacing:-.015em;}
+  .standfirst{font-size:17px;line-height:1.58;color:var(--ink-2);max-width:64ch;}
+  .dateline{
+    font-family:var(--mono);font-size:12px;color:var(--ink-3);
+    border-top:1px solid var(--rule);padding-top:12px;
+  }
+
+  /* ---------- stats ---------- */
+  .stats{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:1px;
+    background:var(--rule);
+    border-block:1px solid var(--rule);
+  }
+  .stat{background:var(--paper);padding:16px 18px;display:flex;flex-direction:column;gap:3px;}
+  .stat .n{
+    font-family:var(--mono);font-size:26px;font-weight:600;line-height:1.1;
+    font-variant-numeric:tabular-nums;color:var(--ink);
+  }
+  .stat .k{font-size:12.5px;color:var(--ink-2);line-height:1.4;}
+  .stat .was{font-family:var(--mono);font-size:11px;color:var(--ink-3);}
+
+  /* ---------- sections ---------- */
+  section{display:flex;flex-direction:column;gap:16px;}
+  h2{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);}
+  .lede{max-width:66ch;color:var(--ink-2);}
+
+  /* ---------- timeline bands ---------- */
+  .bands{display:flex;flex-direction:column;}
+  .band{
+    display:grid;
+    grid-template-columns:132px 1fr;
+    gap:26px;
+    padding:22px 0 24px 0;
+    border-top:1px solid var(--rule);
+  }
+  .band:last-child{border-bottom:1px solid var(--rule);}
+  .band .when{display:flex;flex-direction:column;gap:4px;}
+  .band .date{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .band .span{font-family:var(--mono);font-size:11px;color:var(--ink-3);line-height:1.45;}
+  .band h3{font-size:19px;font-weight:600;margin-bottom:2px;}
+  .band .body{display:flex;flex-direction:column;gap:12px;min-width:0;}
+  .band ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;}
+  .band li{padding-left:16px;position:relative;color:var(--ink-2);max-width:62ch;}
+  .band li::before{
+    content:"";position:absolute;left:0;top:.62em;
+    width:6px;height:1.5px;background:var(--rule);
+  }
+  .band li strong{color:var(--ink);font-weight:600;}
+  .band-done{border-left:3px solid var(--accent);padding-left:18px;}
+  .band-extra{border-left:3px solid var(--amber);padding-left:18px;}
+  .band-next{border-left:3px solid var(--ink-3);padding-left:18px;}
+  .outcome{
+    font-family:var(--mono);font-size:12px;color:var(--ink-2);
+    background:var(--rule-soft);padding:8px 11px;align-self:flex-start;
+  }
+  .outcome.ok{background:var(--accent-soft);color:var(--accent);}
+  .outcome.plus{background:var(--amber-soft);color:var(--amber);}
+
+  footer{
+    border-top:1px solid var(--rule);padding-top:14px;
+    font-family:var(--mono);font-size:11.5px;color:var(--ink-3);line-height:1.7;
+  }
+
+  @media (max-width:640px){
+    .masthead h1{font-size:30px;}
+    .band{grid-template-columns:1fr;gap:14px;}
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Irreversible metadata scrubber · progress report</div>
+    <h1>On track for the 31 October freeze</h1>
+    <p class="standfirst">The September plan is on track. Every format promised for the freeze is in and tested, and two formats were added that were not in the plan. November stays as planned: making the tool production-ready.</p>
+    <div class="dateline">26 October 2026 · measured against the forecast of 17 September</div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><span class="n">19</span><span class="k">file types working today</span><span class="was">13 planned for the freeze</span></div>
+    <div class="stat"><span class="n">1,684</span><span class="k">automated tests, none failing</span><span class="was">583 in September</span></div>
+    <div class="stat"><span class="n">784</span><span class="k">real Word files tested, none crashed</span><span class="was">new since September</span></div>
+    <div class="stat"><span class="n">31 Oct</span><span class="k">feature freeze, on track</span><span class="was">date unchanged since September</span></div>
+  </div>
+
+  <section>
+    <h2>Where we stand today</h2>
+    <p class="lede">Every build phase is finished: the testing foundation, images, audio, documents, camera and video files, program files, and the remaining image types, archives and e-books. A whole folder can be cleaned in one command. Every result is still backed by an automated test, and the tests now run on Linux and on a Mac after every change.</p>
+  </section>
+
+  <section>
+    <h2>Against the September plan</h2>
+    <div class="bands">
+
+      <div class="band">
+        <div class="when">
+          <span class="date">30 Sep</span>
+          <span class="span">Media formats</span>
+        </div>
+        <div class="body band-done">
+          <h3>iPhone photos finished, video added</h3>
+          <ul>
+            <li><strong>iPhone photos</strong> finished on 18 September, with published results.</li>
+            <li><strong>Video</strong>, including the MOV format every iPhone records. iPhone videos hide a second copy of the exact location, which ExifTool leaves and MAT2 cannot open, so the video data is rebuilt instead of copied. That finding cost four days.</li>
+            <li><strong>Camera RAW survey</strong> of eight formats from seven camera makers, done before any code was written.</li>
+          </ul>
+          <div class="outcome ok">Done · video four days late</div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="when">
+          <span class="date">31 Oct</span>
+          <span class="span">Feature complete</span>
+        </div>
+        <div class="body band-done">
+          <h3>Every format in, and the tool usable in bulk</h3>
+          <ul>
+            <li><strong>Camera RAW</strong> for all eight formats. Serial numbers, owner names, dates and location are removed, including the copies inside the preview images, and the photo decodes exactly as before.</li>
+            <li><strong>Program files</strong> for Linux, Mac and Windows. Build folders, user names in paths and build times are removed, and real programs were checked to run exactly the same afterwards.</li>
+            <li><strong>Archives and the remaining image types</strong>: ZIP, EPUB, TIFF, WebP, SVG and GIF. The same folder zipped by four different programs now comes out as one identical file.</li>
+            <li><strong>Bulk use.</strong> A whole folder in one command, with one results sheet.</li>
+          </ul>
+          <div class="outcome ok">On track · 17 file types</div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="when">
+          <span class="date">Added</span>
+          <span class="span">not in the plan</span>
+        </div>
+        <div class="body band-extra">
+          <h3>Real-world checks, and two more formats</h3>
+          <ul>
+            <li><strong>Tested on files we did not make:</strong> up to 150 per type from macOS and its apps, GoPro's sample videos, three independent readers, and 21,000 deliberately damaged files. Four real defects were found and fixed, among them iPhone photos losing their transparency.</li>
+            <li><strong>Word documents as Word writes them</strong>, measured on 784 real files from two public test collections: 678 cleaned, 106 refused with a reason, none crashed. This added the two Windows drawing formats Word embeds (EMF and WMF).</li>
+            <li><strong>BMP pictures</strong>, the last picture type the real-file check found refused. MAT2 calls BMP harmless and passes it through unchanged.</li>
+          </ul>
+          <div class="outcome plus">19 file types · tests green on Linux and Mac</div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="when">
+          <span class="date">30 Nov</span>
+          <span class="span">unchanged<br>Hardening</span>
+        </div>
+        <div class="body band-next">
+          <h3>Production readiness</h3>
+          <ul>
+            <li><strong>Robustness</strong> testing extended from the damaged files above to every file type.</li>
+            <li><strong>Performance.</strong> Speed and memory on large files are still not measured.</li>
+            <li><strong>Packaging, documentation and release.</strong> Mac testing, planned here, is already done.</li>
+          </ul>
+          <div class="outcome">Release candidate</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Limits still open</h2>
+    <p class="lede">There are still some limits we are working to solve, such as a few file types that can still hint at which program made them, and very large files. Each one is written down as soon as it is found, so the tool never claims more than has been tested.</p>
+  </section>
+
+  <footer>
+    Figures are measured from the project. A file type is one published results sheet: camera RAW counts once for its eight formats, program files once for three systems. Dates are the September plan.
+  </footer>
+
+</div>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What Our Scrubber Can't Do Yet</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 15mm; }
+  @page { @bottom-right { content: counter(page) " / " counter(pages);
+          font: 8px "Helvetica Neue", Helvetica, Arial, sans-serif; color: #7c8d99; } }
+
+  :root {
+    --ink: #121e27; --ink-2: #485966; --ink-3: #7c8d99;
+    --rule: #d5dee4; --soft: #f4f7f8;
+    --accent: #0e6a74; --accent-soft: #e2f0f1;
+    --serif: "Iowan Old Style", "Palatino", Georgia, serif;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; padding: 0; }
+  body { color: var(--ink); font: 10.2px/1.45 var(--sans); }
+  p { margin: 0; }
+
+  /* Title */
+  .eyebrow { font-size: 8.2px; letter-spacing: .16em; text-transform: uppercase;
+             color: var(--accent); font-weight: 600; }
+  h1 { font: 600 28px/1.1 var(--serif); margin: 6px 0 10px; letter-spacing: -.01em; }
+  .standfirst { font-size: 12.4px; line-height: 1.5; color: var(--ink-2); max-width: 88ch; }
+  .dateline { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--rule);
+              font-size: 9px; color: var(--ink-3); letter-spacing: .04em; }
+
+  /* The five weaknesses */
+  .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0 12px; }
+  .card { background: var(--soft); border-radius: 6px; padding: 10px 10px 11px;
+          border-top: 3px solid var(--accent); }
+  .card .n { font: 600 15px/1 var(--serif); color: var(--accent); }
+  .card h3 { font: 700 10.2px/1.3 var(--sans); margin: 6px 0 4px; }
+  .card p { font-size: 9.2px; line-height: 1.4; color: var(--ink-2); }
+
+  .strengths { border-left: 3px solid var(--accent); background: var(--accent-soft);
+               padding: 8px 12px; border-radius: 0 6px 6px 0; color: var(--ink);
+               font-size: 10.2px; }
+
+  /* Sections */
+  section { margin-top: 16px; }
+  h2 { font: 600 16px/1.2 var(--serif); margin: 0 0 4px; break-after: avoid; }
+  .lead { color: var(--ink-2); margin-bottom: 6px; }
+  ul.items { list-style: none; margin: 0; padding: 0; }
+  ul.items li { position: relative; padding: 3.5px 0 3.5px 14px; border-top: 1px solid #edf1f3;
+                break-inside: avoid; }
+  ul.items li:first-child { border-top: none; }
+  ul.items li::before { content: ""; position: absolute; left: 1px; top: 11px; width: 5px;
+                        height: 5px; border-radius: 50%; background: var(--accent); }
+  ul.items li::before { top: 9px; }
+  ul.items b { font-weight: 700; }
+  code { font: 9.4px "SF Mono", Menlo, monospace; background: var(--soft); padding: 0 3px;
+         border-radius: 3px; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 9.8px; }
+  th { text-align: left; font-size: 8.2px; letter-spacing: .08em; text-transform: uppercase;
+       color: var(--ink-3); font-weight: 600; padding: 0 8px 6px 0;
+       border-bottom: 1px solid var(--rule); }
+  td { padding: 4px 8px 4px 0; border-bottom: 1px solid #edf1f3; vertical-align: top; }
+  tr { break-inside: avoid; }
+  td:first-child { font-weight: 600; width: 30%; }
+  td:nth-child(2) { width: 15%; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 9px;
+          font-weight: 700; white-space: nowrap; }
+  .no { background: #e2f0f1; color: #0e6a74; }
+  .barely { background: #e8f2e3; color: #3d6b2a; }
+  .partly { background: #f6ecd9; color: #8f5d10; }
+  .yes { background: #f7e2df; color: #9b2c22; }
+  .untested { background: #eceff1; color: #5b6b77; }
+  .note { color: var(--ink-2); margin-top: 8px; }
+
+  .closing { margin-top: 22px; padding-top: 10px; border-top: 1px solid var(--rule);
+             color: var(--ink-3); font-size: 9.4px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow">Metadata scrubber · Known limits</div>
+<h1>What Our Scrubber Can't Do Yet</h1>
+<p class="standfirst">Our tool removes hidden personal details from files: names, GPS locations, dates, serial numbers. It does that job well. But it cannot do everything, and this page lists what it can't do.</p>
+<div class="dateline">30 October 2026</div>
+
+<div class="cards">
+  <div class="card"><div class="n">1</div><h3>Some traces are part of the file itself</h3><p>A camera's sensor leaves a pattern in every photo. No tool can remove it.</p></div>
+  <div class="card"><div class="n">2</div><h3>A cleaned file can still hint at the app that made it</h3><p>It won't say who you are, but it can say "this came from an iPhone".</p></div>
+  <div class="card"><div class="n">3</div><h3>Some files are refused</h3><p>If we can't clean a file safely, we stop and write nothing.</p></div>
+  <div class="card"><div class="n">4</div><h3>Some details stay on purpose</h3><p>Removing them would break the file or change what it shows.</p></div>
+  <div class="card"><div class="n">5</div><h3>Some things are not tested yet</h3><p>We don't claim anything we haven't checked.</p></div>
+</div>
+
+<p class="strengths">The tool cleans at up to three strengths. The <b>light clean</b> removes the details and changes nothing else. The <b>stronger cleans</b> also rebuild the file so it looks like every other cleaned file, which hides the app that made it. Stronger cleans exist for only seven file types so far: JPEG, PNG, MP3, FLAC, M4A, PDF and Word.</p>
+
+<section>
+  <h2>Things no cleaning tool can remove</h2>
+  <p class="lead">These traces are part of the picture, the sound or the text. Removing them would damage the file. Every tool in the world has the same problem.</p>
+  <ul class="items">
+    <li><b>Camera noise.</b> Every camera sensor leaves a faint, unique pattern in its photos. An expert can match a photo to the camera that took it.</li>
+    <li><b>Microphone and room sound.</b> A recording carries the sound of the microphone and the room. The hum of the power grid can even help date it.</li>
+    <li><b>How a file was compressed.</b> JPEG photos and MP3 songs carry a trace of the app that saved them. Only a stronger clean that re-saves the file removes it, and that costs a little quality.</li>
+    <li><b>How a PDF was laid out.</b> Where each letter sits on the page shows which program made the PDF. This stays even if the page is turned into a picture.</li>
+    <li><b>How a program was built.</b> A program's code shows which compiler made it. The code is the program, so it can't change.</li>
+    <li><b>Text you can read.</b> Words hidden under a black box in a PDF are still there. A name printed on a book's title page stays. We warn you, but we don't edit what you wrote.</li>
+    <li><b>A cleaned file looks cleaned.</b> Someone can tell a cleaning tool was used. They just can't tell where the file came from.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>A cleaned file can still hint at the app that made it</h2>
+  <p class="lead">We built the tool against an amateur investigator: someone who compares your file with many others using free tools. Even with every detail removed, the way a file is put together can point to the app that made it. It points to an app, not to you. The table shows the result after our strongest clean for each file type.</p>
+  <table>
+    <thead><tr><th>File type</th><th>Can they tell?</th><th>What gives it away</th></tr></thead>
+    <tbody>
+      <tr><td>JPEG photos</td><td><span class="pill no">No</span></td><td>Nothing, after a stronger clean</td></tr>
+      <tr><td>PNG pictures</td><td><span class="pill no">No</span></td><td>Nothing, after a stronger clean</td></tr>
+      <tr><td>MP3 audio</td><td><span class="pill no">No</span></td><td>Nothing, after a stronger clean</td></tr>
+      <tr><td>FLAC audio</td><td><span class="pill no">No</span></td><td>Nothing, after a stronger clean</td></tr>
+      <tr><td>ZIP archives</td><td><span class="pill no">No</span></td><td>Nothing, after the light clean</td></tr>
+      <tr><td>M4A audio</td><td><span class="pill barely">Barely</span></td><td>Only the file size, about 1% different</td></tr>
+      <tr><td>WebP pictures</td><td><span class="pill barely">Barely</span></td><td>Only the file size</td></tr>
+      <tr><td>Word documents</td><td><span class="pill partly">Partly</span></td><td>The list of styles from the original document</td></tr>
+      <tr><td>BMP pictures</td><td><span class="pill partly">Partly</span></td><td>Which header version it uses and which way the rows run</td></tr>
+      <tr><td>PDF documents</td><td><span class="pill yes">Yes</span></td><td>Where the letters sit and which fonts were used</td></tr>
+      <tr><td>iPhone photos (HEIC)</td><td><span class="pill yes">Yes</span></td><td>How the file is organised inside</td></tr>
+      <tr><td>Videos (MP4, MOV)</td><td><span class="pill yes">Yes</span></td><td>The file's label and the order of its parts</td></tr>
+      <tr><td>Programs</td><td><span class="pill yes">Yes</span></td><td>How the compiler laid out the file</td></tr>
+      <tr><td>TIFF and GIF pictures</td><td><span class="pill yes">Yes</span></td><td>How the picture is stored</td></tr>
+      <tr><td>SVG drawings</td><td><span class="pill yes">Yes</span></td><td>How the drawing app writes its code</td></tr>
+      <tr><td>E-books (EPUB)</td><td><span class="pill yes">Yes</span></td><td>How the book's index file is written</td></tr>
+      <tr><td>Camera RAW photos</td><td><span class="pill untested">Not tested</span></td><td>The camera model stays on purpose; the exact camera is not tested</td></tr>
+      <tr><td>Drawings inside Word (EMF, WMF)</td><td><span class="pill untested">Not tested</span></td><td>Testing needs Microsoft Office, which our tests don't drive yet</td></tr>
+      <tr><td>Excel workbooks</td><td><span class="pill untested">Not tested</span></td><td>Only the light clean exists; comparing apps is the next step</td></tr>
+      <tr><td>PowerPoint presentations</td><td><span class="pill untested">Not tested</span></td><td>Only the light clean exists; comparing apps is the next step</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Most of the "Yes" rows have only the light clean so far. A stronger clean would fix many of them, and we already know what it needs to change.</p>
+</section>
+
+<section>
+  <h2>Files we refuse to clean</h2>
+  <p class="lead">When the tool can't clean a file safely, it stops and writes nothing. That is safer than handing back a file that still leaks, but you get no cleaned copy.</p>
+  <ul class="items">
+    <li><b>File types we don't handle yet:</b> OpenDocument files, old Office files (<code>.doc</code>, <code>.xls</code>, <code>.ppt</code>), WAV audio, MKV and AVI videos, and .NET programs.</li>
+    <li><b>Word documents with tracked changes, comments or something embedded</b>, like a chart's spreadsheet. Of 784 real Word files we tested, 99 were refused (about 1 in 8).</li>
+    <li><b>Excel workbooks with comments, links to other workbooks, pivot tables, or database connections.</b> A pivot table can keep a full copy of its source data, even data deleted from every sheet. A link to another workbook keeps that file's location and a copy of its cells.</li>
+    <li><b>PowerPoint presentations with comments, embedded fonts, or a chart whose spreadsheet is stored inside.</b> That spreadsheet is a whole Excel file with its own author. We will clean it with the Excel rules next.</li>
+    <li><b>Signed or locked files:</b> PDFs and programs signed by their maker, encrypted PDFs, and e-books with copy protection. Changing them breaks the signature, or needs a key we don't have.</li>
+    <li><b>Videos with subtitles</b>, unless you ask us to drop them. A drone's GPS and a film's subtitles look the same from inside the file.</li>
+    <li><b>Camera RAW photos from less common makers:</b> Pentax, Leica, Hasselblad and Sigma.</li>
+    <li><b>Archives we can't fully read:</b> password-protected or very large ZIP files, or ones holding a file type we don't clean. 9 of the 42 archives that come with macOS are refused this way.</li>
+    <li><b>Rare versions of common formats:</b> TIFF files over 4 GB, macOS's changing wallpapers, streaming-style videos, and unusual MP3, BMP and SVG files.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Things we leave in on purpose</h2>
+  <p class="lead">These stay because removing them would break the file or change what it shows. The ones at the top come closest to pointing at a person or a machine.</p>
+  <ul class="items">
+    <li><b>A scrambled block in Nikon RAW photos.</b> Nikon scrambles some colour data with a key made from the camera's serial number. We remove the serial number, but the scrambled block still depends on it.</li>
+    <li><b>Camera make, model and lens in RAW photos.</b> Photo editors need them to show the right colours. Serial numbers, owner names, dates and GPS are removed.</li>
+    <li><b>Folder-name length in programs.</b> We wipe a program's debug information but keep its space. The size of that space hints at how long the build folder's name was.</li>
+    <li><b>Screen or printer size in Word drawings.</b> The drawing is measured in that device's units. It could link two drawings to the same machine.</li>
+    <li><b>Speaker notes and hidden slides in PowerPoint.</b> They are text the author wrote, so they stay. The report counts them, because people often forget a deck still carries them.</li>
+    <li><b>The cut-away parts of cropped pictures.</b> Cropping in PowerPoint only hides part of a picture; the whole picture is still in the file. We tell you which slides have one.</li>
+    <li><b>Hidden sheets, rows and columns in Excel.</b> Formulas may use them, so they stay. The report counts them.</li>
+    <li><b>Bookmark names and links in Word.</b> A table of contents needs them to work. We list them so you can check them.</li>
+    <li><b>A few spare bytes in BMP pictures.</b> Some apps read them, so changing them could change the picture. Someone could hide a little data there.</li>
+    <li><b>The app's name inside some videos.</b> WhatsApp, for example, writes its name into the video data itself. We tell you when we find it.</li>
+    <li><b>The brightness layer in iPhone photos.</b> It makes the photo look right on HDR screens.</li>
+    <li><b>Font and colour-profile names in PDFs.</b> They can show "this was made on a Mac", but not who made it.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>What cleaning can cost you</h2>
+  <p class="lead">The light clean costs almost nothing. The stronger cleans trade something away to hide the app that made the file.</p>
+  <ul class="items">
+    <li><b>Photos and music lose a little quality.</b> A stronger clean re-saves them. Very small files can even get bigger.</li>
+    <li><b>Clean only once.</b> Running a stronger clean on an already-cleaned file loses quality a second time.</li>
+    <li><b>PDFs turned into pictures lose their text.</b> You can no longer search, copy or use a screen reader. And it still doesn't hide the app.</li>
+    <li><b>PDFs get bigger.</b> About a third bigger with the deep clean, and many times bigger when turned into pictures.</li>
+    <li><b>The PDF deep clean needs a second program.</b> Before it writes anything, a separate PDF reader (poppler) checks that every word reads the same and sits in the same place. Without that reader installed, the file is refused.</li>
+    <li><b>Word's stronger cleans accept all tracked changes and delete comments.</b> The review history is gone. The strongest one may also shift fonts and spacing, and we can't measure how much yet, because our tests don't drive Word.</li>
+    <li><b>Protected Excel sheets lose their password.</b> The lock stays, but anyone can now remove it. The password itself was stored as a scrambled code, which is a credential.</li>
+    <li><b>iPhone photos lose their depth maps.</b> Portrait lighting and background effects stop working.</li>
+    <li><b>Videos lose their timecode and 360-degree motion data.</b> Editing apps can no longer line clips up by time.</li>
+    <li><b>Big videos need a lot of memory.</b> A 4 GB video needs about 10 GB free. The tool checks first and tells you.</li>
+    <li><b>The report shows what it removed.</b> Your name or GPS location appears on screen. You can turn the report off.</li>
+    <li><b>On a Mac, the system tags every new file.</b> The tag sits beside the file, not inside it, and travels only between Macs.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Things we have not tested yet</h2>
+  <p class="lead">We don't claim anything we haven't checked. These are open questions, not known leaks.</p>
+  <ul class="items">
+    <li><b>Damaged Word files.</b> Excel and PowerPoint now refuse a file with a part they can't read. Word doesn't yet: 5 of 946 real Word files would change, so we are checking that first.</li>
+    <li><b>A letter moved inside a word in a PDF.</b> On 30 October we found the PDF deep clean moving letters in files printed from Chrome, while our own check said all was well. It is fixed, and a separate program now checks where every word sits. That program looks at whole words, so a letter moved inside a word is caught only by our own check.</li>
+    <li><b>Smarter attacks on MP3 audio.</b> We tested one kind of sound analysis. Research describes a deeper kind we haven't tried.</li>
+    <li><b>Telling Apple's and other apps' M4A audio apart.</b> Even uncleaned files were too alike to test this.</li>
+    <li><b>How Word documents look in Word after the strongest clean.</b> Our tests don't drive Word yet.</li>
+    <li><b>Videos from phones and apps.</b> We compared videos from desktop programs only. Real DJI drone and Android clips are not tested yet.</li>
+    <li><b>Whether a RAW photo points to one exact camera.</b> That needs photos from two cameras of the same model, which we don't have.</li>
+    <li><b>More than a few RAW photos per maker.</b> We checked about one real file for each format.</li>
+    <li><b>Drawings inside Word (EMF, WMF).</b> Comparing apps needs Microsoft Office, which our tests don't drive yet.</li>
+    <li><b>Embedded fonts in Word and e-books from stores.</b> We had no samples.</li>
+    <li><b>A blind test by someone else.</b> A second person hasn't tried to break the tool yet.</li>
+  </ul>
+</section>
+
+<p class="closing">Every point on this page was measured, not assumed. The full technical list, with the numbers behind each point, is the project's limits file (80 entries).</p>
+
+</body>
+</html>
