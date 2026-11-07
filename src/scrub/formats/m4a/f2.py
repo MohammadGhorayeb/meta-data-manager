@@ -19,17 +19,17 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-import subprocess
-import tempfile
 
-from ...errors import ContentError, ScrubError
+from ... import tools
+from ... import workdir as wd
+from ...errors import ContentError, ToolError
 from . import f1
 
 
 def _tool(name: str) -> str:
     path = shutil.which(name)
     if path is None:
-        raise ScrubError(
+        raise ToolError(
             f"{name} required for M4A F2 (brew install ffmpeg). F2 fails closed "
             "rather than emit an un-normalized file.")
     return path
@@ -39,7 +39,7 @@ def _decoded_digest(path: str) -> str:
     """Decoded PCM digest. The coded stream is copied, not re-encoded, so this must
     match exactly — F2 is lossless and any difference is a bug, not a tolerance."""
     ffmpeg = _tool("ffmpeg")
-    r = subprocess.run([ffmpeg, "-i", path, "-map", "0:a", "-vn", "-f", "s16le",
+    r = tools.run([ffmpeg, "-i", path, "-map", "0:a", "-vn", "-f", "s16le",
                         "-loglevel", "error", "pipe:1"], capture_output=True)
     if r.returncode != 0:
         raise ContentError("M4A F2: could not decode audio for the content check: "
@@ -49,13 +49,13 @@ def _decoded_digest(path: str) -> str:
 
 def scrub(data: bytes) -> bytes:
     ffmpeg = _tool("ffmpeg")
-    with tempfile.TemporaryDirectory(prefix="m4af2_") as td:
+    with wd.workdir("m4a-f2") as td:
         inp = os.path.join(td, "in.m4a")
         out = os.path.join(td, "out.m4a")
         with open(inp, "wb") as f:
             f.write(data)
         before = _decoded_digest(inp)
-        mux = subprocess.run(
+        mux = tools.run(
             # -c copy: transfer the coded audio untouched (lossless for AAC and
             # ALAC alike). -map 0:a drops cover art, which ffmpeg exposes as a video
             # stream and which is metadata, not content.
@@ -63,8 +63,8 @@ def scrub(data: bytes) -> bytes:
              "-map_metadata", "-1", "-loglevel", "error", out],
             capture_output=True)
         if mux.returncode != 0 or not os.path.exists(out):
-            raise ScrubError("M4A F2 re-mux failed: "
-                             + mux.stderr.decode("utf-8", "replace").strip()[:200])
+            raise ToolError("M4A F2 re-mux failed: "
+                            + mux.stderr.decode("utf-8", "replace").strip()[:200])
         after = _decoded_digest(out)
         with open(out, "rb") as f:
             remuxed = f.read()

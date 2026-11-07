@@ -15,6 +15,7 @@ from __future__ import annotations
 from ...errors import ParseError
 from ..base import BaseHandler
 from ..ooxml import opc
+from ..ooxml import package_f1 as pf
 from . import f1, f2, f3
 from . import inspect as _inspect
 
@@ -26,6 +27,16 @@ class DocxHandler(BaseHandler):
     magic = ZIP_MAGIC
     fidelities = ("F1", "F2", "F3")
 
+
+    def __init__(self, check_memory: bool = True) -> None:
+        self.check_memory = check_memory
+
+    def scrub(self, data: bytes, fidelity: str) -> bytes:
+        # Before any part is inflated: priced from the declared part sizes
+        # (`package_f1.check_memory`, November hostile catalogue).
+        if self.check_memory:
+            pf.check_memory(data)
+        return super().scrub(data, fidelity)
     def matches(self, header: bytes) -> bool:
         # A cheap gate only. An empty archive starts `PK\x05\x06` and a spanned one
         # `PK\x07\x08`; neither can be a DOCX, so the local-header prefix is the

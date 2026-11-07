@@ -10,6 +10,7 @@ from __future__ import annotations
 from ...errors import ParseError
 from ..base import BaseHandler
 from ..ooxml import opc
+from ..ooxml import package_f1 as pf
 from . import f1
 from . import inspect as _inspect
 
@@ -19,6 +20,16 @@ class XlsxHandler(BaseHandler):
     magic = (b"PK\x03\x04",)
     fidelities = ("F1",)
 
+
+    def __init__(self, check_memory: bool = True) -> None:
+        self.check_memory = check_memory
+
+    def scrub(self, data: bytes, fidelity: str) -> bytes:
+        # Before any part is inflated: priced from the declared part sizes
+        # (`package_f1.check_memory`, November hostile catalogue).
+        if self.check_memory:
+            pf.check_memory(data)
+        return super().scrub(data, fidelity)
     def matches(self, header: bytes) -> bool:
         return header.startswith(b"PK\x03\x04")
 

@@ -110,15 +110,15 @@ def default_dispatcher(keep_unknown_members: bool = False,
     # is shared with every ZIP ever made -- so it gets asked only after every format
     # with a distinctive prefix has declined.
     from .formats.docx.handler import DocxHandler
-    d.register(DocxHandler())
+    d.register(DocxHandler(check_memory=check_memory))
     # Excel: an OOXML package whose main part is `xl/workbook.xml`. After DOCX
     # (`opc.main_part` asks for Word's main part first) and before the plain-archive
     # handler, which refuses Office packages by name.
     from .formats.xlsx.handler import XlsxHandler
-    d.register(XlsxHandler())
+    d.register(XlsxHandler(check_memory=check_memory))
     # PowerPoint: main part `ppt/presentation.xml`, the same reasoning.
     from .formats.pptx.handler import PptxHandler
-    d.register(PptxHandler())
+    d.register(PptxHandler(check_memory=check_memory))
     # EPUB: a ZIP whose `mimetype` names it. Before the plain-archive handler,
     # which refuses OCF packages by name.
     from .formats.epub.handler import EpubHandler

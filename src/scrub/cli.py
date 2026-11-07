@@ -31,8 +31,12 @@ hold (limit #38; see `resources.py`). `--skip-memory-check` overrides it.
 
 Exit codes (stable, so the harness/tests can assert on them):
   0 ok · 2 usage · 3 unsupported format · 4 parse error · 5 fidelity error
-  6 content/residual error · 7 not enough memory · 1 unexpected
+  6 content/residual error · 7 resource limit (memory, page count) · 1 unexpected
   8 folder mode: the run finished, but not every file was written out
+  9 a program this level needs (ffmpeg, lame, jpegtran, poppler) is
+    missing, or refused the file
+Every refusal is a subclass of ScrubError with its own code; exit 1 is kept for
+what nobody anticipated, and `test_exit_codes.py` holds the source to that.
 
 **Folder mode**: when the input is a directory, every file in it is cleaned into
 the same place under the output directory and one results sheet is written there
@@ -45,7 +49,7 @@ import os
 import sys
 import tempfile
 
-from . import crosscheck, resources
+from . import crosscheck, resources, workdir
 from . import fidelity as fid
 from . import report as rep
 from .dispatch import default_dispatcher
@@ -55,6 +59,7 @@ from .errors import (
     ParseError,
     ResourceError,
     ScrubError,
+    ToolError,
     UnsupportedFormatError,
 )
 from .textfmt import clip
@@ -65,7 +70,17 @@ _EXIT = {
     FidelityError: 5,
     ContentError: 6,
     ResourceError: 7,
+    ToolError: 9,
 }
+
+
+def exit_code(exc: BaseException) -> int:
+    """The documented code for a refusal, found through its class hierarchy (a
+    subclass of ParseError is still a parse error); 1 for anything else."""
+    for cls in type(exc).__mro__:
+        if cls in _EXIT:
+            return _EXIT[cls]
+    return 1
 
 
 def output_mode(in_path: str) -> int:
@@ -77,6 +92,23 @@ def output_mode(in_path: str) -> int:
     os.umask(umask)
     executable = os.stat(in_path).st_mode & 0o111
     return (0o777 if executable else 0o666) & ~umask
+
+
+def output_problem(in_path: str, out_path: str) -> str | None:
+    """Why `out_path` cannot take the cleaned file, or None. Checked before the input
+    is read (November hostile catalogue): `scrub a.jpg a.jpg` replaced the original
+    with the cleaned copy and exited 0 -- with the lossy level, the only copy -- and
+    an existing folder as the output failed as "unexpected" (exit 1). Folder mode
+    refuses the same layouts (`folder.py`)."""
+    if os.path.isdir(out_path):
+        return (f"{out_path} is a folder; give the cleaned file's path (a folder is "
+                "cleaned whole only when the input is a folder too)")
+    try:
+        if os.path.exists(out_path) and os.path.samefile(in_path, out_path):
+            return f"{out_path} is the input itself; the original would be replaced"
+    except OSError:
+        pass
+    return None
 
 
 def _write_atomic(path: str, data: bytes, mode: int | None = None) -> None:
@@ -126,6 +158,8 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
     for a feature none of them use.
     """
     fid.validate(fidelity)
+    # Copies a killed run left in its private work folder go first (workdir.py).
+    workdir.sweep()
     dispatcher = dispatcher or default_dispatcher(
         keep_unknown_members=keep_unknown_members, check_memory=check_memory,
         drop_subtitles=drop_subtitles)
@@ -229,6 +263,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if os.path.isdir(args.input):
         return _main_folder(args)
+    problem = output_problem(args.input, args.output)
+    if problem:
+        print(f"scrub: {problem}; nothing was read or written", file=sys.stderr)
+        return 2
     try:
         advisories, report = scrub_file_reported(
             args.input, args.output, args.fidelity,
@@ -238,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
             drop_subtitles=args.drop_subtitles)
     except ScrubError as e:
         print(f"scrub: {type(e).__name__}: {e}", file=sys.stderr)
-        return _EXIT.get(type(e), 1)
+        return exit_code(e)
     except FileNotFoundError as e:
         print(f"scrub: {e}", file=sys.stderr)
         return 2

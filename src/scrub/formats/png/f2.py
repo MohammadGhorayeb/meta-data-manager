@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import io
 
-from ...errors import ContentError
+from ...errors import ContentError, ParseError, ResourceError
 from . import chunks as ck
 
 # Fixed => producer-independent deflate. Max compression, deterministic.
@@ -30,9 +30,22 @@ _RENDER_INFO = ("transparency", "gamma")
 
 
 def _open(data: bytes):
+    """Decode with Pillow, its failures converted at the boundary: chunks whose
+    CRCs are right but whose contents are damaged (a broken IHDR, an IDAT that does
+    not inflate) reach Pillow, and its own exception types escaped the fail-closed
+    contract as "unexpected" (found by the November fuzz campaign, which repairs
+    the CRCs it breaks). An image declaring more pixels than Pillow will allocate
+    is a resource refusal, not a parse failure."""
     from PIL import Image
-    im = Image.open(io.BytesIO(data))
-    im.load()
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.load()
+    except Image.DecompressionBombError as exc:
+        raise ResourceError(f"PNG F2: the picture is too large to decode ({exc})") \
+            from None
+    except (OSError, SyntaxError, ValueError, EOFError) as exc:
+        raise ParseError(f"PNG F2: the picture does not decode "
+                         f"({type(exc).__name__}: {exc})") from None
     return im
 
 

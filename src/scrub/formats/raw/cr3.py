@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import struct
 
-from ...errors import ParseError, ScrubError
+from ...errors import ContentError, ParseError
 from ...standards import isobmff as iso
 from ...standards import tiff_ifd as t
 from . import f1, identity
@@ -64,7 +64,7 @@ def _empty_xmp(length: int) -> bytes:
     whitespace XMP reserves for in-place editing."""
     pad = length - len(_EMPTY_XMP_HEAD) - len(_EMPTY_XMP_TAIL)
     if pad < 1:
-        raise ScrubError("CR3: the XMP box is too small for an empty packet")
+        raise ParseError("CR3: the XMP box is too small for an empty packet")
     return _EMPTY_XMP_HEAD + b"\n" + b" " * (pad - 1) + _EMPTY_XMP_TAIL
 
 
@@ -77,6 +77,15 @@ def _xmp_is_empty(body: bytes) -> bool:
 def _jpeg_at(buf, start: int, end: int) -> tuple[int, int] | None:
     at = bytes(buf[start:min(end, start + 64)]).find(b"\xff\xd8\xff")
     return (start + at, end - start - at) if at != -1 else None
+
+
+def _need(trak, path: bytes):
+    """A box every CR3 track has; a damaged file can lack it, which used to escape
+    as AttributeError on None (November fuzz campaign)."""
+    box = trak.find(path)
+    if box is None:
+        raise ParseError(f"CR3: a track has no {path.decode()} box")
+    return box
 
 
 def scrub(data: bytes) -> bytes:
@@ -179,9 +188,9 @@ def _scrub(data: bytes) -> tuple[bytes, list[str]]:
 
     raw_regions: list[tuple[int, int]] = []
     for trak in (c for c in moov.children if c.type == b"trak"):
-        handler = trak.find(b"mdia/hdlr").payload[8:12]
-        stsd = trak.find(b"mdia/minf/stbl/stsd")
-        chunks = iso.chunks(trak.find(b"mdia/minf/stbl"), limit=len(data))
+        handler = _need(trak, b"mdia/hdlr").payload[8:12]
+        stsd = _need(trak, b"mdia/minf/stbl/stsd")
+        chunks = iso.chunks(_need(trak, b"mdia/minf/stbl"), limit=len(data))
         spans = [(c.offset, c.size) for c in chunks if c.sample_sizes]
         if handler == b"meta":                             # CTMD
             for at, n in spans:
@@ -200,10 +209,10 @@ def _scrub(data: bytes) -> tuple[bytes, list[str]]:
 
     out = bytes(buf)
     if len(out) != len(data):
-        raise ScrubError("CR3 F1 changed the file's length")
+        raise ContentError("CR3 F1 changed the file's length")
     for at, n in raw_regions:
         if out[at:at + n] != data[at:at + n]:
-            raise ScrubError(f"CR3 F1 altered raw image data at {at}")
+            raise ContentError(f"CR3 F1 altered raw image data at {at}")
     return out, removed
 
 
@@ -280,6 +289,16 @@ def describe(data: bytes) -> dict[str, str]:
     return out
 
 
+def _readable_ifd0(block: bytes, name: bytes):
+    """A metadata block's IFD0, or a refusal: without it the identity fields cannot
+    be located, so F1 cannot vouch for the block (the check crashed on None before,
+    found by the November fuzz campaign)."""
+    ifd0 = t.parse(block, strict=True).ifd("IFD0")
+    if ifd0 is None:
+        raise ParseError(f"CR3: {name.decode()} has no readable IFD0")
+    return ifd0
+
+
 def residuals(data: bytes) -> list[str]:
     out: list[str] = []
     tops, moov_h, moov, blocks = _layout(data)
@@ -287,7 +306,7 @@ def residuals(data: bytes) -> list[str]:
               b"CMT3": (identity.MAKERNOTE_FIELDS["canon"], "MakerNote")}
     for name, (fields, src) in checks.items():
         start, end = blocks[name]
-        ifd0 = t.parse(data[start:end], strict=True).ifd("IFD0")
+        ifd0 = _readable_ifd0(data[start:end], name)
         for f in _ifd0_fields(fields, src):
             e = ifd0.get(f.tag)
             if e is None:
@@ -303,7 +322,7 @@ def residuals(data: bytes) -> list[str]:
                 out.append(f"{label} survives in {name.decode()}")
     if b"CMT4" in blocks:
         start, end = blocks[b"CMT4"]
-        if t.parse(data[start:end], strict=True).ifd("IFD0").entries:
+        if _readable_ifd0(data[start:end], b"CMT4").entries:
             out.append("GPS survives in CMT4")
     for box in moov.walk():
         if box.type in iso.TIMESTAMP_BOXES:
@@ -315,9 +334,9 @@ def residuals(data: bytes) -> list[str]:
             if not _xmp_is_empty(data[b.offset + b.header_len:b.end]):
                 out.append("XMP survives")
     for trak in (c for c in moov.children if c.type == b"trak"):
-        if trak.find(b"mdia/hdlr").payload[8:12] != b"meta":
+        if _need(trak, b"mdia/hdlr").payload[8:12] != b"meta":
             continue
-        for c in iso.chunks(trak.find(b"mdia/minf/stbl"), limit=len(data)):
+        for c in iso.chunks(_need(trak, b"mdia/minf/stbl"), limit=len(data)):
             sample = data[c.offset:c.end]
             for pos, size, kind in _ctmd_records(sample):
                 record = sample[pos:pos + size]
@@ -326,6 +345,10 @@ def residuals(data: bytes) -> list[str]:
                 if _CTMD_TIFF.get(kind) == "MakerNote" and record[20:24] in (
                         b"II*\x00", b"MM\x00*"):
                     view, ifd0 = _ctmd_tiff(record)
+                    if ifd0 is None:
+                        raise ParseError(f"CR3: CTMD record {kind}'s maker note has no "
+                                         "readable IFD; its identity fields cannot be "
+                                         "checked")
                     e = ifd0.get(0x000D)
                     if e is not None and t.value_bytes(view, e).strip(b"\x00"):
                         out.append(f"CameraInfo survives in CTMD record {kind}")

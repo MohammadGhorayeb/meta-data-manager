@@ -26,8 +26,9 @@ import os
 import pathlib
 import shutil
 import subprocess
-import tempfile
 
+from ... import tools
+from ... import workdir as wd
 from ...errors import ContentError, FidelityError, ParseError
 from ..ooxml import opc
 from . import f2
@@ -61,7 +62,7 @@ def _round_trip(data: bytes, workdir: str) -> bytes:
     out = os.path.join(workdir, "out")
     os.makedirs(out, exist_ok=True)
     try:
-        proc = subprocess.run(
+        proc = tools.run(
             [ENGINE, "--headless", profile_arg(workdir), "--convert-to", FILTER,
              "--outdir", out, src],
             capture_output=True, timeout=TIMEOUT)
@@ -101,7 +102,7 @@ def scrub(data: bytes) -> bytes:
     if structural:
         raise ContentError("; ".join(sorted(set(structural))))
 
-    with tempfile.TemporaryDirectory(prefix="docx_f3_") as workdir:
+    with wd.workdir("docx-f3") as workdir:
         retyped = _round_trip(data, workdir)
     return f2.scrub(retyped)
 

@@ -31,7 +31,7 @@ import re
 from dataclasses import dataclass
 from itertools import pairwise
 
-from ...errors import ParseError, ScrubError
+from ...errors import ContentError, ParseError
 from ...standards import isobmff as iso
 
 KEEP_TOP = {b"ftyp", b"moov", b"mdat"}
@@ -276,7 +276,7 @@ def scrub(data: bytes, drop_subtitles: bool = False) -> bytes:
                                        for c in t.chunks])
     moov_bytes = iso.serialize([moov])
     if len(moov_bytes) != moov_len:
-        raise ScrubError("MP4: moov changed size when offsets were filled in")
+        raise ContentError("MP4: moov changed size when offsets were filled in")
 
     # Assembled as a list of views and joined ONCE: a bytearray grown chunk by
     # chunk and then copied into `bytes` holds the whole output twice at its peak,
@@ -304,7 +304,7 @@ def scrub(data: bytes, drop_subtitles: bool = False) -> bytes:
                                                limit=len(result))
                                     for t in _tracks(out_moov)])
     if after != before:
-        raise ScrubError("MP4 F1 altered the samples of a kept track")
+        raise ContentError("MP4 F1 altered the samples of a kept track")
     return result
 
 

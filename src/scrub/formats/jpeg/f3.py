@@ -30,7 +30,7 @@ from __future__ import annotations
 import io
 import warnings
 
-from ...errors import ContentError, ParseError, ScrubError
+from ...errors import ContentError, ParseError, ResourceError, ToolError
 from . import orientation
 from . import segments as seg
 
@@ -52,6 +52,9 @@ def _open_rgb(data: bytes):
             with Image.open(io.BytesIO(data)) as im:
                 rgb = im.convert("RGB")
                 return Image.frombytes("RGB", rgb.size, rgb.tobytes())
+        except Image.DecompressionBombError as exc:
+            # Not an OSError: it escaped as "unexpected" (November catalogue).
+            raise ResourceError(f"JPEG: too large to decode ({exc})") from None
         except (UnidentifiedImageError, OSError, ValueError) as exc:
             # A JPEG whose entropy-coded scan is damaged parses far enough for the
             # segment walker to accept it and then fails in the decoder. Pillow's
@@ -65,6 +68,7 @@ def scrub(data: bytes) -> bytes:
     Raises ContentError if the re-encode diverges perceptually past the gate."""
     # Parse first so a non-JPEG / malformed input fails closed with our error.
     seg.walk(data)
+    seg.check_decodable_size(data, "F3")
 
     # A rotated photo is re-encoded the way it is displayed, so it needs no tag:
     # the EXIF orientation is applied to the pixels, as MAT2 does (orientation.py).
@@ -86,7 +90,7 @@ def _check_perceptual(original: bytes, scrubbed: bytes) -> None:
     try:
         import imagehash
     except ImportError as e:  # pragma: no cover - imagehash is a pinned dep
-        raise ScrubError("imagehash required for JPEG F3 content verification") from e
+        raise ToolError("imagehash required for JPEG F3 content verification") from e
     h_in = imagehash.phash(orientation.apply(_open_rgb(original),
                                             orientation.read(original)))
     h_out = imagehash.phash(_open_rgb(scrubbed))

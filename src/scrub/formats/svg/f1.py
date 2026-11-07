@@ -155,8 +155,10 @@ def _check_encoding(xml: bytes) -> None:
         raise ParseError("SVG: UTF-16 is not handled -- not scrubbed (limit #57)")
     m = re.match(rb'\s*<\?xml[^>]*encoding\s*=\s*["\']([^"\']+)', xml.lstrip(b"\xef\xbb\xbf"))
     if m and m.group(1).decode("ascii", "replace").lower() not in _ASCII_COMPATIBLE:
-        raise ParseError(f"SVG: encoding {m.group(1).decode()!r} is not handled -- not "
-                         "scrubbed (limit #57)")
+        # Decoded with 'replace': the name can hold any byte, and a strict decode
+        # here raised UnicodeDecodeError instead of this refusal (November fuzz).
+        raise ParseError(f"SVG: encoding {m.group(1).decode('ascii', 'replace')!r} is "
+                         "not handled -- not scrubbed (limit #57)")
 
 
 # --------------------------------------------------------------------------- #

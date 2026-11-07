@@ -17,8 +17,8 @@ import posixpath
 import re
 from collections.abc import Iterable
 
-from ...errors import ContentError, ParseError
-from . import opc, xmlspans, zipwrite
+from ...errors import ContentError, ParseError, ResourceError
+from . import opc, xmlspans, zipread, zipwrite
 from . import xmlsurgery as xs
 from .opc import Package
 
@@ -288,6 +288,36 @@ def preflight(pkg: Package) -> list[str]:
             "the input already has relationships pointing at parts it does not "
             f"contain: {inherited}")
     return problems
+
+
+# Peak memory per byte of XML part, MEASURED on Word F1 (November hostile catalogue):
+# a document.xml of 32, 128 and 256 MiB peaked at 912 MB, 3.5 GB and 5.9 GB -- 22 to
+# 27 times its size, because every element becomes an object. With a margin, as the
+# video factors have (limit #38). Other members cost what a plain archive's do.
+XML_MEMORY_FACTOR = 28
+_XML_PART = (".xml", ".rels", ".vml")
+
+
+def check_memory(data: bytes, available: int | None = None) -> None:
+    """Refuse up front a package whose DECLARED part sizes need more memory than the
+    machine has free -- before any part is inflated. The declared sizes are what
+    inflation is held to (`zipread`: a part that inflates past its size is refused),
+    so a 1 MB file declaring a 1 GiB `document.xml` is priced at what it would
+    really cost: it ran past 120 s and 6.5 GB before this check, and is now refused
+    in a moment, saying how much it needs. `--skip-memory-check` turns it off."""
+    from ... import resources
+    from ..zip.f1 import MEMORY_FACTOR
+    arc = zipread.read(data)
+    xml = sum(e.uncomp_size for e in arc.entries if e.name.lower().endswith(_XML_PART))
+    other = sum(e.uncomp_size for e in arc.entries) - xml
+    need = 2 * len(data) + XML_MEMORY_FACTOR * xml + MEMORY_FACTOR * other
+    free = resources.available_memory() if available is None else available
+    if free is not None and need > free:
+        raise ResourceError(
+            f"this document's parts inflate to {resources._human(xml + other)} "
+            f"({resources._human(xml)} of XML) and cleaning it needs about "
+            f"{resources._human(need)}; this machine has {resources._human(free)} "
+            "available. Nothing was written. Pass --skip-memory-check to try anyway.")
 
 
 def malformed_parts(pkg: Package, is_dropped) -> list[str]:

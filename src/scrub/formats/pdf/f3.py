@@ -37,12 +37,12 @@ from __future__ import annotations
 import io
 import os
 import shutil
-import subprocess
-import tempfile
 
 import pikepdf
 
-from ...errors import ContentError, ParseError, ScrubError
+from ... import tools
+from ... import workdir as wd
+from ...errors import ContentError, ParseError, ResourceError, ToolError
 from ..jpeg import f1 as jpeg_f1
 from . import f1
 from . import serialize as ser
@@ -65,7 +65,7 @@ _MAX_PAGES = 2000
 def _tool(name: str) -> str:
     path = shutil.which(name)
     if path is None:
-        raise ScrubError(
+        raise ToolError(
             f"{name} required for PDF F3 (brew install poppler). F3 fails closed "
             "rather than emit a file it did not rasterise.")
     return path
@@ -87,17 +87,17 @@ def _render(data: bytes, dpi: int, workdir: str) -> list[str]:
     with open(src, "wb") as f:
         f.write(data)
     stem = os.path.join(workdir, "page")
-    result = subprocess.run(
+    result = tools.run(
         [_tool("pdftoppm"), "-r", str(dpi), "-png", src, stem],
         capture_output=True)
     if result.returncode != 0:
-        raise ScrubError(
+        raise ToolError(
             "PDF F3: pdftoppm failed to render the document: "
             f"{result.stderr.decode('utf-8', 'replace').strip()[:200]}")
     pages = sorted(p for p in os.listdir(workdir)
                    if p.startswith("page-") and p.endswith(".png"))
     if not pages:
-        raise ScrubError("PDF F3: pdftoppm produced no pages")
+        raise ToolError("PDF F3: pdftoppm produced no pages")
     return [os.path.join(workdir, p) for p in pages]
 
 
@@ -172,9 +172,9 @@ def scrub(data: bytes, dpi: int = DEFAULT_DPI) -> bytes:
 
     expected = _page_count(data)
     if expected > _MAX_PAGES:
-        raise ScrubError(f"PDF F3: {expected} pages exceeds the {_MAX_PAGES}-page cap")
+        raise ResourceError(f"PDF F3: {expected} pages exceeds the {_MAX_PAGES}-page cap")
 
-    with tempfile.TemporaryDirectory(prefix="pdf_f3_") as workdir:
+    with wd.workdir("pdf-f3") as workdir:
         pages = _render(data, dpi, workdir)
         if len(pages) != expected:
             raise ContentError(

@@ -34,9 +34,9 @@ from __future__ import annotations
 
 import io
 import shutil
-import subprocess
 
-from ...errors import ContentError, ParseError, ScrubError
+from ... import tools
+from ...errors import ContentError, ParseError, ResourceError, ToolError
 from . import orientation
 from . import segments as seg
 
@@ -50,7 +50,7 @@ _JPEGTRAN_ARGS = ("-optimize", "-copy", "none", "-restart", "0")
 def _jpegtran() -> str:
     path = shutil.which("jpegtran")
     if path is None:
-        raise ScrubError(
+        raise ToolError(
             "jpegtran not found on PATH; JPEG F2 requires libjpeg-turbo "
             "(brew install jpeg-turbo). F2 fails closed rather than fall back.")
     return path
@@ -66,9 +66,16 @@ def _decode_pixels(data: bytes) -> tuple[tuple[int, int], bytes]:
         # The torture/base corpus carries a fake MPF marker that Pillow flags as
         # a malformed MPO; irrelevant to pixel identity.
         warnings.filterwarnings("ignore", ".*malformed MPO.*")
-        with Image.open(io.BytesIO(data)) as im:
-            rgb = im.convert("RGB")
-            return rgb.size, rgb.tobytes()
+        try:
+            with Image.open(io.BytesIO(data)) as im:
+                rgb = im.convert("RGB")
+                return rgb.size, rgb.tobytes()
+        except Image.DecompressionBombError as exc:
+            raise ResourceError(f"JPEG F2: too large to decode ({exc})") from None
+        except (OSError, ValueError, SyntaxError) as exc:
+            # UnidentifiedImageError is an OSError. Reached once jpegtran stopped
+            # failing first (November fuzz campaign re-run).
+            raise ParseError(f"JPEG F2: the picture does not decode ({exc})") from None
 
 
 def scrub(data: bytes) -> bytes:
@@ -77,13 +84,14 @@ def scrub(data: bytes) -> bytes:
     # Parse first so a non-JPEG / malformed input fails closed with our error,
     # not an opaque jpegtran exit.
     seg.walk(data)
+    seg.check_decodable_size(data, "F2")
 
-    proc = subprocess.run(
+    proc = tools.run(
         [_jpegtran(), *_JPEGTRAN_ARGS],
         input=data, capture_output=True,
     )
     if proc.returncode != 0 or not proc.stdout:
-        raise ScrubError(
+        raise ToolError(
             f"jpegtran failed (exit {proc.returncode}): "
             f"{proc.stderr.decode('utf-8', 'replace').strip()}")
     out = proc.stdout

@@ -34,8 +34,9 @@ import random
 
 import pytest
 
+from src.scrub import cli
 from src.scrub.dispatch import default_dispatcher
-from src.scrub.errors import ScrubError
+from src.scrub.errors import ParseError, ScrubError
 
 # Tuned for the suite's time budget rather than for maximum coverage: this runs on
 # every push, twice (3.11 and 3.14). The wider sweep that found the original five
@@ -89,10 +90,12 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
     from . import mp4_corpus as vc
     from . import pdf_corpus as pc
     from . import pe_corpus as pec
+    from . import pptx_corpus as ppc
     from . import raw_corpus as rc
     from . import svg_corpus as svc
     from . import tiff_corpus as tfc
     from . import webp_corpus as wbc
+    from . import xlsx_corpus as xc
     from . import zip_corpus as zc
     from .test_png import _png
 
@@ -128,6 +131,10 @@ def _corpus(tmp_path) -> dict[str, tuple[bytes, tuple[str, ...]]]:
         # end in a ScrubError (Phase 6's validation pass added these three).
         "zip": (zc.build(1, shape="ditto"), ("F1",)),
         "epub": (epc.build(1, shape="sigil"), ("F1",)),
+        # Excel and PowerPoint, every locus planted (November plan N2a: they had
+        # been fuzzed once by hand, 3,000 each, and never by the suite).
+        "xlsx": (xc.build(1), ("F1",)),
+        "pptx": (ppc.build(1), ("F1",)),
     }
     if hc.HAVE_HEIF:
         out["heic"] = (open(hc.torture(str(tmp_path / "t.heic")), "rb").read(),
@@ -171,8 +178,13 @@ def test_a_damaged_file_never_escapes_the_fail_closed_contract(corpus_files, see
                     continue
                 try:
                     handler.scrub(blob, fidelity)
-                except ScrubError:
-                    continue                       # the documented outcome
+                except ScrubError as exc:
+                    # The documented outcome -- unless it is the bare base class,
+                    # which the CLI can only report as "unexpected" (exit 1). The
+                    # November campaign found jpegtran's refusals raised that way.
+                    if cli.exit_code(exc) == 1:
+                        escapes.append(f"{fmt}/{fidelity}/{label} scrub: bare "
+                                       f"{type(exc).__name__}: {exc}")
                 except Exception as exc:           # noqa: BLE001
                     escapes.append(f"{fmt}/{fidelity}/{label} scrub: "
                                    f"{type(exc).__name__}: {exc}")
@@ -265,3 +277,202 @@ def test_an_end_record_cut_short_is_a_refusal(cut):
             default_dispatcher().resolve(blob).scrub(blob, "F1")
         except ScrubError:
             pass
+
+
+# --------------------------------------------------------------------------- #
+# Found by the November campaign (scripts/fuzz_campaign.py, docs/november_plan.md
+# N2a). Each failed before its fix.
+# --------------------------------------------------------------------------- #
+def _png_with(chunk: bytes, body: bytes) -> bytes:
+    """`test_png._png()` with one chunk's data replaced and its CRC made right, so
+    the damage gets past the CRC check to the decoder behind it."""
+    import struct
+    import zlib
+
+    from .test_png import _png
+    data, out, pos = _png(), bytearray(), 8
+    out += data[:8]
+    while pos + 8 <= len(data):
+        length, ctype = struct.unpack(">I4s", data[pos:pos + 8])
+        b = body if ctype == chunk else data[pos + 8:pos + 8 + length]
+        out += struct.pack(">I", len(b)) + ctype + b
+        out += struct.pack(">I", zlib.crc32(ctype + b) & 0xFFFFFFFF)
+        pos += 12 + length
+    return bytes(out)
+
+
+@pytest.mark.parametrize("chunk,body", [
+    (b"IDAT", b"\x00" * 40),                                  # does not inflate
+    (b"IHDR", b"\x00\x00\x00\x10\x00\x00\x00\x10\x03\x02\x00\x00\x00"),  # depth 3
+])
+def test_a_png_whose_crcs_check_out_but_does_not_decode_is_a_parse_refusal(chunk, body):
+    """Pillow's UnidentifiedImageError and OSError escaped PNG F2 as "unexpected"."""
+    from src.scrub.formats.png import f2
+    with pytest.raises(ParseError):
+        f2.scrub(_png_with(chunk, body))
+
+
+def test_a_mach_o_signature_string_past_its_directory_is_a_parse_refusal():
+    """`bytes.index` raised ValueError("subsection not found") when a damaged
+    Mach-O's code-directory identifier had no NUL before the directory's end."""
+    from src.scrub.formats.exe import codesign
+    with pytest.raises(ParseError):
+        codesign._c_string(b"abc\0", 0, 3, "identifier")
+    assert codesign._c_string(b"abc\0def", 0, 8, "identifier") == b"abc"
+
+    from . import macho_corpus as mc
+    data = mc.build("alice", go=True)
+    blob = next(b for lbl, b in _mutations(data, random.Random(11), 20)
+                if lbl == "grow-10")
+    try:
+        default_dispatcher().resolve(blob).scrub(blob, "F1")
+    except ScrubError as exc:
+        assert cli.exit_code(exc) != 1
+
+
+
+def _replay(data: bytes, seed: int, label: str) -> bytes:
+    return next(b for lbl, b in _mutations(data, random.Random(seed), 1000) if lbl == label)
+
+
+def _refused(blob: bytes) -> ScrubError:
+    with pytest.raises(ScrubError) as caught:
+        default_dispatcher().resolve(blob).scrub(blob, "F1")
+    assert cli.exit_code(caught.value) != 1, caught.value
+    return caught.value
+
+
+def test_an_epub_naming_an_unknown_xml_encoding_is_a_parse_refusal():
+    """`encoding="TTF-8"` in META-INF made ElementTree raise LookupError."""
+    import io
+    import zipfile
+
+    from . import epub_corpus as epc
+    src = epc.build(1, shape="sigil")
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(src)) as zin, zipfile.ZipFile(out, "w") as zout:
+        for info in zin.infolist():
+            body = zin.read(info)
+            if info.filename == "META-INF/container.xml":
+                body = body.replace(b'encoding="UTF-8"', b'encoding="TTF-8"', 1)
+                assert b"TTF-8" in body
+            zout.writestr(info, body)
+    assert isinstance(_refused(out.getvalue()), ParseError)
+
+
+@pytest.mark.parametrize("shape,seed,label", [("msvc", 22, "flip-556"),
+                                              ("mingw", 22, "flip-678")])
+def test_a_pe_resource_directory_past_the_end_is_a_parse_refusal(shape, seed, label):
+    """struct.error escaped the PE resource walk when an offset or count pointed
+    past the end of the file."""
+    from . import pe_corpus as pec
+    data = (pec.build("alice", dll=True) if shape == "msvc"
+            else pec.build("alice", shape="mingw", go=True, plus=False))
+    assert isinstance(_refused(_replay(data, seed, label)), ParseError)
+
+
+def test_a_pdf_name_that_is_not_utf8_compares_as_no_match():
+    """A legal PDF name need not be UTF-8; `str()` on it raised UnicodeDecodeError
+    in F1's key stripping. It is none of the names F1 acts on."""
+    import pikepdf
+
+    from src.scrub.formats.pdf import f1 as pdf_f1
+
+    class Undecodable:                      # what pikepdf's Name did on byte 0xC9
+        def __str__(self):
+            raise UnicodeDecodeError("utf-8", b"\xc9", 0, 1, "invalid continuation byte")
+    assert pdf_f1._name({"/Type": Undecodable()}, "/Type") == ""
+    assert pdf_f1._name(pikepdf.Dictionary(Type=pikepdf.Name.Annot), "/Type") == "/Annot"
+
+
+def test_an_svg_encoding_name_with_any_byte_is_refused_by_name():
+    from src.scrub.formats.svg import f1 as svg_f1
+    with pytest.raises(ParseError, match="encoding"):
+        svg_f1._check_encoding(b'<?xml version="1.0" encoding="UT\xc6-8"?><svg/>')
+
+
+# The corpora below hold Pillow-encoded JPEGs, so their bytes can differ on another
+# platform; there the same seed and index make ANOTHER damaged file (the HEIC replay
+# above met this on Linux). Where the bytes match the machine the campaign ran on,
+# the replay must be refused; elsewhere it is held to the contract alone.
+_REFERENCE = {"cr3": "ad47346385be1128", "torture_jpeg": "bb490d455494ebaa"}
+
+
+def _is_reference(name: str, data: bytes) -> bool:
+    import hashlib
+    return hashlib.sha256(data).hexdigest()[:16] == _REFERENCE[name]
+
+
+def _held_to_contract(tmp_path, blob: bytes, fidelity: str = "F1") -> None:
+    src, dst = tmp_path / "in.bin", tmp_path / "out.bin"
+    src.write_bytes(blob)
+    try:
+        cli.scrub_file(str(src), str(dst), fidelity)
+    except ScrubError as exc:
+        assert cli.exit_code(exc) != 1, exc
+        assert not dst.exists()
+
+
+def test_a_cr3_track_without_its_sample_table_is_a_parse_refusal(tmp_path):
+    """AttributeError on None escaped when a damaged CR3 lacked a track's boxes."""
+    from . import raw_corpus as rc
+    data = rc.cr3()
+    if not _is_reference("cr3", data):
+        _held_to_contract(tmp_path, _nth(data, 33, 6))
+        return
+    assert isinstance(_refused(_replay(data, 33, "zero-4")), ParseError)
+
+
+# The campaign's re-run (7 left of 1,803), each through the CLI path it was found on.
+def _nth(data: bytes, seed: int, index: int) -> bytes:
+    return next(b for i, (_lbl, b) in enumerate(_mutations(data, random.Random(seed), 1000))
+                if i == index)
+
+
+def _cli_refuses(tmp_path, blob: bytes, fidelity: str = "F1") -> ScrubError:
+    src, dst = tmp_path / "in.bin", tmp_path / "out.bin"
+    src.write_bytes(blob)
+    with pytest.raises(ScrubError) as caught:
+        cli.scrub_file(str(src), str(dst), fidelity)
+    assert cli.exit_code(caught.value) != 1, caught.value
+    assert not dst.exists()
+    return caught.value
+
+
+@pytest.mark.parametrize("seed,index", [(22, 299), (33, 353), (33, 689)])
+def test_a_cr3_metadata_block_without_a_readable_ifd_is_refused(tmp_path, seed, index):
+    """The residual check crashed on None (AttributeError) for a damaged CMT block or
+    CTMD maker note; without the IFD the identity fields cannot be checked."""
+    from . import raw_corpus as rc
+    data = rc.cr3()
+    if not _is_reference("cr3", data):
+        _held_to_contract(tmp_path, _nth(data, seed, index))
+        return
+    assert isinstance(_cli_refuses(tmp_path, _nth(data, seed, index)), ParseError)
+
+
+def test_a_jpeg_that_jpegtran_accepts_but_pillow_cannot_decode_is_a_parse_refusal(tmp_path):
+    import shutil
+
+    from . import corpus as imgc
+    if shutil.which("jpegtran") is None:
+        pytest.skip("jpegtran absent")
+    data = imgc.build_torture_jpeg()
+    if not _is_reference("torture_jpeg", data):
+        _held_to_contract(tmp_path, _nth(data, 22, 698), "F2")
+        return
+    assert isinstance(_cli_refuses(tmp_path, _nth(data, 22, 698), "F2"), ParseError)
+
+
+def test_a_pdf_stream_filter_name_that_is_not_text_is_refused():
+    """Refused, not read as no match: a damaged /DCTDecode would skip the JPEG clean."""
+    from src.scrub.formats.pdf import f1 as pdf_f1
+
+    class Undecodable:
+        def __str__(self):
+            raise UnicodeDecodeError("utf-8", b"\xd4", 0, 1, "invalid continuation byte")
+
+    class Stream(dict):
+        pass
+    with pytest.raises(ParseError, match="filter"):
+        pdf_f1._filter_names(Stream({"/Filter": [Undecodable()]}))

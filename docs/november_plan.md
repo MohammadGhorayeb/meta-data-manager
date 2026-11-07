@@ -95,6 +95,22 @@ outcome the CLI and folder mode can produce.
 within its ceiling; kill test leaves nothing; limits.md gains a row for each attack
 we refuse rather than handle.
 
+**Status (8 Nov): done, local.** Campaign: 160,476 files, 36 shapes (46 shape-and-level
+pairs); 1,803 escapes in 11 classes (jpegtran and other external-program failures raised as the bare
+`ScrubError`; Pillow errors behind valid PNG CRCs; `bytes.index` in Mach-O; a
+`LookupError` encoding in EPUB; `struct.error` in PE resources; undecodable PDF
+names; an SVG refusal message that crashed; `None` boxes in CR3; our own safety
+checks raised bare). All fixed with replayed tests that fail without the fix; the
+re-run found 7 more in 3 classes (CR3's residual check on a block
+with no readable IFD, a JPEG jpegtran accepts but Pillow cannot decode, a PDF filter
+name that is not text -- refused, since a damaged `/DCTDecode` would skip the JPEG
+clean); a third run: 160,476 files, zero escapes. No hang, no residue. Catalogue: 15 rows, 7 of them failed when
+probed (see `test_hostile.py`'s docstring); limits #83-#86. New: `tools.run`
+(time limit on every external program), `workdir` (private, swept), exit 9
+(`ToolError`), `cli.exit_code` by class hierarchy, Office memory preflight (28x
+XML, measured). Provisional numbers to confirm: the time limit (5 min + 20 s/MB)
+and the XML factor's margin.
+
 ### N3 — performance: measured, then bounded (16–24 Nov)
 Schedule item 2. Measure before changing anything.
 

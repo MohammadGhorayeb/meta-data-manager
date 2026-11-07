@@ -37,3 +37,11 @@ class ContentError(ScrubError):
     """Scrubbing would alter perceptual content beyond the fidelity contract
     (e.g. dropping a transform-critical APP14 or a render-affecting PNG chunk).
     Raised so the CLI refuses rather than silently corrupt the file."""
+
+
+class ToolError(ScrubError):
+    """A program this cleaning level hands the file to (ffmpeg, lame, jpegtran,
+    poppler) is missing, or refused the file. Kept apart from a parse
+    error because the fix is different: install the program, or use a level that
+    does not need it. The program's own message is part of the error."""
+

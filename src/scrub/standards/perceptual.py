@@ -20,8 +20,8 @@ would have to re-learn them:
 """
 from __future__ import annotations
 
-import subprocess
-
+from .. import tools
+from .. import workdir as wd
 from ..errors import ContentError
 
 PCM_RATE = 44100
@@ -52,14 +52,13 @@ def pcm_mono(data: bytes, ffmpeg: str = "ffmpeg"):
     container.
     """
     import os
-    import tempfile
 
     import numpy as np
-    with tempfile.TemporaryDirectory(prefix="pgate_") as td:
+    with wd.workdir("perceptual") as td:
         path = os.path.join(td, "in.bin")
         with open(path, "wb") as f:
             f.write(data)
-        r = subprocess.run([ffmpeg, "-i", path, "-map", "0:a", "-vn", "-f", "s16le",
+        r = tools.run([ffmpeg, "-i", path, "-map", "0:a", "-vn", "-f", "s16le",
                             "-ac", "1", "-ar", str(PCM_RATE), "-loglevel", "error",
                             "pipe:1"], capture_output=True)
     return np.frombuffer(r.stdout, dtype="<i2").astype(np.float64)

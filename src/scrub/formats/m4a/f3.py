@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
-import tempfile
 
-from ...errors import ScrubError
+from ... import tools
+from ... import workdir as wd
+from ...errors import ToolError
 from ...standards import isobmff as iso
 from ...standards import perceptual
 from . import f1
@@ -34,7 +34,7 @@ CANONICAL_CODEC = "aac"          # ffmpeg's native encoder (no external dependen
 def _tool(name: str) -> str:
     path = shutil.which(name)
     if path is None:
-        raise ScrubError(
+        raise ToolError(
             f"{name} required for M4A F3 (brew install ffmpeg). F3 fails closed "
             "rather than emit an un-normalized file.")
     return path
@@ -72,19 +72,19 @@ def _source_rate(data: bytes) -> int:
 
 def scrub(data: bytes) -> bytes:
     ffmpeg = _tool("ffmpeg")
-    with tempfile.TemporaryDirectory(prefix="m4af3_") as td:
+    with wd.workdir("m4a-f3") as td:
         inp = os.path.join(td, "in.m4a")
         out = os.path.join(td, "out.m4a")
         with open(inp, "wb") as f:
             f.write(data)
-        enc = subprocess.run(
+        enc = tools.run(
             [ffmpeg, "-y", "-i", inp, "-map", "0:a", "-vn",
              "-c:a", CANONICAL_CODEC, "-b:a", CANONICAL_BITRATE,
              "-map_metadata", "-1", "-loglevel", "error", out],
             capture_output=True)
         if enc.returncode != 0 or not os.path.exists(out):
-            raise ScrubError("M4A F3 re-encode failed: "
-                             + enc.stderr.decode("utf-8", "replace").strip()[:200])
+            raise ToolError("M4A F3 re-encode failed: "
+                            + enc.stderr.decode("utf-8", "replace").strip()[:200])
         with open(out, "rb") as f:
             encoded = f.read()
 

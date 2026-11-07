@@ -19,10 +19,10 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-import subprocess
-import tempfile
 
-from ...errors import ContentError, ScrubError
+from ... import tools
+from ... import workdir as wd
+from ...errors import ContentError, ToolError
 from . import f1
 from . import walker as w
 
@@ -35,7 +35,7 @@ COMPRESSION_LEVEL = 8
 def _tool(name: str) -> str:
     path = shutil.which(name)
     if path is None:
-        raise ScrubError(
+        raise ToolError(
             f"{name} required for FLAC F2 (brew install ffmpeg). F2 fails closed "
             "rather than emit an un-normalized file.")
     return path
@@ -47,9 +47,9 @@ def _pcm_md5(path_or_data, is_path: bool = False) -> str:
     cmd = [ffmpeg, "-i", path_or_data if is_path else "pipe:0",
            "-map", "0:a", "-vn", "-f", "s32le", "-loglevel", "error", "pipe:1"]
     if is_path:
-        r = subprocess.run(cmd, capture_output=True)
+        r = tools.run(cmd, capture_output=True)
     else:
-        r = subprocess.run(cmd, input=path_or_data, capture_output=True)
+        r = tools.run(cmd, input=path_or_data, capture_output=True)
     if r.returncode != 0:
         raise ContentError("FLAC F2: could not decode audio for the content check: "
                            + r.stderr.decode("utf-8", "replace").strip()[:200])
@@ -61,12 +61,12 @@ def scrub(data: bytes) -> bytes:
     before = w.streaminfo(layout)
 
     ffmpeg = _tool("ffmpeg")
-    with tempfile.TemporaryDirectory(prefix="flacf2_") as td:
+    with wd.workdir("flac-f2") as td:
         inp = os.path.join(td, "in.flac")
         out = os.path.join(td, "out.flac")
         with open(inp, "wb") as f:
             f.write(data)
-        enc = subprocess.run(
+        enc = tools.run(
             # -map 0:a + -vn: take ONLY the audio. Embedded cover art is exposed by
             # ffmpeg as a video stream, so without this the re-encode either carries
             # the art through (a metadata leak, and a nested one at that) or dies
@@ -76,8 +76,8 @@ def scrub(data: bytes) -> bytes:
              "-loglevel", "error", out],
             capture_output=True)
         if enc.returncode != 0 or not os.path.exists(out):
-            raise ScrubError("FLAC F2 re-encode failed: "
-                             + enc.stderr.decode("utf-8", "replace").strip()[:200])
+            raise ToolError("FLAC F2 re-encode failed: "
+                            + enc.stderr.decode("utf-8", "replace").strip()[:200])
         with open(out, "rb") as f:
             encoded = f.read()
 

@@ -158,15 +158,27 @@ def _walk_all(pdf: pikepdf.Pdf):
             stack.extend((v, depth + 1) for v in obj)
 
 
+def _name(obj, key: str) -> str:
+    """A name's text, for comparing with the names we act on. PDF names are bytes,
+    and a legal one need not be UTF-8; pikepdf's `str()` then raises
+    UnicodeDecodeError (it escaped F1, found by the November fuzz campaign). Such a
+    name is none of the names we look for, so it compares as no match rather than
+    refusing a legal file."""
+    try:
+        return str(obj.get(key) or "")
+    except UnicodeDecodeError:
+        return ""
+
+
 def _strip_keys(pdf: pikepdf.Pdf) -> None:
     """Delete the metadata keys, wherever in the graph they turn up."""
     for obj in _walk_dicts(pdf):
         for key in sorted(set(obj.keys()) & DROP_ANYWHERE):
             del obj[key]
-        if str(obj.get("/Type") or "") == "/Annot":
+        if _name(obj, "/Type") == "/Annot":
             for key in sorted(set(obj.keys()) & ANNOT_DROP):
                 del obj[key]
-        if str(obj.get("/S") or "") in ACTION_DROP_TYPES:
+        if _name(obj, "/S") in ACTION_DROP_TYPES:
             # A /Launch or /GoToR target is a full local filesystem path, and
             # /ImportData and /JavaScript carry one too.
             for key in sorted(set(obj.keys()) & {"/F", "/UF", "/Win", "/D", "/JS"}):
@@ -189,7 +201,7 @@ def _scrub_streams(pdf: pikepdf.Pdf) -> None:
         if not isinstance(obj, pikepdf.Stream):
             continue
         filters = _filter_names(obj)
-        subtype = str(obj.get("/Subtype") or "")
+        subtype = _name(obj, "/Subtype")
 
         if "/DCTDecode" in filters:
             raw = obj.read_raw_bytes()
@@ -220,7 +232,13 @@ def _filter_names(obj) -> list[str]:
     f = obj.get("/Filter")
     if f is None:
         return []
-    return [str(f)] if isinstance(f, pikepdf.Name) else [str(x) for x in f]
+    try:
+        return [str(f)] if isinstance(f, pikepdf.Name) else [str(x) for x in f]
+    except UnicodeDecodeError:
+        # Unlike /Type, refused rather than read as "no match": a /DCTDecode
+        # damaged into another name would skip the JPEG clean and keep its EXIF.
+        # Filter names are plain ASCII in every real file (November fuzz re-run).
+        raise ParseError("PDF: a stream names a filter that is not valid text") from None
 
 
 def _jpeg_scan(data: bytes) -> bytes:
@@ -353,7 +371,7 @@ def residuals(data: bytes) -> list[str]:
         for obj in _walk_dicts(pdf):
             for key in sorted(set(obj.keys()) & DROP_ANYWHERE):
                 out.append(f"{key} survived on object {obj.objgen[0]}")
-            if str(obj.get("/S") or "") in ACTION_DROP_TYPES and "/F" in obj:
+            if _name(obj, "/S") in ACTION_DROP_TYPES and "/F" in obj:
                 out.append(f"{obj.get('/S')} action target survived")
         for page in pdf.pages:
             for annot in (page.obj.get("/Annots") or []):
@@ -381,7 +399,7 @@ def _stream_residuals(pdf: pikepdf.Pdf) -> list[str]:
             leftover = jpeg_f1.residuals(obj.read_raw_bytes())
             out.extend(f"embedded JPEG: {r}" for r in leftover)
             continue
-        subtype = str(obj.get("/Subtype") or "")
+        subtype = _name(obj, "/Subtype")
         if subtype in ("/Image", "/Form") or obj.get("/Type") == "/Page":
             continue
         try:

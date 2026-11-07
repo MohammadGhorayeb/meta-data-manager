@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import struct
 
-from ...errors import ParseError, ScrubError
+from ...errors import ContentError, ParseError
 from ...standards import tiff_ifd as t
 from ..jpeg import f1 as jpeg_f1
 from ..jpeg import segments as jseg
@@ -103,8 +103,8 @@ def clean_jpeg_in_place(buf: bytearray, at: int, length: int) -> bool:
         return False
     cleaned = jpeg_f1.scrub(blob, keep_icc=True)
     if len(cleaned) > length:
-        raise ScrubError("TIFF: a cleaned embedded JPEG came out larger than the "
-                         "original")
+        raise ContentError("TIFF: a cleaned embedded JPEG came out larger than the "
+                           "original")
     buf[at:at + length] = cleaned + bytes(length - len(cleaned))
     return True
 
@@ -129,11 +129,11 @@ def check_image_data_untouched(data: bytes, buf: bytearray, before: dict,
     byte-identical in the output, except the embedded JPEGs F1 cleaned and anything
     it dropped on purpose."""
     if len(buf) != len(data):
-        raise ScrubError(f"{label} F1 changed the file's length")
+        raise ContentError(f"{label} F1 changed the file's length")
     view = memoryview(buf)
     for regions in before.values():
         for a, n in regions:
             if any(x <= a and a + n <= x + m for x, m in allowed):
                 continue
             if view[a:a + n] != data[a:a + n]:
-                raise ScrubError(f"{label} F1 altered image data at {a} ({n} bytes)")
+                raise ContentError(f"{label} F1 altered image data at {a} ({n} bytes)")

@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from itertools import pairwise
 
-from ..errors import ParseError, ScrubError
+from ..errors import ContentError, ParseError
 
 # Boxes whose payload is a sequence of child boxes rather than data. Anything not
 # listed is treated as a leaf: unknown boxes are never descended into, so an
@@ -607,7 +607,7 @@ def strip_and_repack(data: bytes, drop_types: set[bytes], *, label: str,
                           blank_handler_names=blank_handler_names)
     after = mdat_payload_offset(stripped)
     if after is None:
-        raise ScrubError(f"{label}: mdat vanished during strip")
+        raise ContentError(f"{label}: mdat vanished during strip")
 
     delta = after - before
     if delta:
@@ -616,20 +616,20 @@ def strip_and_repack(data: bytes, drop_types: set[bytes], *, label: str,
             # The media moved and nothing was patched. We cannot know there were
             # no tables -- only that we found none -- so every offset that does
             # exist is now wrong. Refuse rather than emit it.
-            raise ScrubError(
+            raise ContentError(
                 f"{label}: media moved by {delta} bytes but no stco/co64 table "
                 "was found to patch — refusing to emit a file whose sample "
                 "tables may point at the wrong bytes")
         # Patching cannot change a table's size (same entry count, same width), so
         # the offset measured above still holds. Assert rather than assume.
         if mdat_payload_offset(stripped) != after:
-            raise ScrubError(f"{label}: patching chunk offsets moved mdat again")
+            raise ContentError(f"{label}: patching chunk offsets moved mdat again")
 
     out = serialize(stripped)
     check = parse(out)
     out_mdat = next((b for b in check if b.type == b"mdat"), None)
     if out_mdat is None or out_mdat.payload != media:
-        raise ScrubError(f"{label} F1 altered the media samples")
+        raise ContentError(f"{label} F1 altered the media samples")
 
     # The check that would have caught the largesize bug on the day it was
     # written. Preserving the media BYTES is not the promise -- the promise is
@@ -671,16 +671,16 @@ def _verify_chunks_still_point_at_the_media(src: bytes, before: list[list[int]],
     real-file sweep on a 30-byte final chunk (`docs/p6_tail_plan.md` §14).
     """
     if len(before) != len(after):
-        raise ScrubError(f"{label}: chunk tables appeared or vanished")
+        raise ContentError(f"{label}: chunk tables appeared or vanished")
     # strict: a silently truncating zip would let a table-count mismatch
     # through the very check that exists to catch pointer damage.
     for old_offsets, new_offsets in zip(before, after, strict=True):
         if len(old_offsets) != len(new_offsets):
-            raise ScrubError(f"{label}: a chunk table changed length")
+            raise ContentError(f"{label}: a chunk table changed length")
         for old, new in zip(old_offsets, new_offsets, strict=True):
             n = min(probe, src_end - old)
             if n <= 0 or new + n > out_end or src[old:old + n] != out[new:new + n]:
-                raise ScrubError(
+                raise ContentError(
                     f"{label}: chunk offset {old} -> {new} no longer points at "
                     "the same media -- the file would parse and decode to noise")
 

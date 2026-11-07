@@ -21,6 +21,19 @@ _LABEL = {"tIME": "last-modified time", "eXIf": "EXIF block",
           "hIST": "palette histogram"}
 
 
+# The report shows a clipped line per value, so a text chunk is inflated only as far
+# as that needs. Inflated whole, a zTXt chunk of 1 MB holding 1 GiB of text took
+# 52 s and 6 GB to describe (November hostile catalogue) -- in a file the light
+# clean drops it from without ever inflating it.
+_DISPLAY_LIMIT = 1 << 16
+
+
+def _inflate(raw: bytes) -> bytes:
+    d = zlib.decompressobj()
+    out = d.decompress(raw, _DISPLAY_LIMIT)
+    return out + (b" [...]" if d.unconsumed_tail or not d.eof else b"")
+
+
 def _text(chunk: ck.Chunk) -> tuple[str, str] | None:
     """A PNG text chunk as (keyword, value). The three spellings differ only in
     compression and encoding, so they are decoded into one shape."""
@@ -32,14 +45,14 @@ def _text(chunk: ck.Chunk) -> tuple[str, str] | None:
         if chunk.ctype == "zTXt":
             key, _, rest = data.partition(b"\x00")
             return (key.decode("latin-1"),
-                    zlib.decompress(rest[1:]).decode("latin-1", "replace"))
+                    _inflate(rest[1:]).decode("latin-1", "replace"))
         if chunk.ctype == "iTXt":
             key, _, rest = data.partition(b"\x00")
             compressed = rest[:1] == b"\x01"
             body = rest[2:]
             for _ in range(2):                    # language tag, translated keyword
                 _, _, body = body.partition(b"\x00")
-            text = zlib.decompress(body) if compressed else body
+            text = _inflate(body) if compressed else body
             return key.decode("latin-1"), text.decode("utf-8", "replace")
     except Exception:                                     # noqa: BLE001
         return chunk.ctype, f"({len(data)} bytes, undecodable)"

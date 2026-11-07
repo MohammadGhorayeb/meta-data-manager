@@ -255,8 +255,14 @@ def _resource_tree(data, pe: Pe):
         if at in seen or depth > 3:
             raise ParseError("PE: resource directory loops")
         seen.add(at)
+        # A damaged offset or count can point past the end of the file (struct.error
+        # escaped here, found by the November fuzz campaign).
+        if at + 16 > len(data):
+            raise ParseError("PE: a resource directory lies outside the file")
         yield ("dir", at)
         named, ids = struct.unpack_from("<HH", data, at + 12)
+        if at + 16 + 8 * (named + ids) > len(data):
+            raise ParseError("PE: a resource directory runs past the end of the file")
         for i in range(named + ids):
             name, off = struct.unpack_from("<II", data, at + 16 + 8 * i)
             tid = type_id if depth else (None if name & 0x80000000 else name)

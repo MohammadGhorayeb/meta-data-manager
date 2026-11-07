@@ -131,16 +131,25 @@ def _page_hashes(data, cd: CodeDirectory) -> list[bytes]:
     return out
 
 
+def _c_string(data, start: int, end: int, what: str) -> bytes:
+    """A NUL-terminated string inside the code directory. One that runs past the
+    directory's end (a damaged offset) is a parse failure, not a `ValueError`
+    from `bytes.index` (found by the November fuzz campaign)."""
+    stop = data.find(b"\0", start, end) if start < end else -1
+    if stop < 0:
+        raise ParseError(f"Mach-O: the signature's {what} is not terminated "
+                         "inside its code directory")
+    return bytes(data[start:stop])
+
+
 def identifier(data, cd: CodeDirectory) -> bytes:
-    start = cd.at + cd.ident_offset
-    return bytes(data[start:data.index(b"\0", start, cd.at + cd.length)])
+    return _c_string(data, cd.at + cd.ident_offset, cd.at + cd.length, "identifier")
 
 
 def team(data, cd: CodeDirectory) -> bytes:
     if not cd.team_offset:
         return b""
-    start = cd.at + cd.team_offset
-    return bytes(data[start:data.index(b"\0", start, cd.at + cd.length)])
+    return _c_string(data, cd.at + cd.team_offset, cd.at + cd.length, "team ID")
 
 
 def _identifier_room(cd: CodeDirectory) -> int:

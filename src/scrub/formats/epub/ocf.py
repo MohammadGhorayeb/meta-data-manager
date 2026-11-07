@@ -46,7 +46,7 @@ PLACEHOLDER = "urn:uuid:00000000-0000-8000-8000-000000000000"
 def rootfile(container: bytes) -> str:
     try:
         root = ET.fromstring(container)
-    except ET.ParseError as exc:
+    except (ET.ParseError, LookupError) as exc:     # LookupError: encoding="TTF-8"
         raise ParseError(f"EPUB: {CONTAINER} is not well-formed ({exc})") from None
     paths = [r.get("full-path") for r in root.iter(f"{_CONTAINER_NS}rootfile")
              if r.get("media-type") == "application/oebps-package+xml"]
@@ -62,7 +62,7 @@ def obfuscated(encryption: bytes) -> dict[str, str]:
     encrypted another way is DRM, and refused."""
     try:
         root = ET.fromstring(encryption)
-    except ET.ParseError as exc:
+    except (ET.ParseError, LookupError) as exc:     # LookupError: encoding="TTF-8"
         raise ParseError(f"EPUB: {ENCRYPTION} is not well-formed ({exc})") from None
     out = {}
     for data in root.iter(f"{_ENC}EncryptedData"):

@@ -54,13 +54,13 @@ import io
 import os
 import re
 import shutil
-import subprocess
-import tempfile
 import zlib
 
 import pikepdf
 
-from ...errors import ContentError, ParseError, ScrubError
+from ... import tools
+from ... import workdir as wd
+from ...errors import ContentError, ParseError, ToolError
 from . import canon, f1
 from . import serialize as ser
 
@@ -301,7 +301,7 @@ def _assert_paint_identity(original: bytes, scrubbed: bytes) -> None:
 def _pdftotext() -> str:
     path = shutil.which("pdftotext")
     if path is None:
-        raise ScrubError(
+        raise ToolError(
             "pdftotext required for PDF F2 (brew install poppler). F2 fails closed "
             "rather than emit a page it could not check.")
     return path
@@ -314,7 +314,7 @@ def _words(path: str) -> list[tuple]:
 
     Only the `<doc>` body is read: the `<head>` echoes `/Info`, which F1 removes.
     """
-    result = subprocess.run([_pdftotext(), "-bbox", "-raw", path, "-"],
+    result = tools.run([_pdftotext(), "-bbox", "-raw", path, "-"],
                             capture_output=True)
     if result.returncode != 0:
         raise ContentError(
@@ -339,7 +339,7 @@ def _assert_text_identity(original: bytes, scrubbed: bytes) -> None:
     Messages name a page and a word number, never the word: they reach a folder
     run's results sheet, which travels with the files and names no values.
     """
-    with tempfile.TemporaryDirectory(prefix="pdf_f2_") as workdir:
+    with wd.workdir("pdf-f2") as workdir:
         sides = []
         for name, data in (("in.pdf", original), ("out.pdf", scrubbed)):
             path = os.path.join(workdir, name)

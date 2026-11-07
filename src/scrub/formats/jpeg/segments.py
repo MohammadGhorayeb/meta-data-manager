@@ -213,3 +213,28 @@ def walk(data: bytes) -> JpegStructure:
         pos = payload_end
 
     raise ParseError("reached EOF without EOI marker")
+
+
+def check_decodable_size(data: bytes, level: str) -> None:
+    """Refuse, before any work, a frame declaring more pixels than Pillow will
+    decode. The deeper levels decode the picture (F3 to re-encode it, F2 to prove
+    the pixels unchanged), and Pillow refuses past twice MAX_IMAGE_PIXELS (~179
+    million) -- after jpegtran had spent 16 s on a 3.6-billion-pixel header
+    (November hostile catalogue). The light clean never decodes, so it is
+    unaffected."""
+    from PIL import Image
+
+    from ...errors import ResourceError
+    sof = next((sg for sg in walk(data).segments
+                if sg.kind.startswith("sof") and len(sg.payload) >= 5), None)
+    if sof is None:
+        return
+    height = int.from_bytes(sof.payload[1:3], "big")
+    width = int.from_bytes(sof.payload[3:5], "big")
+    cap = 2 * (Image.MAX_IMAGE_PIXELS or 0)
+    if cap and width * height > cap:
+        raise ResourceError(
+            f"JPEG {level}: the picture declares {width} x {height} pixels, more than "
+            f"the {cap:,} this level can decode; the light clean (F1) does not decode "
+            "the picture and handles it")
+

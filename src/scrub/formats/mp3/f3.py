@@ -24,10 +24,10 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
-import tempfile
 
-from ...errors import ScrubError
+from ... import tools
+from ... import workdir as wd
+from ...errors import ToolError
 from ...standards import perceptual
 from . import f1
 from . import walker as w
@@ -45,7 +45,7 @@ PCM_RATE = perceptual.PCM_RATE
 def _tool(name: str) -> str:
     path = shutil.which(name)
     if path is None:
-        raise ScrubError(
+        raise ToolError(
             f"{name} required for MP3 F3 (brew install lame ffmpeg). F3 fails "
             "closed rather than emit an un-normalized file.")
     return path
@@ -58,23 +58,23 @@ def scrub(data: bytes) -> bytes:
     mode = "m" if layout.frames[0].is_mono else "j"
 
     ffmpeg, lame = _tool("ffmpeg"), _tool("lame")
-    with tempfile.TemporaryDirectory(prefix="mp3f3_") as td:
+    with wd.workdir("mp3-f3") as td:
         inp = os.path.join(td, "in.mp3")
         wav = os.path.join(td, "dec.wav")
         out = os.path.join(td, "out.mp3")
         with open(inp, "wb") as f:
             f.write(data)
-        dec = subprocess.run([ffmpeg, "-y", "-i", inp, "-f", "wav", wav],
+        dec = tools.run([ffmpeg, "-y", "-i", inp, "-f", "wav", wav],
                              capture_output=True)
         if dec.returncode != 0 or not os.path.exists(wav):
-            raise ScrubError("MP3 F3 decode failed: "
-                             + dec.stderr.decode("utf-8", "replace").strip()[:200])
-        enc = subprocess.run(
+            raise ToolError("MP3 F3 decode failed: "
+                            + dec.stderr.decode("utf-8", "replace").strip()[:200])
+        enc = tools.run(
             [lame, "--quiet", "-m", mode, "-b", str(CANONICAL_BITRATE), "--cbr",
              "-q", str(LAME_QUALITY), wav, out], capture_output=True)
         if enc.returncode != 0 or not os.path.exists(out):
-            raise ScrubError("MP3 F3 re-encode failed: "
-                             + enc.stderr.decode("utf-8", "replace").strip()[:200])
+            raise ToolError("MP3 F3 re-encode failed: "
+                            + enc.stderr.decode("utf-8", "replace").strip()[:200])
         with open(out, "rb") as f:
             encoded = f.read()
 

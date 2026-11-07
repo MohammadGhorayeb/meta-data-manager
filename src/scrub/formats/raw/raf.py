@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import struct
 
-from ...errors import ParseError, ScrubError
+from ...errors import ContentError, ParseError
 from ...standards import tiff_ifd as t
 from ..jpeg import segments as jseg
 from . import cr3, f1, identity
@@ -99,10 +99,10 @@ def _scrub(data: bytes) -> tuple[bytes, list[str]]:
                        "serial or date inside the Fuji header block")
     out = bytes(buf)
     if len(out) != len(data) or out[:at] != data[:at]:
-        raise ScrubError("RAF F1 changed the header")
+        raise ContentError("RAF F1 changed the header")
     a, n = regions["sensor"]
     if out[a:a + n] != data[a:a + n]:
-        raise ScrubError("RAF F1 altered the sensor data")
+        raise ContentError("RAF F1 altered the sensor data")
     return out, removed
 
 
