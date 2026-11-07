@@ -1,0 +1,204 @@
+{
+  "format": "pptx",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-o5",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-11-07T18:40:26.534729+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no metadata-correlated byte survives in any of 3 producer shapes (powerpoint-layout, libreoffice, python-pptx): document properties, the thumbnail, shape/table creation IDs, revision and co-authoring logs, recent colours, view settings, add-in tags, printer settings, pictures' names and metadata, comment authors, XML comments, text-field IDs"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "pptx_f2_f3_not_built: a canonical PPTX model (the keys A2@F1 names) is F2's specification; not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "pptx_f2_f3_not_built: a canonical PPTX model (the keys A2@F1 names) is F2's specification; not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "closed at F1: packager, fields. Still separating -- model: field:ZIP:ZipCRC, field:ZIP:ZipCompressedSize, field:ZIP:ZipUncompressedSize, entry_set, namespaces, part_types, presentation_attrs, presentation_children, xml_decl; size: size. Peer set = python-pptx, libreoffice (the same slide text from each). Not in the peer set: Microsoft PowerPoint (not scripted here; not on CI); Keynote (macOS only).",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:ZIP:ZipCRC",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "field:ZIP:ZipCRC constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:ZIP:ZipCompressedSize",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "field:ZIP:ZipCompressedSize constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:ZIP:ZipUncompressedSize",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "field:ZIP:ZipUncompressedSize constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:entry_set",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "struct:entry_set constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:namespaces",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "struct:namespaces constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:part_types",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "struct:part_types constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:presentation_attrs",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "struct:presentation_attrs constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:presentation_children",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "struct:presentation_children constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:xml_decl",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (model)",
+          "evidence": "struct:xml_decl constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "presentation producer (size)",
+          "evidence": "struct:size constant within a producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "pptx_f2_f3_not_built: a canonical PPTX model (the keys A2@F1 names) is F2's specification; not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "pptx_f2_f3_not_built: a canonical PPTX model (the keys A2@F1 names) is F2's specification; not built"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [],
+    "signatures": []
+  }
+}

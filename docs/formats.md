@@ -484,6 +484,78 @@ screen or printer the picture was made for stay: the drawing's coordinates are
 written in them, so changing them would move it.
 <!-- FORMAT:metafile:END -->
 
+<!-- FORMAT:xlsx:BEGIN -->
+Excel workbooks — what Excel and LibreOffice Calc save, and what programs export:
+pandas' two Excel writers, openpyxl and XlsxWriter, write most machine-made
+workbooks.
+
+**What goes.** The workbook's own record of who made it: author, last editor,
+company, manager, title, subject, description, and custom properties (a company's
+sensitivity label names its Microsoft 365 tenant). **The folder the workbook was last
+saved in**, which Excel writes inside the file and which usually contains your user
+name; the standard tool, MAT2, leaves it. The IDs Excel stamps on each save, which
+link versions of one file. A protected sheet's password hash and salt, and the
+protection setting with them. Window positions and which cells were selected;
+personal views; printer settings, which name your printer. **Text deleted from every
+cell but still kept in the workbook's list of strings** — blanked. Who last
+refreshed a pivot table, and when. Comments in the XML. A picture's file name and
+path, and each picture's own camera data, cleaned by the picture's own rules.
+
+**What stays.** Every cell, formula, sheet, chart, style and picture. The cell data
+is left byte for byte as it was, checked on every clean, and LibreOffice reads the
+same values back. Hidden sheets, rows and columns, hidden names, headers and footers
+and links stay — they are content — and the report counts them, so you know they are
+there. The workbook still names the version of Excel that saved it.
+
+**What is refused.** Comments and notes, a shared workbook's change history, links to
+other workbooks (they keep the other file's location and a copy of its cells), pivot
+tables that keep a copy of their source data, database connections and Power Query:
+each stops the clean, and the reason names it.
+
+**How it compares.** ExifTool cannot write Excel files at all. MAT2 stops on a
+workbook with a pivot table, a link to another workbook or a data connection. We
+checked workbooks shaped four ways — Excel's layout, LibreOffice's, openpyxl's and
+XlsxWriter's — and none keeps anything of its metadata after cleaning. What still
+tells those programs apart is how each writes the workbook itself: which internal
+parts it includes, how it stores text, how many styles it defines. Excel itself was
+not among the programs compared: on the Mac we tested on, it opens files when driven
+by a script but refuses to save them.
+<!-- FORMAT:xlsx:END -->
+
+<!-- FORMAT:pptx:BEGIN -->
+PowerPoint presentations — what PowerPoint and LibreOffice Impress save, and what
+programs write (python-pptx).
+
+**What goes.** The document properties: author, last editor, company, manager, title,
+subject, comments, revision number, a sensitivity label's tenant. The thumbnail of
+the first slide stored in the file. **An ID PowerPoint gives every shape, and every
+table row and column, when it is created** — it survives copy and paste, so it links
+decks to each other; MAT2 leaves it. **The ID of every slide-number and date field**:
+LibreOffice draws a new one for every field on every save — two saves of one deck
+differed in nothing else — and PowerPoint gives one to each field you insert; it is
+replaced by one computed from the cleaned slide, so the same slide always gets the
+same ID. The co-authoring and revision logs, with editors' e-mail addresses and
+account IDs. Recently used colours, view settings, add-ins' tags and their data,
+printer settings, the list of comment authors, comments in the XML, and pictures'
+file names and paths — each picture cleaned by its own rules.
+
+**What stays.** Every slide's text, positions, sizes and pictures: LibreOffice draws
+the deck pixel for pixel the same after cleaning. Speaker notes, hidden slides,
+section names and the whole of a cropped picture stay — they are content you put
+there — and the report counts them, because people forget a deck still carries them.
+
+**What is refused.** Comments, old style and new; embedded fonts; and a chart whose
+spreadsheet is stored inside the deck — that spreadsheet is a whole Excel file with
+its own author, and cleaning it by Excel's rules is next.
+
+**How it compares.** ExifTool cannot write PowerPoint files. MAT2 stops on a deck with
+comments or a revision log, and leaves the shape IDs. After cleaning, decks from
+python-pptx and LibreOffice no longer differ in how they were packed; they still
+differ in how each writes the presentation — which internal parts it includes and
+the presentation's own settings. PowerPoint itself was not among them: the results
+are re-measured on machines that cannot run it.
+<!-- FORMAT:pptx:END -->
+
 <!-- FORMAT:zip:BEGIN -->
 ZIP archives — what "Compress" on a Mac, "Send to → Compressed folder" on Windows, and
 `zip` on Linux make.

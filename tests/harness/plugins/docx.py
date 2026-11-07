@@ -117,6 +117,40 @@ def _order_policy(entries) -> str:
     return "producer-specific"
 
 
+def packager_features(arc) -> dict:
+    """The packager channel of any OOXML package (`PACKAGER_KEYS` without the
+    `struct:` prefix). Shared with the Excel and PowerPoint plugins: the ZIP layer
+    is the same layer in all three, written by the same `zipwrite` after F1."""
+    return {
+        "order_policy": _order_policy(arc.entries),
+        "methods": tuple(sorted({e.method for e in arc.entries})),
+        "level_pinned": _level_pinned(arc.entries),
+        "timestamp_scheme": _dos_scheme(arc.entries),
+        "create_system": tuple(sorted({e.create_system for e in arc.entries})),
+        "version_made_by": tuple(sorted({e.version_made_by for e in arc.entries})),
+        "external_attrs": tuple(sorted({e.external_attr for e in arc.entries})),
+        "extra_field_ids": tuple(sorted({
+            e.extra_cen[:2].hex() for e in arc.entries if e.extra_cen})),
+        "dir_entries": sum(1 for e in arc.entries if e.is_dir),
+        "flags": tuple(sorted({e.flags for e in arc.entries})),
+    }
+
+
+def zip_header_constants() -> list[bytes]:
+    """The invariant heads of our local and central headers (signature, version,
+    flags, method, the 1980 timestamp) and the end record's signature: the ZIP
+    layer's declared constants, shared by every OOXML plugin."""
+    import struct as _s
+
+    from src.scrub.formats.ooxml import zipwrite as zwr
+    head = (b"PK\x03\x04" + _s.pack("<H", zwr.VERSION)
+            + _s.pack("<HHHH", zwr.FLAGS, zwr.METHOD_DEFLATE, zwr.DOS_TIME, zwr.DOS_DATE))
+    cen = (b"PK\x01\x02"
+           + _s.pack("<HH", (zwr.CREATE_SYSTEM << 8) | zwr.VERSION, zwr.VERSION)
+           + _s.pack("<HHHH", zwr.FLAGS, zwr.METHOD_DEFLATE, zwr.DOS_TIME, zwr.DOS_DATE))
+    return [head, cen, b"PK\x05\x06"]
+
+
 def empty_package_skeleton(fidelity: str = "F2") -> bytes:
     """**Our own output for a document with no content**, generated not transcribed.
 
@@ -226,20 +260,7 @@ class DocxPlugin:
         them is declaring conformity rather than excusing a signature. What is NOT
         declared, and so still fails the guard, is anything from the document itself.
         """
-        import struct as _s
-
-        from src.scrub.formats.ooxml import zipwrite as zwr
-        # The invariant head of one of our local file headers: signature, version,
-        # flags, method, and the 1980 timestamp.
-        head = (b"PK\x03\x04" + _s.pack("<H", zwr.VERSION)
-                + _s.pack("<HHHH", zwr.FLAGS, zwr.METHOD_DEFLATE,
-                          zwr.DOS_TIME, zwr.DOS_DATE))
-        cen = (b"PK\x01\x02"
-               + _s.pack("<HH", (zwr.CREATE_SYSTEM << 8) | zwr.VERSION, zwr.VERSION)
-               + _s.pack("<HHHH", zwr.FLAGS, zwr.METHOD_DEFLATE,
-                         zwr.DOS_TIME, zwr.DOS_DATE))
-        return [
-            head, cen, b"PK\x05\x06",
+        return zip_header_constants() + [
             b"[Content_Types].xml", b"_rels/.rels", b"word/document.xml",
             b"http://schemas.openxmlformats.org/package/2006/content-types",
             b"http://schemas.openxmlformats.org/package/2006/relationships",
@@ -271,19 +292,7 @@ class DocxPlugin:
         styles = parts.get("word/styles.xml", b"")
 
         return {
-            # --- packager ---
-            "order_policy": _order_policy(arc.entries),
-            "methods": tuple(sorted({e.method for e in arc.entries})),
-            "level_pinned": _level_pinned(arc.entries),
-            "timestamp_scheme": _dos_scheme(arc.entries),
-            "create_system": tuple(sorted({e.create_system for e in arc.entries})),
-            "version_made_by": tuple(sorted({e.version_made_by
-                                             for e in arc.entries})),
-            "external_attrs": tuple(sorted({e.external_attr for e in arc.entries})),
-            "extra_field_ids": tuple(sorted({
-                e.extra_cen[:2].hex() for e in arc.entries if e.extra_cen})),
-            "dir_entries": sum(1 for e in arc.entries if e.is_dir),
-            "flags": tuple(sorted({e.flags for e in arc.entries})),
+            **packager_features(arc),
             # --- document model ---
             "entry_set": tuple(sorted(e.name for e in arc.entries)),
             "xml_decl": _xml_decl(doc),

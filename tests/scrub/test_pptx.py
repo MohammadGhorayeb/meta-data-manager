@@ -63,6 +63,62 @@ def test_recent_colours_go_and_the_part_stays():
     assert b"clrMru" not in m["ppt/presProps.xml"]
 
 
+_GUID_V8 = rb"\{[0-9A-F]{8}-[0-9A-F]{4}-8[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}\}"
+
+
+def _field_part(ids, text="1") -> bytes:
+    return ('<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:p>'
+            + "".join(f'<a:fld id="{i}" type="slidenum"><a:t>{text}</a:t></a:fld>'
+                      for i in ids) + "</a:p></p:sld>").encode()
+
+
+def test_a_field_id_is_replaced_by_one_the_part_itself_determines():
+    """`a:fld/@id` is required by the schema, so it is replaced rather than removed:
+    by a GUID derived from the cleaned part and the field's position. Parts that
+    differ only in their IDs come out the same; another part, or other text, gets
+    other IDs; and the rule is a fixed point (the residual check relies on it)."""
+    import re
+
+    from src.scrub.formats.ooxml import package_f1 as pf
+    name = "ppt/slides/slide1.xml"
+    a = pf.canonical_field_ids(name, _field_part(["{11111111-1111-1111-1111-111111111111}",
+                                                  "{22222222-2222-2222-2222-222222222222}"]))
+    b = pf.canonical_field_ids(name, _field_part(["{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}",
+                                                  "{BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB}"]))
+    assert a == b
+    ids = re.findall(rb'id="([^"]+)"', a)
+    assert len(set(ids)) == 2 and all(re.fullmatch(_GUID_V8, i) for i in ids)
+    assert pf.canonical_field_ids(name, a) == a
+    assert pf.canonical_field_ids("ppt/slides/slide2.xml", _field_part(["{1}", "{2}"])) != a
+    assert pf.canonical_field_ids(name, _field_part(["{1}", "{2}"], text="2")) != a
+
+
+@pytest.mark.skipif(shutil.which("soffice") is None, reason="soffice absent")
+def test_the_field_ids_libreoffice_draws_on_every_save_do_not_survive(tmp_path):
+    """Found by E-PPTX: two Impress saves of one deck differed only in the GUID of
+    every slide-number and date field in every layout, and F1 kept them -- a per-save
+    identifier. The control first: LibreOffice really did draw new ones."""
+    import re
+
+    from src.scrub import cli
+    from tests.scrub import e_office
+    if not e_office.has("pptx"):
+        pytest.skip("python-pptx absent")
+    saves = e_office.build_sources("pptx", str(tmp_path), repeats=2)["libreoffice"]
+
+    def ids(data):
+        return set(re.findall(rb'<a:fld id="([^"]+)"', _all_bytes(data)))
+    raw = [ids(open(s, "rb").read()) for s in saves]
+    assert raw[0] and not raw[0] & raw[1], "LibreOffice reused its field IDs"
+    outs = []
+    for i, src in enumerate(saves):
+        cli.scrub_file(src, str(tmp_path / f"out{i}.pptx"), "F1")
+        outs.append((tmp_path / f"out{i}.pptx").read_bytes())
+    assert outs[0] == outs[1]
+    assert not ids(outs[0]) & (raw[0] | raw[1])
+
+
 # --------------------------------------------------------------------------- #
 # 2. Content: text and geometry unchanged, and the deck still renders the same
 # --------------------------------------------------------------------------- #

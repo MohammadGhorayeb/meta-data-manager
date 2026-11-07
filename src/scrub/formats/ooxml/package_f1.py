@@ -73,6 +73,54 @@ FILE_LIKE = re.compile(
 _DRAWING_TAG = rb"(?:[\w]+:)?cNvPr|wp:docPr|v:imagedata|v:shape"
 
 
+DRAWINGML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_FIELD_ID = re.compile(rb'(?<![\w:.-])id\s*=\s*(["\'])([^"\']*)\1')
+_FIELD_PLACEHOLDER = b"{00000000-0000-8000-8000-000000000000}"
+
+
+def _field_guid(name: str, blanked: bytes, index: int) -> bytes:
+    """A version-8 UUID (RFC 9562) from SHA-256 over the part's name, its bytes with
+    every field ID blanked, and the field's position -- the EPUB identifier's rule
+    (`epub/ocf.derive_identifier`) applied to one field."""
+    import hashlib
+    b = bytearray(hashlib.sha256(name.encode() + b"\0" + blanked + b"\0"
+                                 + str(index).encode()).digest()[:16])
+    b[6] = (b[6] & 0x0F) | 0x80
+    b[8] = (b[8] & 0x3F) | 0x80
+    x = b.hex().upper()
+    return f"{{{x[:8]}-{x[8:12]}-{x[12:16]}-{x[16:20]}-{x[20:]}}}".encode()
+
+
+def canonical_field_ids(name: str, body: bytes) -> bytes:
+    """Replace every DrawingML text field's `id` with one derived from the cleaned
+    part itself.
+
+    `<a:fld id="{GUID}" type="slidenum">` -- a slide number, a date, a chart data
+    label's value -- carries a GUID the schema requires. LibreOffice Impress draws a
+    fresh one for every field in every layout **on every save** (measured, E-PPTX:
+    two saves of one deck differ only there), and PowerPoint gives each field a
+    user inserts its own: a per-file identifier that links a cleaned copy to the
+    original and to other copies, the class of `a16:creationId`, which F1 already
+    removes. It cannot be removed, so it is replaced: the same content gets the same
+    ID, there is no per-save entropy and no tool constant, and running the rule on
+    its own output changes nothing (the residual check relies on that).
+    """
+    if b"fld" not in body or DRAWINGML_NS.encode() not in body:
+        return body
+    els = xmlspans.parse(body, name)
+    spans = []
+    for el in els:
+        if el.uri == DRAWINGML_NS and el.local == "fld":
+            m = _FIELD_ID.search(body, el.start, el.open_end)
+            if m:
+                spans.append((m.start(2), m.end(2)))
+    if not spans:
+        return body
+    blanked = xmlspans.splice(body, [(s, e, _FIELD_PLACEHOLDER) for s, e in spans])
+    return xmlspans.splice(body, [(s, e, _field_guid(name, blanked, i))
+                                  for i, (s, e) in enumerate(spans)])
+
+
 def blank_file_names(body: bytes) -> bytes:
     """Blank picture names and descriptions that are file names or paths; keep the
     rest (a description a person wrote is alt text). VML `v:imagedata o:title` is
@@ -246,9 +294,9 @@ def malformed_parts(pkg: Package, is_dropped) -> list[str]:
     """Kept XML parts that are not well-formed. Most F1 rules edit the bytes in
     place, so a part no parser can read would pass through them -- and a part we
     cannot read is a part we cannot vouch for. Found fuzzing PowerPoint F1: 389 of
-    3,000 damaged decks came out "clean" with a broken slide. (Word does not call
-    this yet: 5 of 946 real Word files hold such a part, and changing Word's
-    outcomes is its own decision -- docs/office_plan.md §6.)"""
+    3,000 damaged decks came out "clean" with a broken slide. Word adopted it
+    after measuring the 5 of 946 real Word files that hold such a part
+    (docs/office_plan.md §6)."""
     out = []
     for entry in pkg.archive.entries:
         if (entry.is_dir or not entry.name.endswith((".xml", ".rels"))

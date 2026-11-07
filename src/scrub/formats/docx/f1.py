@@ -169,12 +169,18 @@ def _scrub_xml(name: str, body: bytes) -> bytes:
     body, _ = xs.remove_elements_where(
         body, "w:bookmarkEnd", lambda tag: xs.attribute_value(tag, "w:id") in goback)
     body = _blank_file_names(body)
-    return _drop_linked_paths(body)
+    # Last: the field IDs are derived from the part as every other rule left it.
+    return pf.canonical_field_ids(name, _drop_linked_paths(body))
 
 
 def _preflight(pkg: Package) -> list[str]:
     """Everything that makes a full scrub impossible, as reasons."""
-    problems = pf.preflight(pkg)
+    # A kept part no parser can read is refused, as in Excel and PowerPoint: the
+    # rules edit bytes in place, so it would pass through them "cleaned". Measured
+    # on 946 real Word files before adopting it (docs/office_plan.md §6): 5 hold
+    # one, 2 were refused already, and the 3 it newly refuses keep ~96 KB of plain
+    # text in parts named `*.xml` that no relationship points at.
+    problems = pf.preflight(pkg) + pf.malformed_parts(pkg, _is_dropped)
     for name in pkg.parts():
         if any(p.search(name) for p in REFUSE_PARTS):
             problems.append(
@@ -274,6 +280,8 @@ def residuals(data: bytes) -> list[str]:
                 out.append(f"{entry.name}: <{tag}> survived")
         if _blank_file_names(body) != body:
             out.append(f"{entry.name}: a picture's name or description is a file name")
+        if pf.canonical_field_ids(entry.name, body) != body:
+            out.append(f"{entry.name}: a text field kept its own ID")
         if _drop_linked_paths(body) != body:
             out.append(f"{entry.name}: an embedded picture kept its link path")
         _, n = xs.remove_comments(body)

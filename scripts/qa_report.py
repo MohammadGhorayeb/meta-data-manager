@@ -135,6 +135,8 @@ ROADMAP = [
     ("metafile", "EMF/WMF pictures (Office charts and drawings)"),
     # The last picture type the real-file sweep found refused (docs/bmp_plan.md).
     ("bmp", "BMP pictures"),
+    # Excel and PowerPoint (docs/office_plan.md, O0-O5).
+    ("xlsx", "Excel workbooks"), ("pptx", "PowerPoint presentations"),
 ]
 
 # What is coming that is not a file type, listed after the formats still to come and
@@ -157,7 +159,8 @@ FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
                 "raw": "Camera RAW", "exe": "Programs", "zip": "ZIP archives",
                 "epub": "EPUB (books)",
                 "tiff": "TIFF", "webp": "WebP", "svg": "SVG", "gif": "GIF",
-                "metafile": "EMF / WMF (Office drawings)", "bmp": "BMP"}
+                "metafile": "EMF / WMF (Office drawings)", "bmp": "BMP",
+                "xlsx": "Excel (.xlsx)", "pptx": "PowerPoint (.pptx)"}
 
 # The three cleaning strengths, in words a reader can act on. "F1/F2/F3" is the
 # project's internal shorthand and stays in the technical docs; nobody outside
@@ -414,7 +417,7 @@ FORMAT_GROUPS = [
     ("MP3 audio", "🎵", ["mp3"]),
     ("FLAC audio", "🎶", ["flac"]),
     ("M4A audio", "🎬", ["m4a"]),
-    ("Documents", "📄", ["pdf", "docx"]),
+    ("Documents", "📄", ["pdf", "docx", "xlsx", "pptx"]),
     ("Video and camera", "📷", ["mp4", "heic", "raw"]),
     ("Programs", "⚙️", ["exe"]),
     ("Archives", "🗜️", ["zip", "epub"]),
@@ -443,6 +446,10 @@ FORMAT_TEST_PATTERNS = [
     ("metafile", ["test_metafile", "metafile_corpus", "matrix_metafile"]),
     ("bmp", ["test_bmp", "bmp_corpus", "matrix_bmp"]),
     ("epub", ["test_epub", "epub_corpus", "matrix_epub"]),
+    # Before DOCX: both share the "ooxml" package layer, and DOCX's broad pattern
+    # would take every Excel and PowerPoint test that names it.
+    ("xlsx", ["test_xlsx", "xlsx_corpus", "matrix_xlsx"]),
+    ("pptx", ["test_pptx", "pptx_corpus", "matrix_pptx", "e_office"]),
     ("docx", ["docx", "ooxml", "e_session_id"]),
     ("heic", ["heic"]),
     # RAW before JPEG: `test_raw_f1.py` would otherwise match JPEG's "test_f1".

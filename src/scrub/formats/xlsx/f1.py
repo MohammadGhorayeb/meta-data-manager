@@ -212,7 +212,8 @@ def _scrub_xml(name: str, body: bytes, ctx: dict) -> bytes:
         body = _blank_unused_strings(body, ctx["used_strings"])
     body = pf.drop_rid_refs(body, ctx["dropped_rids"].get(name, set()))
     body = pf.blank_file_names(body)
-    return pf.drop_linked_paths(body)
+    # Last: the field IDs are derived from the part as every other rule left it.
+    return pf.canonical_field_ids(name, pf.drop_linked_paths(body))
 
 
 def _scrub_vml(body: bytes) -> bytes:

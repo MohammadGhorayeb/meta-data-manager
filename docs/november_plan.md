@@ -54,6 +54,14 @@ O5 from [`office_plan.md`](office_plan.md) §6, which the freeze left open.
 
 **Done:** both matrices published and green on CI; README's table has their rows.
 
+**Status (7 Nov): built, local** ([`office_plan.md`](office_plan.md) §7). Matrices
+`xlsx` and `pptx` published: A1@F1 pass in every producer shape (4 and 3), A2@F1 a
+named failure in the model channel, guard pass. Office could not be a producer
+(scripted Excel refused every save), so the peer sets are LibreOffice, openpyxl,
+XlsxWriter and python-pptx. Found and fixed on the way: a per-save GUID in every
+LibreOffice text field (limit #81). Word adopted the malformed-part rule (682/102).
+Still open: O0b (needs D6) and the live MAT2 section in `benchmark.py`.
+
 ### N2 — robustness: hostile files refused safely, every type (12–18 Nov)
 Schedule item 1. Two halves: random damage (fuzzing) and deliberate attacks.
 

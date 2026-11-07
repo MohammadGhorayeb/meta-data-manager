@@ -27,7 +27,7 @@ NS = f'xmlns:a="{A}" xmlns:r="{R}" xmlns:p="{P}"'
 # F1 removes these; each planted value must be gone from the output.
 REMOVED = ("properties", "thumbnail", "creation_ids", "table_ids", "revision_info",
            "changes_info", "recent_colours", "view_props", "tags", "printer_settings",
-           "picture", "comment_authors", "xml_comment")
+           "picture", "comment_authors", "xml_comment", "field_ids")
 # F1 keeps these (content, or a visible link), and reports them.
 KEPT = ("notes", "hidden_slide", "sections", "hyperlink", "cropped")
 # F1 refuses these.
@@ -100,6 +100,16 @@ def build(variant: int = 0, *, loci: tuple[str, ...] = LOCI) -> bytes:
                         + "\\Pictures\\IMG_2034.JPG", True)]
         parts["ppt/media/image1.jpeg"] = zip_corpus.photo(v)
         defaults.append(("jpeg", "image/jpeg"))
+    if "field_ids" in loci:
+        # A slide-number field: the GUID LibreOffice draws afresh on every save and
+        # PowerPoint gives every field a user inserts (E-PPTX). Replaced, not removed.
+        shapes += (
+            '<p:sp><p:nvSpPr><p:cNvPr id="4" name="Slide Number 3"/><p:cNvSpPr/>'
+            '<p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="6553200" y="6356350"/>'
+            '<a:ext cx="2133600" cy="365125"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/>'
+            '</a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p>'
+            f'<a:fld id="{guid("FIELD", v)}" type="slidenum"><a:rPr lang="en-US"/>'
+            '<a:t>1</a:t></a:fld></a:p></p:txBody></p:sp>')
     if "table_ids" in loci:
         shapes += (
             '<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="5" name="Table 4"/>'
@@ -373,6 +383,7 @@ def planted(variant: int = 0, locus: str = "properties") -> list[bytes]:
         "revision_info": ["CLIENT"], "changes_info": ["COAUTHOR", "EMAIL", "ACCOUNT"],
         "tags": ["ADDIN"], "picture": ["USER", "PHOTO-ARTIST", "PHOTO-SOFT"],
         "comment_authors": ["REVIEWER", "AUTHOR", "EMAIL"], "xml_comment": ["COMMENTER"],
+        "field_ids": ["FIELD"],
     }.get(locus, [])
     out = [secret(n, variant).encode() for n in names]
     if locus == "printer_settings":

@@ -1,0 +1,256 @@
+{
+  "format": "xlsx",
+  "tool": {
+    "name": "irreversible_scrubber",
+    "version": "0.1.0-o5",
+    "invocation": "python -m src.scrub {in} {out} --fidelity {fidelity}"
+  },
+  "generated_at": "2026-11-07T18:39:48.927139+00:00",
+  "harness_version": "0.1.0",
+  "cells": [
+    {
+      "adversary": "A1",
+      "fidelity": "F1",
+      "verdict": "pass",
+      "reason": "no metadata-correlated byte survives in any of 4 producer shapes (excel-layout, libreoffice, openpyxl, xlsxwriter): document properties, the save folder, revision and session IDs, protection hashes, window and selection state, personal views, unused strings, printer settings, pictures' names and metadata, persons, pivot refresh records, XML comments"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "xlsx_f2_f3_not_built: a canonical XLSX model (the keys A2@F1 names) is F2's specification; not built"
+    },
+    {
+      "adversary": "A1",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "xlsx_f2_f3_not_built: a canonical XLSX model (the keys A2@F1 names) is F2's specification; not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F1",
+      "verdict": "fail",
+      "reason": "closed at F1: packager, fields. Still separating -- model: field:ZIP:ZipCRC, field:ZIP:ZipCompressedSize, field:ZIP:ZipUncompressedSize, cell_types, entry_set, file_version, namespaces, part_types, row_attrs, sheet_children, styles_shape, workbook_children, xml_decl; size: size. Peer set = libreoffice, openpyxl, xlsxwriter (the same cells from each). Not in the peer set: Microsoft Excel (scripted saves refused here; not on CI).",
+      "leaks": [
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:ZIP:ZipCRC",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "field:ZIP:ZipCRC constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:ZIP:ZipCompressedSize",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "field:ZIP:ZipCompressedSize constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "field:ZIP:ZipUncompressedSize",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "field:ZIP:ZipUncompressedSize constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:cell_types",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:cell_types constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:entry_set",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:entry_set constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:file_version",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:file_version constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:namespaces",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:namespaces constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:part_types",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:part_types constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:row_attrs",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:row_attrs constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:sheet_children",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:sheet_children constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:styles_shape",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:styles_shape constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:workbook_children",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:workbook_children constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:xml_decl",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (model)",
+          "evidence": "struct:xml_decl constant within a producer, differs across"
+        },
+        {
+          "kind": "source_fingerprint",
+          "locus": {
+            "space": "structural",
+            "offset": null,
+            "length": null,
+            "feature_id": "struct:size",
+            "annotated_as": null,
+            "hex_context": null
+          },
+          "correlates_with": "workbook producer (size)",
+          "evidence": "struct:size constant within a producer, differs across"
+        }
+      ]
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "xlsx_f2_f3_not_built: a canonical XLSX model (the keys A2@F1 names) is F2's specification; not built"
+    },
+    {
+      "adversary": "A2",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "xlsx_f2_f3_not_built: a canonical XLSX model (the keys A2@F1 names) is F2's specification; not built"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F1",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F2",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    },
+    {
+      "adversary": "A3",
+      "fidelity": "F3",
+      "verdict": "not_tested",
+      "reason": "out_of_scope_threat_model"
+    }
+  ],
+  "scrubber_fingerprint": {
+    "checked": true,
+    "verdict": "pass",
+    "mandatory_constants_excluded": [],
+    "signatures": []
+  }
+}
