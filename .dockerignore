@@ -1,4 +1,8 @@
 *
 !src
 !requirements.txt
+!pyproject.toml
+!README.md
+!LICENSE
+!NOTICE
 **/__pycache__

@@ -50,8 +50,12 @@ def build(folder: str) -> None:
 
 
 def run(folder: str, out_path: str) -> None:
-    from src.scrub import cli, doctor
-    from src.scrub.errors import ScrubError
+    try:                                       # the installed package, where there is one
+        from scrubmeta import cli, doctor
+        from scrubmeta.errors import ScrubError
+    except ImportError:
+        from src.scrub import cli, doctor
+        from src.scrub.errors import ScrubError
     with open(os.path.join(folder, MANIFEST)) as f:
         manifest = json.load(f)
     results = {}

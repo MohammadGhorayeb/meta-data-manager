@@ -1,4 +1,4 @@
-"""Command-line entry: `scrub <in> <out> --fidelity F1|F2|F3`.
+"""Command-line entry: `scrubmeta <in> <out> --fidelity F1|F2|F3`.
 
 Fail-closed contract:
   - Read input, dispatch by magic, scrub, and — before writing — re-inspect the
@@ -308,10 +308,10 @@ def main(argv: list[str] | None = None) -> int:
         print(text)
         return code
     p = argparse.ArgumentParser(
-        prog="scrub",
+        prog="scrubmeta",
         description="Irreversibly strip metadata from a file, or from every file "
                     "in a folder.")
-    p.add_argument("--version", action="version", version=f"scrub {__version__}")
+    p.add_argument("--version", action="version", version=f"scrubmeta {__version__}")
     p.add_argument("input", help="a file, or a folder to clean whole (or the word "
                                  "`doctor`, alone, to see what this install can do)")
     p.add_argument("output", help="the cleaned file, or (for a folder) a new or "
@@ -348,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
         return _main_folder(args)
     problem = output_problem(args.input, args.output)
     if problem:
-        print(f"scrub: {problem}; nothing was read or written", file=sys.stderr)
+        print(f"scrubmeta: {problem}; nothing was read or written", file=sys.stderr)
         return 2
     try:
         advisories, report = scrub_file_reported(
@@ -358,19 +358,19 @@ def main(argv: list[str] | None = None) -> int:
             keep_unknown_members=args.keep_unknown_members,
             drop_subtitles=args.drop_subtitles)
     except ScrubError as e:
-        print(f"scrub: {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"scrubmeta: {type(e).__name__}: {e}", file=sys.stderr)
         return exit_code(e)
     except FileNotFoundError as e:
-        print(f"scrub: {e}", file=sys.stderr)
+        print(f"scrubmeta: {e}", file=sys.stderr)
         return 2
     except Exception as e:  # unexpected: still fail closed, no output written
-        print(f"scrub: unexpected {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"scrubmeta: unexpected {type(e).__name__}: {e}", file=sys.stderr)
         return 1
     if not args.no_report:
         print(rep.render(report))
     else:
         for note in advisories:
-            print(f"scrub: warning: {note}", file=sys.stderr)
+            print(f"scrubmeta: warning: {note}", file=sys.stderr)
     return 0
 
 
@@ -395,14 +395,14 @@ def _main_folder(args) -> int:
             progress=None if args.no_report else line,
             jobs=args.jobs if args.jobs > 0 else (os.cpu_count() or 1))
     except ValueError as e:
-        print(f"scrub: {e}", file=sys.stderr)
+        print(f"scrubmeta: {e}", file=sys.stderr)
         return 2
     counts = ", ".join(f"{summary.count(o)} {o}" for o in (
         folder.CLEANED, folder.TEXT, folder.UNSCRUBBED, folder.DROPPED,
         folder.UNSUPPORTED, folder.REFUSED, folder.SKIPPED, folder.ERROR)
         if summary.count(o))
-    print(f"scrub: {len(summary.rows)} files -- {counts}")
-    print(f"scrub: results sheet: {summary.sheet}")
+    print(f"scrubmeta: {len(summary.rows)} files -- {counts}")
+    print(f"scrubmeta: results sheet: {summary.sheet}")
     return 0 if summary.complete else 8
 
 

@@ -387,6 +387,58 @@ jobs:
           exit 1
 
   # ------------------------------------------------------------------ #
+  # 2c. A clean install, the way a user gets it.
+  #
+  # Every other job runs a checkout with the development dependencies, so none can
+  # notice a module left out of the package or a library missing from its list. No
+  # external programs here, on purpose: the light clean of every type must work
+  # without them. On the oldest Python the package accepts.
+  # ------------------------------------------------------------------ #
+  install:
+    name: Clean install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Start the clock
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install the package into an empty environment
+        run: |
+          python -m venv /tmp/user
+          /tmp/user/bin/pip install .
+
+      # Exit 9 is the honest answer on a machine with none of the helper programs.
+      - name: Ask it what this install can do
+        run: /tmp/user/bin/scrubmeta doctor || test $? -eq 9
+
+      - name: Clean one file of each kind through the command
+        working-directory: /tmp
+        run: /tmp/user/bin/python -I "$GITHUB_WORKSPACE/scripts/smoke_install.py" /tmp/user/bin/scrubmeta
+
+      - name: Stop the clock
+        if: always()
+        run: |
+          mkdir -p timing
+          printf '{"job":"install","seconds":%s}\n' "$(($(date +%s) - JOB_START))" \
+            > timing/install.json
+
+      - name: Upload the timing
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: install-results
+          path: timing/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ------------------------------------------------------------------ #
   # 3. Coverage — combine every version's data, then gate.
   # ------------------------------------------------------------------ #
   coverage:
@@ -577,7 +629,7 @@ jobs:
     # 434 MB of tools -- which a slow apt mirror once took the whole 30 minutes to
     # install, cancelling the report of a run whose results were all in.
     timeout-minutes: 50
-    needs: [lint, test, coverage, evidence, macos]
+    needs: [lint, test, coverage, evidence, macos, install]
     if: always()
     permissions:
       contents: read
@@ -665,6 +717,7 @@ jobs:
             --stage "coverage=${{ needs.coverage.result }}" \
             --stage "evidence=${{ needs.evidence.result }}" \
             --stage "macos=${{ needs.macos.result }}" \
+            --stage "install=${{ needs.install.result }}" \
             --flow-out scrub-samples \
             --summary qa-summary.md \
             --pr-comment qa-pr-comment.md
@@ -723,7 +776,7 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, test, coverage, evidence, macos, report]
+    needs: [lint, test, coverage, evidence, macos, install, report]
     if: always()
     steps:
       - name: Verdict
@@ -733,6 +786,7 @@ jobs:
           COVERAGE: ${{ needs.coverage.result }}
           EVIDENCE: ${{ needs.evidence.result }}
           MACOS: ${{ needs.macos.result }}
+          INSTALL: ${{ needs.install.result }}
           REPORT: ${{ needs.report.result }}
         run: |
           fail=0
@@ -748,6 +802,7 @@ jobs:
           check "Coverage"     "$COVERAGE"
           check "Evidence"     "$EVIDENCE"
           check "Mac programs" "$MACOS"
+          check "Clean install" "$INSTALL"
           check "QA report"    "$REPORT"
           if [ "$fail" -ne 0 ]; then
             echo "::error::CI failed. The QA report on this run's summary page explains what broke, in plain language."

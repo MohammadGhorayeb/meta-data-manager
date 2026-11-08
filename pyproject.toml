@@ -1,10 +1,73 @@
-# Tool configuration only.
-#
-# There is deliberately NO [project] or [build-system] table: this repo is not a
-# packaged distribution, it is run as `python -m src.scrub` from the repo root.
-# Adding those tables would change how the tool is installed and invoked, which
-# is out of scope. Everything below is configuration for pytest, ruff and
-# coverage, which read their [tool.*] sections without needing a build backend.
+# The distribution is `scrubmeta`; its import package is mapped onto src/scrub, so
+# `pip install .` gives `import scrubmeta` and the `scrubmeta` command, while a checkout
+# keeps running as `python -m src.scrub` and the tests keep importing `src.scrub`.
+# Below the packaging tables is configuration for pytest, ruff and coverage.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scrubmeta"
+description = "Irreversibly remove hidden metadata from files of any common type"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Mohammad Ghorayeb" }]
+dynamic = ["version", "dependencies"]
+keywords = ["metadata", "privacy", "exif", "anonymization"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+]
+
+[project.urls]
+Repository = "https://github.com/MohammadGhorayeb/meta-data-manager"
+
+[project.scripts]
+scrubmeta = "scrubmeta.cli:main"
+
+[tool.setuptools]
+# Listed, not discovered: `find` cannot rename a root package. test_packaging.py fails
+# if a new directory under src/scrub is missing here.
+packages = [
+    "scrubmeta",
+    "scrubmeta.formats",
+    "scrubmeta.formats.bmp",
+    "scrubmeta.formats.docx",
+    "scrubmeta.formats.epub",
+    "scrubmeta.formats.exe",
+    "scrubmeta.formats.flac",
+    "scrubmeta.formats.gif",
+    "scrubmeta.formats.heic",
+    "scrubmeta.formats.jpeg",
+    "scrubmeta.formats.m4a",
+    "scrubmeta.formats.metafile",
+    "scrubmeta.formats.mp3",
+    "scrubmeta.formats.mp4",
+    "scrubmeta.formats.ooxml",
+    "scrubmeta.formats.pdf",
+    "scrubmeta.formats.png",
+    "scrubmeta.formats.pptx",
+    "scrubmeta.formats.raw",
+    "scrubmeta.formats.svg",
+    "scrubmeta.formats.tiff",
+    "scrubmeta.formats.webp",
+    "scrubmeta.formats.xlsx",
+    "scrubmeta.formats.zip",
+    "scrubmeta.standards",
+]
+
+[tool.setuptools.package-dir]
+scrubmeta = "src/scrub"
+
+[tool.setuptools.dynamic]
+version = { attr = "scrubmeta.__version__" }
+dependencies = { file = ["requirements.txt"] }
 
 # --------------------------------------------------------------------------- #
 # pytest

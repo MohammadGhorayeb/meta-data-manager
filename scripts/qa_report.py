@@ -211,6 +211,9 @@ STAGES = [
     ("macos", "🍎", "Mac programs, on a Mac",
      "Cleans real Mac programs on a real Mac and runs them: they must behave the "
      "same, and Apple's own tool must accept the signature we recompute."),
+    ("install", "📦", "Clean install",
+     "Installs the tool the way a user would, into an empty environment with none "
+     "of the helper programs, and cleans one file of each kind with it."),
 ]
 
 

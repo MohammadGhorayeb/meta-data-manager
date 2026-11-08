@@ -98,7 +98,7 @@ def missing_for(fmt: str, level: str, programs: dict[str, str | None]) -> list[s
 def report() -> tuple[str, int]:
     """The text to print and the exit code."""
     programs, libraries = survey()
-    lines = [f"scrub {__version__}  (Python {platform.python_version()}, "
+    lines = [f"scrubmeta {__version__}  (Python {platform.python_version()}, "
              f"{platform.system()} {platform.machine()})", "", "Programs"]
     for name, program in PROGRAMS.items():
         version = programs[name]

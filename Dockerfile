@@ -9,9 +9,9 @@
 # disappears from the archive the build FAILS, on purpose: a different version is a
 # different fingerprint, so bump it knowingly and re-run scripts/e_install.py.
 #
-#   docker build -t scrub .
-#   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work scrub in.jpg out.jpg
-#   docker run --rm scrub doctor
+#   docker build -t scrubmeta .
+#   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work scrubmeta in.jpg out.jpg
+#   docker run --rm scrubmeta doctor
 FROM ubuntu@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
 
 RUN export DEBIAN_FRONTEND=noninteractive \
@@ -30,12 +30,15 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /app
 COPY requirements.txt ./
-RUN python3 -m venv /opt/scrub \
-    && /opt/scrub/bin/pip install --no-cache-dir -q -r requirements.txt
+RUN python3 -m venv /opt/scrubmeta \
+    && /opt/scrubmeta/bin/pip install --no-cache-dir -q -r requirements.txt
+COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY src ./src
+RUN /opt/scrubmeta/bin/pip install --no-cache-dir -q --no-deps . \
+    && rm -rf /app/* /app/.[!.]*
 
 # Any user id can run this (`--user`), so nothing may depend on a home directory.
-ENV HOME=/tmp PYTHONPATH=/app PYTHONDONTWRITEBYTECODE=1
+ENV HOME=/tmp PYTHONDONTWRITEBYTECODE=1
 USER 1000
 WORKDIR /work
-ENTRYPOINT ["/opt/scrub/bin/python", "-m", "src.scrub"]
+ENTRYPOINT ["/opt/scrubmeta/bin/scrubmeta"]

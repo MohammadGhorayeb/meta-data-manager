@@ -55,7 +55,7 @@ def test_a_complete_install_exits_0(monkeypatch):
     _fake_survey(monkeypatch)
     text, code = doctor.report()
     assert code == 0 and "MISSING" not in text and " NO " not in text
-    assert text.startswith(f"scrub {__version__}")
+    assert text.startswith(f"scrubmeta {__version__}")
 
 
 def test_a_missing_program_names_the_levels_it_costs_and_how_to_get_it(monkeypatch):
@@ -77,7 +77,7 @@ def test_version_flag_prints_the_package_version(capsys):
     with pytest.raises(SystemExit) as caught:
         cli.main(["--version"])
     assert caught.value.code == 0
-    assert capsys.readouterr().out.strip() == f"scrub {__version__}"
+    assert capsys.readouterr().out.strip() == f"scrubmeta {__version__}"
 
 
 def test_runtime_requirements_are_the_versions_the_tests_run_against():

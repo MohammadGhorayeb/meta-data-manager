@@ -189,6 +189,15 @@ of Word, PDF, MP3, M4A, which re-encode through another program (limit #88). The
 an arbitrary non-root user. Waiting on D1 (name) and D2 (licence) for the package and
 the clean-install CI job. Not measured: x86-64 against arm64 images.
 
+**Status (8 Nov): done, local.** D1 = `scrubmeta`, D2 = Apache-2.0. The distribution maps
+the import package `scrubmeta` onto `src/scrub`, so a checkout still runs as
+`python -m src.scrub`; `test_packaging.py` fails on a directory missing from the explicit
+package list, on an absolute `src` import, or on a data file that would not ship.
+`scripts/smoke_install.py` cleans one file of each kind through the installed command,
+then a folder with `--jobs`: passes in a clean venv with no helper program on the path.
+It is also the CI "clean install" job (not yet run on CI). The image now installs the
+package; E-INSTALL against the previous image is 42/42.
+
 ### N5 — documentation and release candidate (23–30 Nov)
 Schedule item 4.
 - **User guide** (`docs/user_guide.md`): install, the three levels in plain words,
