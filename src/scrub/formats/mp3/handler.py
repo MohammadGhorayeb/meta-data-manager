@@ -8,9 +8,9 @@ encoder fingerprint — F1 keeps the audio exact, F3 re-encodes.
 """
 from __future__ import annotations
 
-from ...errors import FidelityError
+from ...errors import FidelityError, ScrubError
 from ..base import BaseHandler
-from . import f1, f3
+from . import f1, f3, walker
 from . import inspect as _inspect
 
 
@@ -19,9 +19,18 @@ class Mp3Handler(BaseHandler):
     # No fixed magic prefix — matches() sniffs ID3 or an MPEG frame sync.
     magic = ()
     fidelities = ("F1", "F3")   # F2 = not_applicable (see module docstring)
-    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
-    # run, with ~10% margin; held by test_memory_preflight.py.
-    memory_factors = {"F3": 15.0}                  # 12.9x at 10 MB
+    def memory_need(self, data: bytes, fidelity: str) -> int | None:
+        """The full clean decodes the whole recording: memory follows its LENGTH, not
+        the file's size (a 64 and a 192 kbps file of 8 minutes peak alike, 184 MB).
+        Measured: about 30 MB + 0.32 MB a second; priced at 40 + 0.4."""
+        if fidelity != "F3":
+            return None
+        try:
+            frames = walker.walk(data).frames
+        except ScrubError:
+            return None
+        seconds = sum(walker.samples_per_frame(f) / f.samplerate for f in frames)
+        return int(40e6 + 0.4e6 * seconds)
 
     def matches(self, header: bytes) -> bool:
         if header[:3] == b"ID3":

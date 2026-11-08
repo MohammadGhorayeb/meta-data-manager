@@ -40,6 +40,13 @@ class BaseHandler:
     def factor(self, fidelity: str | None = None) -> float | None:
         return self.memory_factors.get(fidelity, self.memory_factor)
 
+    def memory_need(self, data: bytes, fidelity: str) -> int | None:
+        """Bytes this level needs, when the file's SIZE is the wrong measure: a
+        decoded picture costs its pixels, decoded sound its duration, however well
+        the file compressed them. Read from the file's own header, after it is
+        loaded and before the expensive work. None means no such estimate."""
+        return None
+
     def matches(self, header: bytes) -> bool:
         return any(header.startswith(m) for m in self.magic)
 

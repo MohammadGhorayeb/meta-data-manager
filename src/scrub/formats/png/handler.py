@@ -19,9 +19,15 @@ class PngHandler(BaseHandler):
     format_id = "png"
     magic = PNG_MAGIC
     fidelities = ("F1", "F2")   # F3 not_applicable (lossless format)
-    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
-    # run, with ~10% margin; held by test_memory_preflight.py.
-    memory_factors = {"F2": 18.0}                  # 14-16x: decoded pixels
+    # Peak bytes per PIXEL of the lossless re-encode, measured on flat, drawn and
+    # noisy pictures: 25-35, whatever the file's size. About 15% margin.
+    bytes_per_pixel = {"F2": 40}
+
+    def memory_need(self, data: bytes, fidelity: str) -> int | None:
+        rate = self.bytes_per_pixel.get(fidelity)
+        if not rate or len(data) < 24 or data[12:16] != b"IHDR":
+            return None
+        return int.from_bytes(data[16:20], "big") * int.from_bytes(data[20:24], "big") * rate
 
     def scrub_f1(self, data: bytes) -> bytes:
         return f1.scrub(data)

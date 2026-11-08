@@ -14,6 +14,8 @@ or HEIC images, which are the same container and belong to Phase 4.
 """
 from __future__ import annotations
 
+from ...errors import ScrubError
+from ...standards import isobmff as iso
 from ..base import BaseHandler
 from . import f1, f2, f3
 from . import inspect as _inspect
@@ -21,6 +23,23 @@ from . import inspect as _inspect
 # Brands that mean "audio in an MP4 container". `mp42`/`isom` are generic, so they
 # are accepted only when claims() finds an audio track and no video track.
 AUDIO_BRANDS = (b"M4A ", b"M4B ", b"mp42", b"isom", b"M4P ")
+
+
+def _duration(data: bytes) -> float | None:
+    """Seconds, from the `mvhd` box, or None if there is no readable one."""
+    try:
+        moov = next(b for b in iso.parse(data) if b.type == b"moov")
+        mvhd = next(c for c in moov.children if c.type == b"mvhd")
+    except (ScrubError, StopIteration):
+        return None
+    p = mvhd.payload
+    if len(p) < 32:
+        return None
+    if p[0] == 1:
+        scale, length = int.from_bytes(p[20:24], "big"), int.from_bytes(p[24:32], "big")
+    else:
+        scale, length = int.from_bytes(p[12:16], "big"), int.from_bytes(p[16:20], "big")
+    return length / scale if scale else None
 
 
 class M4aHandler(BaseHandler):
@@ -31,9 +50,15 @@ class M4aHandler(BaseHandler):
     memory_factor = 4.5
     magic = ()                     # no leading magic; see matches()
     fidelities = ("F1", "F2", "F3")
-    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
-    # run, with ~10% margin; held by test_memory_preflight.py.
-    memory_factors = {"F2": 22.0, "F3": 16.0}      # 20x, 14x (F1: memory_factor)
+    # What the deeper levels cost follows the recording's LENGTH, not the file's size
+    # (64 and 256 kbps files of 8 minutes peak alike). Measured MB per second: F2 0.53,
+    # F3 0.32, on about 30 MB; priced with about 20% margin. (F1: memory_factor.)
+    MB_PER_SECOND = {"F2": 0.65, "F3": 0.4}
+
+    def memory_need(self, data: bytes, fidelity: str) -> int | None:
+        rate = self.MB_PER_SECOND.get(fidelity)
+        seconds = _duration(data) if rate else None
+        return int(40e6 + rate * 1e6 * seconds) if seconds else None
 
     def matches(self, header: bytes) -> bool:
         return len(header) >= 12 and header[4:8] == b"ftyp"

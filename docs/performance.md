@@ -20,6 +20,7 @@ Each pair was measured before and after on the same machine and the same files.
 | Excel light clean, 1 MB | 4.5 s, 249 MB (254x) | 1.1 s, 30 MB (30x) | every sheet parsed into an object per tag, three times -- to check it was well-formed, find the strings in use, count hidden rows; now streamed |
 | MP3 full clean, 10 MB | 27.5 s, 1.17 GB (117x) | 7.0 s, 129 MB (13x) | the audio check decoded and filtered the whole recording to compare its first 4.5 s |
 | M4A full clean, 8.7 MB | 25.4 s, 934 MB (107x) | 4.7 s, 123 MB (14x) | the same check |
+| M4A full clean, 8 min of noisy audio | 1.4 GB | 183 MB | the check's fallback filtered the whole recording in one FFT; now in blocks, scores unchanged to 1e-5 |
 | JPEG light clean, 89 MB | 16.1 s | 0.3 s | the compressed picture scanned one byte at a time in Python, six to eight times a clean |
 | ZIP of photos, 18 MB | 9-11x the file | 5.5x | every member's compressed bytes copied out of the archive and held |
 | Folder of 300 photos, with the ExifTool check | 48.5 s | **1.8 s**; 0.9 s with `--jobs 4` | ExifTool started twice a file; now one kept running per process |
@@ -30,11 +31,14 @@ Memory checks that priced files too low, or not at all:
   passed could need more. Now 3.5x.
 - **Word, Excel and PowerPoint** are priced from their declared part sizes since N2
   (XML at 28x, measured on Word; Excel now measures 6x its XML).
-- **The levels that decode the content** -- JPEG and PNG's deeper cleans, the audio
-  full cleans, PDF -- were priced at their format's light clean, or not at all. Each
-  handler now declares a factor **per level**, from the table below with about 10%
-  margin, and the preflight uses the one for the level asked for
-  (`test_memory_preflight.py` re-measures the JPEG full clean's).
+- **The levels that decode the content** were priced at their format's light clean,
+  or not at all -- and a multiple of the file's size is the wrong unit for them. A
+  decoded picture costs its pixels (JPEG 18-21 bytes a pixel at the deep clean, 27-32
+  at the full clean, PNG 25-35, on flat and noisy pictures alike, while the same
+  picture's cost per FILE byte ranged from 13x to 8,400x). Decoded sound costs its
+  length (about 30 MB + 0.32 MB a second, the same at 64 and 192 kbps). JPEG, PNG, MP3
+  and M4A now estimate their need from the file's own header (`memory_need`), and
+  `test_memory_preflight.py` re-measures it. PDF keeps a factor per level (7x, full 8x).
 
 ## The table
 

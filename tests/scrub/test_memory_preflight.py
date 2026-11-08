@@ -226,21 +226,17 @@ def test_a_streamed_video_needs_memory_that_does_not_grow_with_it(tmp_path):
     assert peaks[200] <= Mp4Handler.stream_memory_factor * 200 * 1024 * 1024, peaks
 
 
-
-def test_each_level_is_priced_at_its_own_factor(tmp_path):
-    """A light clean that only deletes and a full clean that decodes are priced
-    apart (November benchmark: JPEG 3x light, 67x full)."""
-    from src.scrub.formats.jpeg.handler import JpegHandler
-    from tests.scrub import corpus as imgc
+def test_a_format_can_price_its_levels_apart(tmp_path):
+    """The per-level table: PDF's full clean costs more than its other levels."""
+    from src.scrub.formats.pdf.handler import PdfHandler
     d = default_dispatcher()
-    jpeg = _write(tmp_path, "p.jpg", imgc.build_torture_jpeg())
-    assert resources.factor_for(jpeg, d) is None              # light: never checked
-    assert resources.factor_for(jpeg, d, "F3") == JpegHandler.memory_factors["F3"]
-    assert resources.factor_for(jpeg, d, "F2") == JpegHandler.memory_factors["F2"]
+    head = b"%PDF-1.7\n" + bytes(7)
+    assert d.memory_factor(head, "F1") == PdfHandler.memory_factor
+    assert d.memory_factor(head, "F3") == PdfHandler.memory_factors["F3"]
 
 
-_LEVEL_PEAK = r"""
-import io, os, resource, sys
+_PICTURE_PEAK = r"""
+import os, resource, sys
 sys.path.insert(0, os.environ["REPO"])
 from src.scrub.dispatch import default_dispatcher
 
@@ -260,27 +256,71 @@ print(peak() - base)
 """
 
 
-def test_the_jpeg_full_clean_factor_is_what_it_uses(tmp_path):
-    """Re-measured in a fresh process on a ~5 MB photo with edges and noise (the
-    benchmark's kind): at or under the declared factor, and not far under it."""
+def _picture(kind: str, w: int, h: int):
     import numpy as np
-    from PIL import Image, ImageDraw
-
-    from src.scrub.formats.jpeg.handler import JpegHandler
+    from PIL import Image
+    if kind == "flat":
+        return Image.new("RGB", (w, h), (90, 140, 200))
     rng = np.random.default_rng(1)
-    w, h = 3200, 2400
-    img = Image.new("RGB", (w, h), (90, 140, 200))
-    draw = ImageDraw.Draw(img)
-    for _ in range(60):
-        x, y = int(rng.integers(0, w)), int(rng.integers(0, h))
-        draw.ellipse((x, y, x + 400, y + 300), fill=tuple(int(v) for v in rng.integers(0, 256, 3)))
-    arr = np.clip(np.asarray(img, "int16") + rng.normal(0, 12, (h, w, 3)), 0, 255)
-    src = str(tmp_path / "p.jpg")
-    Image.fromarray(arr.astype("uint8")).save(src, "JPEG", quality=92)
-    r = subprocess.run([sys.executable, "-c", _LEVEL_PEAK, src, "F3"],
-                       env=dict(os.environ, REPO=REPO), capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
-    measured = int(r.stdout.strip()) / os.path.getsize(src)
-    declared = JpegHandler.memory_factors["F3"]
-    assert measured <= declared, f"measured {measured:.1f}x over the declared {declared}x"
-    assert declared <= measured * 1.5, f"declared {declared}x far above {measured:.1f}x"
+    return Image.fromarray(rng.integers(0, 256, (h, w, 3), dtype="uint8"))
+
+
+@pytest.mark.parametrize("fmt,ext,level,kind", [
+    ("JPEG", "jpg", "F2", "flat"), ("JPEG", "jpg", "F2", "noisy"),
+    ("JPEG", "jpg", "F3", "flat"), ("JPEG", "jpg", "F3", "noisy"),
+    ("PNG", "png", "F2", "flat"), ("PNG", "png", "F2", "noisy"),
+])
+def test_a_decoding_level_costs_what_its_pixels_cost(fmt, ext, level, kind, tmp_path):
+    """Memory follows the picture, not the file: measured in a fresh process, a flat
+    and a noisy picture of the same size must both fit the declared bytes per pixel.
+    The worst of three runs is compared, because the allocator's high-water mark
+    moves between runs."""
+    from src.scrub.formats.jpeg.handler import JpegHandler
+    from src.scrub.formats.png.handler import PngHandler
+    w, h = 3000, 2000
+    src = str(tmp_path / f"p.{ext}")
+    _picture(kind, w, h).save(src, fmt, **({"quality": 92} if fmt == "JPEG" else {}))
+    worst = 0
+    for _ in range(3):
+        r = subprocess.run([sys.executable, "-c", _PICTURE_PEAK, src, level],
+                           env=dict(os.environ, REPO=REPO), capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        worst = max(worst, int(r.stdout.strip()))
+    declared = (JpegHandler if fmt == "JPEG" else PngHandler).bytes_per_pixel[level]
+    assert worst / (w * h) <= declared, f"{worst / (w * h):.1f} over {declared} bytes a pixel"
+
+
+@pytest.mark.parametrize("fmt,ext,level", [("JPEG", "jpg", "F3"), ("PNG", "png", "F2")])
+def test_a_small_file_with_many_pixels_is_priced_by_its_pixels(fmt, ext, level, tmp_path,
+                                                                monkeypatch):
+    """A flat 12-megapixel picture is a tiny file: a factor of its SIZE would wave it
+    through on a machine that cannot decode it."""
+    src = str(tmp_path / f"flat.{ext}")
+    _picture("flat", 4000, 3000).save(src, fmt)
+    assert os.path.getsize(src) < 300_000
+    out = str(tmp_path / f"out.{ext}")
+    monkeypatch.setattr(resources, "available_memory", lambda: 50_000_000)
+    with pytest.raises(ResourceError, match="at this level"):
+        cli.scrub_file(src, out, level)
+    assert not os.path.exists(out)
+    cli.scrub_file(src, out, "F1")                 # the light clean decodes nothing
+    os.unlink(out)
+    cli.scrub_file(src, out, level, check_memory=False)
+    assert os.path.exists(out)
+
+
+@pytest.mark.parametrize("ext,codec,level", [
+    ("mp3", "libmp3lame", "F3"), ("m4a", "aac", "F3"), ("m4a", "aac", "F2")])
+def test_audio_is_priced_by_its_length_not_its_bitrate(ext, codec, level, tmp_path):
+    import shutil
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg absent")
+    needs = []
+    for rate in ("64k", "192k"):
+        src = tmp_path / f"{rate}.{ext}"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=d=20",
+                        "-ac", "2", "-c:a", codec, "-b:a", rate, str(src)], check=True)
+        data = src.read_bytes()
+        needs.append(default_dispatcher().resolve(data).memory_need(data, level))
+    assert all(needs) and abs(needs[0] - needs[1]) < 2_000_000, needs
+

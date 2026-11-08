@@ -121,6 +121,19 @@ def factor_for(path: str, dispatcher, fidelity: str | None = None) -> float | No
         return bound
 
 
+def check_need(need: int | None, available: int | None = None) -> None:
+    """Raise ResourceError if a handler's own estimate (`memory_need`) will not fit."""
+    if not need:
+        return
+    free = available_memory() if available is None else available
+    if free is None or need <= free:
+        return
+    raise ResourceError(
+        f"cleaning this file at this level needs about {_human(need)} of memory and "
+        f"this machine has {_human(free)} available. Nothing was written. Close other "
+        "applications, use a lighter level, or pass --skip-memory-check to try anyway.")
+
+
 def _human(n: float) -> str:
     return f"{n / 1e9:.1f} GB" if n >= 1e9 else f"{n / 1e6:.0f} MB"
 

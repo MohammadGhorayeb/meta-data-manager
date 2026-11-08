@@ -1,0 +1,8 @@
+# What the tool itself needs at run time. Everything else (the test harness, the
+# corpora's writers, the second readers) is in requirements-dev.txt.
+#
+# External programs are not listed here: `python -m src.scrub doctor` says which are
+# present and which cleaning levels they enable.
+pikepdf==10.8.0
+pillow==12.2.0
+numpy==2.4.6

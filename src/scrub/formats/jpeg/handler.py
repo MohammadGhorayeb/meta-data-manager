@@ -9,6 +9,7 @@ from __future__ import annotations
 from ..base import BaseHandler
 from . import f1, f2, f3
 from . import inspect as _inspect
+from . import segments as seg
 
 # SOI + first marker byte. FF D8 FF starts every JPEG/JFIF/Exif file.
 JPEG_MAGIC = (b"\xff\xd8\xff",)
@@ -18,9 +19,18 @@ class JpegHandler(BaseHandler):
     format_id = "jpeg"
     magic = JPEG_MAGIC
     fidelities = ("F1", "F2", "F3")
-    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
-    # run, with ~10% margin; held by test_memory_preflight.py.
-    memory_factors = {"F2": 50.0, "F3": 75.0}      # 45-47x, 67x: decoded pixels
+    # Peak bytes per PIXEL of the levels that decode the picture, measured on flat,
+    # drawn and noisy pictures: F2 18-21.6, F3 27-31.5, whatever the file's size (a
+    # flat picture's file is 1,900x smaller than its need; a noisy one's 68x). About
+    # 15% margin; held by test_memory_preflight.py.
+    bytes_per_pixel = {"F2": 24, "F3": 36}
+
+    def memory_need(self, data: bytes, fidelity: str) -> int | None:
+        rate = self.bytes_per_pixel.get(fidelity)
+        size = seg.frame_size(data) if rate else None
+        if not size or size[0] * size[1] > seg.decode_limit():
+            return None        # past the limit no amount of memory helps: the level
+        return size[0] * size[1] * rate  # refuses with the reason (check_decodable_size)
 
     def scrub_f1(self, data: bytes) -> bytes:
         return f1.scrub(data)

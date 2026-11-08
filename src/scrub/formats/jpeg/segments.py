@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ...errors import ParseError
+from ...errors import ParseError, ScrubError
 from ...standards import icc, iptc_iim, xmp
 
 # --- marker codes ---
@@ -217,6 +217,24 @@ def walk(data: bytes) -> JpegStructure:
     raise ParseError("reached EOF without EOI marker")
 
 
+def frame_size(data: bytes) -> tuple[int, int] | None:
+    """(width, height) from the frame header, or None if there is no readable one."""
+    try:
+        sof = next((sg for sg in walk(data).segments
+                    if sg.kind.startswith("sof") and len(sg.payload) >= 5), None)
+    except ScrubError:
+        return None
+    if sof is None:
+        return None
+    return int.from_bytes(sof.payload[3:5], "big"), int.from_bytes(sof.payload[1:3], "big")
+
+
+def decode_limit() -> int:
+    """The most pixels Pillow will decode: twice MAX_IMAGE_PIXELS."""
+    from PIL import Image
+    return 2 * (Image.MAX_IMAGE_PIXELS or 0)
+
+
 def check_decodable_size(data: bytes, level: str) -> None:
     """Refuse, before any work, a frame declaring more pixels than Pillow will
     decode. The deeper levels decode the picture (F3 to re-encode it, F2 to prove
@@ -224,17 +242,13 @@ def check_decodable_size(data: bytes, level: str) -> None:
     million) -- after jpegtran had spent 16 s on a 3.6-billion-pixel header
     (November hostile catalogue). The light clean never decodes, so it is
     unaffected."""
-    from PIL import Image
-
     from ...errors import ResourceError
-    sof = next((sg for sg in walk(data).segments
-                if sg.kind.startswith("sof") and len(sg.payload) >= 5), None)
-    if sof is None:
+    size = frame_size(data)
+    if size is None:
         return
-    height = int.from_bytes(sof.payload[1:3], "big")
-    width = int.from_bytes(sof.payload[3:5], "big")
-    cap = 2 * (Image.MAX_IMAGE_PIXELS or 0)
-    if cap and width * height > cap:
+    width, height = size
+    cap = decode_limit()
+    if width * height > cap:
         raise ResourceError(
             f"JPEG {level}: the picture declares {width} x {height} pixels, more than "
             f"the {cap:,} this level can decode; the light clean (F1) does not decode "

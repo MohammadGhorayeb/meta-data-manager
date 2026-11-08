@@ -84,6 +84,28 @@ def bandlimit(x, cutoff: int = GATE_BAND_HZ, fs: int = PCM_RATE):
     return np.fft.irfft(spec, n=x.size)
 
 
+def bandlimit_blocks(x, cutoff: int = GATE_BAND_HZ, fs: int = PCM_RATE,
+                     block: int = 1 << 20, overlap: int = 1 << 15):
+    """`bandlimit` for a whole recording, in overlapping blocks stored as 32-bit
+    floats. One full-length FFT of 8 minutes peaked at 1.4 GB (November benchmark).
+    Each block's edges, where a brick-wall filter rings, are overlapped and discarded;
+    only the middle of each block is kept."""
+    import numpy as np
+    n = len(x)
+    if n <= block:
+        return bandlimit(np.asarray(x, dtype=np.float64), cutoff, fs).astype(np.float32)
+    out = np.zeros(n, dtype=np.float32)
+    step = block - 2 * overlap
+    for start in range(0, n, step):
+        chunk = bandlimit(np.asarray(x[start:start + block], dtype=np.float64), cutoff, fs)
+        keep_from = 0 if start == 0 else overlap
+        keep_to = len(chunk) if start + block >= n else block - overlap
+        out[start + keep_from:start + keep_to] = chunk[keep_from:keep_to]
+        if start + block >= n:
+            break
+    return out
+
+
 NCC_WINDOW, NCC_MAXLAG = 200_000, 3000
 
 
@@ -150,7 +172,6 @@ def envelope_similarity(a, b, fs: int = PCM_RATE, bands: int = 24) -> float:
     a, b = a[:n], b[:n]
     win = np.hanning(frame)
     edges = np.linspace(0, frame // 2 + 1, bands + 1).astype(int)
-
     def env(x):
         rows = []
         for start in range(0, n - frame, hop):
@@ -203,9 +224,9 @@ def check(original: bytes, scrubbed: bytes, source_rate: int = PCM_RATE,
 
     env = 0.0
     if ncc >= WAVEFORM_FLOOR:
-        # Stage 2 does compare the whole recording: widened only when it is needed.
-        a = bandlimit(pa.astype(np.float64), cutoff=band)
-        b = bandlimit(pb.astype(np.float64), cutoff=band)
+        # Stage 2 compares the whole recording, band-limited in blocks: the same
+        # filter as stage 1's, at a fraction of the memory of one full-length FFT.
+        a, b = bandlimit_blocks(pa, band), bandlimit_blocks(pb, band)
         env = envelope_similarity(*_align(a, b, lag))
         if env >= MIN_ENVELOPE:
             return ncc

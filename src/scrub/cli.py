@@ -49,7 +49,7 @@ import os
 import sys
 import tempfile
 
-from . import crosscheck, resources, workdir
+from . import __version__, crosscheck, resources, workdir
 from . import fidelity as fid
 from . import report as rep
 from .dispatch import default_dispatcher
@@ -175,6 +175,8 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
         data = f.read()
 
     handler = dispatcher.resolve(data)          # raises UnsupportedFormatError
+    if check_memory:
+        resources.check_need(handler.memory_need(data, fidelity))
     advisories = _advise(handler, data)
     scrubbed = handler.scrub(data, fidelity)    # raises ParseError/FidelityError
 
@@ -299,11 +301,19 @@ def _advise(handler, data: bytes) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    args_in = sys.argv[1:] if argv is None else argv
+    if args_in == ["doctor"]:              # alone: two paths would be a clean
+        from . import doctor
+        text, code = doctor.report()
+        print(text)
+        return code
     p = argparse.ArgumentParser(
         prog="scrub",
         description="Irreversibly strip metadata from a file, or from every file "
                     "in a folder.")
-    p.add_argument("input", help="a file, or a folder to clean whole")
+    p.add_argument("--version", action="version", version=f"scrub {__version__}")
+    p.add_argument("input", help="a file, or a folder to clean whole (or the word "
+                                 "`doctor`, alone, to see what this install can do)")
     p.add_argument("output", help="the cleaned file, or (for a folder) a new or "
                                   "empty folder to write the cleaned files and the "
                                   "results sheet into")
@@ -332,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-verify", action="store_true",
                    help="skip the independent exiftool check at the end of the "
                         "report (it reads the file twice, which costs a moment)")
-    args = p.parse_args(argv)
+    args = p.parse_args(args_in)
 
     if os.path.isdir(args.input):
         return _main_folder(args)

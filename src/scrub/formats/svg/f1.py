@@ -31,8 +31,10 @@ import base64
 import binascii
 import gzip
 import re
+import struct
 import urllib.parse
 import xml.parsers.expat
+import zlib
 
 from ... import embedded
 from ...errors import ParseError
@@ -148,6 +150,16 @@ def _decode(data: bytes) -> tuple[bytes, bool]:
         except Exception as e:                            # noqa: BLE001
             raise ParseError(f"SVG: a damaged .svgz ({e})") from None
     return data, False
+
+
+def _gzip(data: bytes) -> bytes:
+    """A gzip stream with a fixed header: no time, no name, "best compression", OS
+    "unknown". `gzip.compress(mtime=0)` hands the job to zlib on Python 3.11-3.12,
+    which stamps the OPERATING SYSTEM in the header (19 macOS, 3 Unix): a cleaned
+    .svgz said what kind of machine cleaned it (E-INSTALL, November)."""
+    co = zlib.compressobj(9, zlib.DEFLATED, -15)
+    return (b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff" + co.compress(data) + co.flush()
+            + struct.pack("<II", zlib.crc32(data), len(data) & 0xFFFFFFFF))
 
 
 def _check_encoding(xml: bytes) -> None:
@@ -383,7 +395,7 @@ def _scrub(data: bytes, report: bool = False):
     xml, zipped = _decode(data)
     out, removed = _scrub_xml_bytes(xml)
     if zipped:
-        out = gzip.compress(out, mtime=0)
+        out = _gzip(out)
         removed.append("the .svgz wrapper's original file name and time")
     return (out, removed) if report else out
 

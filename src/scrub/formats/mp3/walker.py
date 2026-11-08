@@ -34,6 +34,10 @@ _SAMPLERATE = {
 _SAMPLES_PER_FRAME = {3: 1152, 2: 576, 0: 576}   # Layer III
 
 
+def samples_per_frame(frame) -> int:
+    return _SAMPLES_PER_FRAME[frame.version]
+
+
 @dataclass
 class FrameHeader:
     offset: int

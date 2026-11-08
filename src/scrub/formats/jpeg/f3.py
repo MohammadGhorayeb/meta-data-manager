@@ -42,8 +42,9 @@ CANONICAL_SUBSAMPLING = "4:2:0"          # Pillow accepts the "4:2:0" spelling
 # night shot at 22, at 51.5 and 46.9 dB -- because a flat picture's low-frequency
 # coefficients sit at their median and noise flips the bits; and it PASSED a
 # red/blue swap (4), grayscale (0), a 30% darkening (0), an 8-pixel shift (2) --
-# the colour-space slips a re-encoder makes. Honest re-encodes measured 32.4-51.5 dB,
-# every geometric or colour mangle 4.6-20 dB; 25 sits in the gap (provisional,
+# the colour-space slips a re-encoder makes. Honest re-encodes measured 28.4-51.5 dB
+# (28.4 is pure random noise), every geometric or colour mangle 4.6-20 dB; 25 sits in
+# the gap (provisional,
 # docs/november_plan.md N3).
 MIN_PSNR_DB = 25.0
 

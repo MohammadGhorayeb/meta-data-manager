@@ -142,7 +142,8 @@ Excel F1 254x -> 30x (streamed scans, `xmlspans.check`); audio F3 107-117x -> 13
 and ~4x faster (the gate band-limits only the window it compares); JPEG F1 scan in C
 (16 s -> 0.3 s at 89 MB); the ZIP reader no longer copies members (9-11x -> 5.5x);
 folder mode: one ExifTool per process and `--jobs N` (300 photos: 48.5 s -> 1.8 s,
-0.9 s on 4 jobs). Memory checks per level (`memory_factors`), ZIP 3.0 -> 3.5. Found
+0.9 s on 4 jobs). Memory checks per level, by pixels or duration where the file's
+size is the wrong unit (`memory_need`), ZIP 3.0 -> 3.5. Found
 on the way: JPEG F3's perceptual-hash gate refused sky and night photos and passed
 colour swaps -- replaced by PSNR (limit #87). Targets (D4): the 1 GB video peak is
 44 MB; 300 photos in 1.8 s. Provisional numbers to confirm: PSNR 25 dB. Not done:
@@ -176,6 +177,17 @@ Schedule item 3.
 
 **Done:** `pipx install` + `doctor` work on a clean Mac and a clean Linux container;
 E-INSTALL table published; licence in the repo.
+
+**Status (8 Nov): name-independent part done, local.** `--version`; `doctor` (programs,
+versions, what each level needs, checked against the code both ways); `requirements.txt`
+= the three runtime libraries (pikepdf, Pillow, NumPy; a clean container needed nothing
+else). **E-INSTALL** (`scripts/e_install.py`, 42 cleans, Mac vs Ubuntu with different
+versions of everything): 37 identical. One was ours -- the `.svgz` gzip header carried
+the OS byte on Python 3.11-3.12 -- fixed: 38. The other four are the strongest cleans
+of Word, PDF, MP3, M4A, which re-encode through another program (limit #88). The
+`Dockerfile` pins every program to an exact version: two containers agree 42/42, run as
+an arbitrary non-root user. Waiting on D1 (name) and D2 (licence) for the package and
+the clean-install CI job. Not measured: x86-64 against arm64 images.
 
 ### N5 — documentation and release candidate (23–30 Nov)
 Schedule item 4.

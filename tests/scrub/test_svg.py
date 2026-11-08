@@ -182,3 +182,16 @@ def test_the_survey_svgs_scrub_clean_and_render_the_same(name, tmp_path):
     assert b"SENTINEL" not in b"".join(_embedded(out))
     a, b = _render(data, tmp_path, "a"), _render(out, tmp_path, "b")
     assert a.size == b.size and ImageChops.difference(a, b).getbbox() is None
+
+
+def test_a_cleaned_svgz_says_nothing_about_the_machine_that_cleaned_it():
+    """E-INSTALL: on Python 3.11-3.12 `gzip.compress(mtime=0)` lets zlib write the
+    gzip header, with the OS byte (macOS 19, Unix 3). The header is ours now: no
+    time, no name, OS unknown."""
+    import gzip
+
+    from src.scrub.formats.svg import f1 as svg_f1
+    body = b"<svg xmlns='http://www.w3.org/2000/svg'><rect/></svg>" * 40
+    out = svg_f1._gzip(body)
+    assert out[:10] == b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"
+    assert gzip.decompress(out) == body
