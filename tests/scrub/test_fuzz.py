@@ -36,7 +36,7 @@ import pytest
 
 from src.scrub import cli
 from src.scrub.dispatch import default_dispatcher
-from src.scrub.errors import ParseError, ScrubError
+from src.scrub.errors import ParseError, ScrubError, ToolError
 
 # Tuned for the suite's time budget rather than for maximum coverage: this runs on
 # every push, twice (3.11 and 3.14). The wider sweep that found the original five
@@ -451,7 +451,11 @@ def test_a_cr3_metadata_block_without_a_readable_ifd_is_refused(tmp_path, seed, 
     assert isinstance(_cli_refuses(tmp_path, _nth(data, seed, index)), ParseError)
 
 
-def test_a_jpeg_that_jpegtran_accepts_but_pillow_cannot_decode_is_a_parse_refusal(tmp_path):
+def test_a_jpeg_jpegtran_or_pillow_cannot_take_is_a_declared_refusal(tmp_path):
+    """Which program refuses first depends on its version: macOS's jpegtran
+    (libjpeg-turbo 3) accepts this 12-bit frame and Pillow then fails, which escaped
+    as "unexpected" before the fix (a parse refusal now); Ubuntu's older jpegtran
+    rejects it itself (a tool refusal, exit 9). Both are declared; exit 1 is not."""
     import shutil
 
     from . import corpus as imgc
@@ -461,7 +465,8 @@ def test_a_jpeg_that_jpegtran_accepts_but_pillow_cannot_decode_is_a_parse_refusa
     if not _is_reference("torture_jpeg", data):
         _held_to_contract(tmp_path, _nth(data, 22, 698), "F2")
         return
-    assert isinstance(_cli_refuses(tmp_path, _nth(data, 22, 698), "F2"), ParseError)
+    assert isinstance(_cli_refuses(tmp_path, _nth(data, 22, 698), "F2"),
+                      (ParseError, ToolError))
 
 
 def test_a_pdf_stream_filter_name_that_is_not_text_is_refused():
