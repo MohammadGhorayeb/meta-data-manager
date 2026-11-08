@@ -30,15 +30,22 @@ from __future__ import annotations
 import io
 import warnings
 
-from ...errors import ContentError, ParseError, ResourceError, ToolError
+from ...errors import ContentError, ParseError, ResourceError
 from . import orientation
 from . import segments as seg
 
 CANONICAL_QUALITY = 90
 CANONICAL_SUBSAMPLING = "4:2:0"          # Pillow accepts the "4:2:0" spelling
-# pHash Hamming gate. Calibrated: observed max 2 across the E3 corpus re-encode;
-# 6 gives headroom for varied content while staying a tight single-digit gate.
-PHASH_MAX_DISTANCE = 6
+# Content gate: peak signal-to-noise ratio between the photo as displayed and its
+# re-encode. Replaced a perceptual-hash gate (distance <= 6) in November, measured:
+# the hash refused honest re-encodes of near-flat photos -- a sky at distance 24, a
+# night shot at 22, at 51.5 and 46.9 dB -- because a flat picture's low-frequency
+# coefficients sit at their median and noise flips the bits; and it PASSED a
+# red/blue swap (4), grayscale (0), a 30% darkening (0), an 8-pixel shift (2) --
+# the colour-space slips a re-encoder makes. Honest re-encodes measured 32.4-51.5 dB,
+# every geometric or colour mangle 4.6-20 dB; 25 sits in the gap (provisional,
+# docs/november_plan.md N3).
+MIN_PSNR_DB = 25.0
 
 
 def _open_rgb(data: bytes):
@@ -84,21 +91,31 @@ def scrub(data: bytes) -> bytes:
     return out
 
 
+def psnr(a, b) -> float:
+    """PSNR in dB of two RGB pictures (infinity when identical, minus infinity when
+    their sizes differ). Pillow's difference and band statistics run in C and cost
+    one 8-bit picture, not the float arrays that would need gigabytes at the size
+    limit."""
+    import math
+
+    from PIL import ImageChops, ImageStat
+    if a.size != b.size:
+        return -math.inf
+    sum2 = sum(ImageStat.Stat(ImageChops.difference(a, b)).sum2)
+    if sum2 == 0:
+        return math.inf
+    return 10 * math.log10(255 ** 2 * a.width * a.height * 3 / sum2)
+
+
 def _check_perceptual(original: bytes, scrubbed: bytes) -> None:
-    """Fail-closed content gate: pHash Hamming distance must stay within the
-    calibrated threshold, else the lossy re-encode mangled the image."""
-    try:
-        import imagehash
-    except ImportError as e:  # pragma: no cover - imagehash is a pinned dep
-        raise ToolError("imagehash required for JPEG F3 content verification") from e
-    h_in = imagehash.phash(orientation.apply(_open_rgb(original),
-                                            orientation.read(original)))
-    h_out = imagehash.phash(_open_rgb(scrubbed))
-    distance = h_in - h_out
-    if distance > PHASH_MAX_DISTANCE:
+    """Fail-closed content gate: the re-encode must match the photo as displayed
+    (orientation applied) to MIN_PSNR_DB, else the lossy re-encode mangled it."""
+    shown = orientation.apply(_open_rgb(original), orientation.read(original))
+    db = psnr(shown, _open_rgb(scrubbed))
+    if db < MIN_PSNR_DB:
         raise ContentError(
-            f"JPEG F3 re-encode diverged perceptually: pHash distance {distance} "
-            f"> {PHASH_MAX_DISTANCE}")
+            f"JPEG F3 re-encode diverged from the original: PSNR {db:.1f} dB "
+            f"< {MIN_PSNR_DB:g} dB")
 
 
 def residuals(data: bytes) -> list[str]:

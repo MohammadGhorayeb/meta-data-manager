@@ -63,10 +63,12 @@ UNIX_OWNER = 0x7875              # Info-ZIP `ux`: uid and gid
 OLD_UNIX = 0x5855                # Info-ZIP `UX` (old): times, uid, gid
 
 # Peak memory as a multiple of (archive + declared member sizes): measured 2.5 on
-# macOS (every member inflated and kept, the compressed copies the reader slices,
-# the output while it grows), with a margin. Held to the measurement by
-# tests/scrub/test_zip.py::test_memory_need_holds.
-MEMORY_FACTOR = 3.0
+# macOS (every member inflated and kept, the output while it grows), with a margin.
+# Re-measured in November on archives of photos (scripts/perf_bench.py): 5.1-6.3x the
+# FILE, i.e. up to ~3.2x of (archive + members) at 9 MB, so 3.0 fell short; 3.5 now,
+# after the reader stopped copying every member's compressed bytes (a second input).
+# Held to the measurement by tests/scrub/test_zip.py::test_memory_need_holds.
+MEMORY_FACTOR = 3.5
 
 _CONTROL = re.compile(rb"[\x00-\x08\x0b\x0e-\x1f\x7f]")
 _XMP_START = re.compile(rb"\A(?:\xef\xbb\xbf)?\s*(?:<\?xpacket|<x:xmpmeta)")

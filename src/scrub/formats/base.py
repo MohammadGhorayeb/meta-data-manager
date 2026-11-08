@@ -32,6 +32,13 @@ class BaseHandler:
     # that measurement by a test; None means "never large enough to check".
     # See resources.py and limit #38.
     memory_factor: float | None = None
+    # The same, per cleaning level, where levels differ: a light clean that only
+    # deletes and a full clean that decodes the content are different programs
+    # (MP3: 2.3x light, 12x full, measured in November). Falls back to the above.
+    memory_factors: dict[str, float] = {}
+
+    def factor(self, fidelity: str | None = None) -> float | None:
+        return self.memory_factors.get(fidelity, self.memory_factor)
 
     def matches(self, header: bytes) -> bool:
         return any(header.startswith(m) for m in self.magic)

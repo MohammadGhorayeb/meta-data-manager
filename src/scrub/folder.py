@@ -183,11 +183,39 @@ def clean_one(rel: str, src_path: str, dst_path: str, fidelity: str, *,
                 notes=" | ".join(report.advisories))
 
 
+_WORKER: dict = {}
+
+
+def _init_worker(fidelity: str, keep_unknown: bool, check_memory: bool, verify: bool,
+                 drop_subtitles: bool, jobs: int) -> None:
+    from . import crosscheck, resources
+    resources.MEMORY_SHARE = jobs
+    _WORKER.update(fidelity=fidelity, keep_unknown=keep_unknown,
+                   check_memory=check_memory, verify=verify,
+                   drop_subtitles=drop_subtitles,
+                   dispatcher=default_dispatcher(keep_unknown_members=keep_unknown,
+                                                 check_memory=check_memory,
+                                                 drop_subtitles=drop_subtitles))
+    if verify:
+        crosscheck.open_session()
+
+
+def _clean_task(job: tuple[str, str, str]) -> dict:
+    rel, path, out = job
+    w = _WORKER
+    return clean_one(rel, path, out, w["fidelity"], dispatcher=w["dispatcher"],
+                     keep_unknown=w["keep_unknown"], check_memory=w["check_memory"],
+                     verify=w["verify"], drop_subtitles=w["drop_subtitles"])
+
+
 def clean_folder(src: str, dst: str, fidelity: str = "F1", *,
                  keep_unknown: bool = False, check_memory: bool = True,
                  verify: bool = True, drop_subtitles: bool = False,
-                 progress=None) -> Summary:
-    """Clean every file under `src` into `dst`, writing the sheet as it goes."""
+                 progress=None, jobs: int = 1) -> Summary:
+    """Clean every file under `src` into `dst`, writing the sheet as it goes.
+
+    `jobs` > 1 cleans that many files at once, in separate processes, each with its
+    own ExifTool and 1/jobs of the free memory; the sheet keeps the same order."""
     check_paths(src, dst)
     os.makedirs(dst, exist_ok=True)
     entries = sorted(walk(src))             # one order, whatever the disk's
@@ -197,19 +225,31 @@ def clean_folder(src: str, dst: str, fidelity: str = "F1", *,
         n += 1
         name = f"scrub-results-{n}.csv"
     summary = Summary(sheet=os.path.join(dst, name))
-    d = default_dispatcher(keep_unknown_members=keep_unknown, check_memory=check_memory,
-                           drop_subtitles=drop_subtitles)
+    work = [(rel, path, os.path.join(dst, *rel.split("/"))) for rel, path in entries]
+    setup = (fidelity, keep_unknown, check_memory, verify, drop_subtitles, max(1, jobs))
     with open(summary.sheet, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=COLUMNS)
         writer.writeheader()
-        for rel, path in entries:
-            row = clean_one(rel, path, os.path.join(dst, *rel.split("/")), fidelity,
-                            dispatcher=d, keep_unknown=keep_unknown,
-                            check_memory=check_memory, verify=verify,
-                            drop_subtitles=drop_subtitles)
+
+        def record(row):
             summary.rows.append(row)
             writer.writerow(row)
             f.flush()
             if progress is not None:
                 progress(row)
+
+        if jobs > 1 and len(work) > 1:
+            from concurrent.futures import ProcessPoolExecutor
+            with ProcessPoolExecutor(max_workers=jobs, initializer=_init_worker,
+                                     initargs=setup) as pool:
+                for row in pool.map(_clean_task, work):      # in sorted order
+                    record(row)
+        else:
+            from . import crosscheck
+            _init_worker(*setup[:-1], 1)
+            try:
+                for job in work:
+                    record(_clean_task(job))
+            finally:
+                crosscheck.close_session()
     return summary

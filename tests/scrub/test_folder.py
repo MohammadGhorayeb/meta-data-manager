@@ -217,3 +217,29 @@ def test_macos_download_attributes_do_not_follow_the_file(tmp_path):
                            capture_output=True, text=True).stdout.split()
     assert "com.apple.quarantine" not in names
     assert "com.apple.metadata:kMDItemWhereFroms" not in names
+
+
+def test_parallel_cleaning_gives_the_same_sheet_and_files(tmp_path):
+    """`--jobs` (November plan N3c): each file in its own process, the sheet in the
+    same order, every row and every cleaned file the same as one at a time."""
+    src = tmp_path / "in"
+    _tree(src)
+    one = folder.clean_folder(str(src), str(tmp_path / "one"), verify=True, jobs=1)
+    three = folder.clean_folder(str(src), str(tmp_path / "three"), verify=True, jobs=3)
+    assert [r["path"] for r in one.rows] == [r["path"] for r in three.rows]
+    for a, b in zip(one.rows, three.rows, strict=True):
+        assert {k: v for k, v in a.items() if k != "independent_check"} == \
+               {k: v for k, v in b.items() if k != "independent_check"}
+        assert a["independent_check"].split(":")[0] == b["independent_check"].split(":")[0]
+    for row in one.rows:
+        p1, p3 = tmp_path / "one" / row["path"], tmp_path / "three" / row["path"]
+        assert p1.exists() == p3.exists()
+        if p1.exists():
+            assert p1.read_bytes() == p3.read_bytes()
+
+
+def test_each_parallel_clean_counts_its_share_of_the_free_memory(monkeypatch):
+    from src.scrub import resources
+    monkeypatch.setattr(resources, "_system_available_memory", lambda: 8_000_000_000)
+    monkeypatch.setattr(resources, "MEMORY_SHARE", 4)
+    assert resources.available_memory() == 2_000_000_000

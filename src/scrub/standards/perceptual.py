@@ -61,7 +61,10 @@ def pcm_mono(data: bytes, ffmpeg: str = "ffmpeg"):
         r = tools.run([ffmpeg, "-i", path, "-map", "0:a", "-vn", "-f", "s16le",
                             "-ac", "1", "-ar", str(PCM_RATE), "-loglevel", "error",
                             "pipe:1"], capture_output=True)
-    return np.frombuffer(r.stdout, dtype="<i2").astype(np.float64)
+    # Kept as 16-bit samples (2 bytes each): `check` widens only what it compares.
+    # As float64 the whole recording cost 8 bytes a sample, twice, before the FFT
+    # copies -- a 10 MB MP3's full clean peaked at 1.17 GB (November benchmark).
+    return np.frombuffer(r.stdout, dtype="<i2")
 
 
 def gate_band(source_rate: int) -> int:
@@ -81,12 +84,15 @@ def bandlimit(x, cutoff: int = GATE_BAND_HZ, fs: int = PCM_RATE):
     return np.fft.irfft(spec, n=x.size)
 
 
-def best_ncc(a, b, maxlag: int = 3000, window: int = 200_000) -> float:
+NCC_WINDOW, NCC_MAXLAG = 200_000, 3000
+
+
+def best_ncc(a, b, maxlag: int = NCC_MAXLAG, window: int = NCC_WINDOW) -> float:
     """Best normalized cross-correlation over a small delay-alignment window."""
     return best_ncc_lag(a, b, maxlag, window)[0]
 
 
-def best_ncc_lag(a, b, maxlag: int = 3000, window: int = 200_000):
+def best_ncc_lag(a, b, maxlag: int = NCC_MAXLAG, window: int = NCC_WINDOW):
     """As best_ncc, but also returns the lag that achieved it, so a follow-up
     measurement can compare the two signals already aligned."""
     import numpy as np
@@ -182,15 +188,24 @@ def check(original: bytes, scrubbed: bytes, source_rate: int = PCM_RATE,
 
     Returns the waveform score so callers can record it.
     """
+    import numpy as np
     band = gate_band(source_rate)
-    a = bandlimit(pcm_mono(original, ffmpeg), cutoff=band)
-    b = bandlimit(pcm_mono(scrubbed, ffmpeg), cutoff=band)
-    ncc, lag = best_ncc_lag(a, b)
+    pa, pb = pcm_mono(original, ffmpeg), pcm_mono(scrubbed, ffmpeg)
+    # Stage 1 reads the first NCC window at most MAXLAG samples apart, so only that
+    # much is band-limited -- plus a margin, so the filter's ringing at the cut lies
+    # beyond what is compared, as it lay beyond the end of the recording before.
+    head = NCC_WINDOW + NCC_MAXLAG + (1 << 16)
+    a = bandlimit(pa[:head].astype(np.float64), cutoff=band)
+    b = bandlimit(pb[:head].astype(np.float64), cutoff=band)
+    ncc, lag = best_ncc_lag(a, b, NCC_MAXLAG, NCC_WINDOW)
     if ncc >= min_ncc:
         return ncc
 
     env = 0.0
     if ncc >= WAVEFORM_FLOOR:
+        # Stage 2 does compare the whole recording: widened only when it is needed.
+        a = bandlimit(pa.astype(np.float64), cutoff=band)
+        b = bandlimit(pb.astype(np.float64), cutoff=band)
         env = envelope_similarity(*_align(a, b, lag))
         if env >= MIN_ENVELOPE:
             return ncc

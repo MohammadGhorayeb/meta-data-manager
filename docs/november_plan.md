@@ -135,6 +135,19 @@ independent of file size (≤ 512 MB); a folder of 1,000 iPhone photos at F1 in 
 **Done:** `performance.md` published; a 4 GB video cleaned within the memory target
 with output byte-identical to the in-memory path; #38 narrowed or closed.
 
+**Status (8 Nov): done, local** ([`performance.md`](performance.md)). Measured first,
+then fixed what it found, each re-measured: video streamed (1 GB: 2.07 GB -> 44 MB,
+4.1 s -> 2.9 s; output identical to the in-memory path, which archives still use);
+Excel F1 254x -> 30x (streamed scans, `xmlspans.check`); audio F3 107-117x -> 13-14x
+and ~4x faster (the gate band-limits only the window it compares); JPEG F1 scan in C
+(16 s -> 0.3 s at 89 MB); the ZIP reader no longer copies members (9-11x -> 5.5x);
+folder mode: one ExifTool per process and `--jobs N` (300 photos: 48.5 s -> 1.8 s,
+0.9 s on 4 jobs). Memory checks per level (`memory_factors`), ZIP 3.0 -> 3.5. Found
+on the way: JPEG F3's perceptual-hash gate refused sky and night photos and passed
+colour swaps -- replaced by PSNR (limit #87). Targets (D4): the 1 GB video peak is
+44 MB; 300 photos in 1.8 s. Provisional numbers to confirm: PSNR 25 dB. Not done:
+Linux numbers; real-file timings; the 4 GB video (1 GB measured).
+
 ### N4 — packaging: one install, one fingerprint (19–26 Nov)
 Schedule item 3.
 

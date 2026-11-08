@@ -18,6 +18,14 @@ from ..base import BaseHandler
 from . import f1
 from . import inspect as _inspect
 
+# Peak memory a STREAMED F1 clean cannot give back, as a multiple of the file -- the
+# CLI's path for F1 (November plan N3b). Measured as physical footprint, not resident
+# size: the input and output are mapped files whose pages the system reclaims at
+# will. A 1 GB clip: 45 MB (0.045x; its 30,000 frames' sample tables), against
+# 2.07 GB in memory before. A synthetic 40 or 200 MB file: 4 MB either way -- it
+# grows with the sample count, not the bytes. Held by test_memory_preflight.py.
+STREAM_MEMORY_FACTOR = 0.1
+
 # Major or compatible brands meaning "a movie". QuickTime first: every iPhone video.
 VIDEO_BRANDS = {
     b"qt  ", b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42",
@@ -73,6 +81,16 @@ class Mp4Handler(BaseHandler):
 
     def scrub_f1(self, data: bytes) -> bytes:
         return f1.scrub(data, drop_subtitles=self.drop_subtitles)
+
+    # Streamed from a mapped input straight to the output file (November plan N3b):
+    # the CLI takes this path for F1, so memory no longer grows with the video.
+    stream_fidelities = ("F1",)
+    stream_memory_factor = STREAM_MEMORY_FACTOR
+
+    def scrub_to(self, data, out_path: str, fidelity: str) -> None:
+        if fidelity not in self.stream_fidelities:
+            raise FidelityError(f"mp4 streams {self.stream_fidelities}, not {fidelity}")
+        f1.scrub_to(data, out_path, drop_subtitles=self.drop_subtitles)
 
     def scrub_f2(self, data: bytes) -> bytes:
         raise FidelityError(

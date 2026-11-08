@@ -59,13 +59,57 @@ def test_f3_normalizes_dqt_across_inputs():
         "F3 DQT must be identical regardless of input (producer-independent)"
 
 
-def test_f3_content_preserved_under_phash():
+def test_f3_content_preserved():
     src = _jpeg(seed=3, quality=90)
     scrubbed = f3.scrub(src)          # raises ContentError if it diverged
-    import imagehash
-    d = imagehash.phash(Image.open(io.BytesIO(src))) - \
-        imagehash.phash(Image.open(io.BytesIO(scrubbed)))
-    assert d <= f3.PHASH_MAX_DISTANCE
+    a, b = (Image.open(io.BytesIO(x)).convert("RGB") for x in (src, scrubbed))
+    assert f3.psnr(a, b) >= f3.MIN_PSNR_DB
+
+
+def _flat(kind: str) -> bytes:
+    """Near-flat photos -- a clear sky, a night shot -- the kind a perceptual hash
+    cannot fingerprint: its bits sit on the median and noise flips them."""
+    import numpy as np
+    rng = np.random.default_rng(3)
+    h, w = 600, 800
+    if kind == "sky":
+        y = np.linspace(0, 1, h)[:, None, None]
+        arr = (np.array([90, 150, 230]) * (1 - y) + np.array([200, 225, 250]) * y
+               + rng.normal(0, 3, (h, w, 3)))
+    else:
+        arr = rng.normal(12, 6, (h, w, 3))
+    buf = io.BytesIO()
+    Image.fromarray(np.clip(arr, 0, 255).astype("uint8")).save(buf, "JPEG", quality=92)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("kind", ["sky", "night"])
+def test_f3_cleans_a_near_flat_photo(kind):
+    """The hash gate refused these at distance 24 and 22 (51.5 and 46.9 dB)."""
+    out = f3.scrub(_flat(kind))
+    assert Image.open(io.BytesIO(out)).size == (800, 600)
+
+
+@pytest.mark.parametrize("mangle", ["rotated", "rb_swapped", "grayscale", "darker",
+                                    "shifted"])
+def test_the_gate_refuses_a_re_encode_that_changed_the_picture(mangle):
+    """What the gate is for. The hash passed the last four (distance 0-4)."""
+    import numpy as np
+    from PIL import ImageOps
+
+    from src.scrub.errors import ContentError
+    src = _jpeg(seed=4, quality=92)
+    img = Image.open(io.BytesIO(src)).convert("RGB")
+    arr = np.asarray(img)
+    bad = {"rotated": lambda: img.rotate(180),
+           "rb_swapped": lambda: Image.fromarray(arr[..., ::-1].copy()),
+           "grayscale": lambda: ImageOps.grayscale(img).convert("RGB"),
+           "darker": lambda: Image.fromarray((arr * 0.7).astype("uint8")),
+           "shifted": lambda: Image.fromarray(np.roll(arr, 8, axis=1))}[mangle]()
+    buf = io.BytesIO()
+    bad.save(buf, "JPEG", quality=90)
+    with pytest.raises(ContentError, match="PSNR"):
+        f3._check_perceptual(src, buf.getvalue())
 
 
 def test_f3_output_decodes_and_matches_dimensions():

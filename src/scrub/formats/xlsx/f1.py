@@ -144,20 +144,48 @@ def _referenced_strings(parts: dict[str, bytes]) -> set[int]:
     otherwise have its text blanked as unused."""
     used: set[int] = set()
     for name, body in parts.items():
-        if name == "xl/sharedStrings.xml" or MAIN_NS.encode() not in body:
-            continue
-        els = xmlspans.parse(body, name)
-        for el in els:
-            if el.uri == MAIN_NS and el.local == "c" and el.attr("t") == "s":
-                for c in el.children:
-                    v = els[c]
-                    if v.uri == MAIN_NS and v.local == "v":
-                        try:
-                            used.add(int(v.text.strip()))
-                        except ValueError:
-                            raise ParseError(f"{name}: a shared-string cell whose "
-                                             "index is not a number") from None
+        if name != "xl/sharedStrings.xml" and MAIN_NS.encode() in body:
+            _strings_used_in(name, body, used)
     return used
+
+
+def _strings_used_in(name: str, body: bytes, used: set[int]) -> None:
+    """Add the shared-string indexes `body` uses. Streamed rather than
+    `xmlspans.parse`d: a 4.8 MB sheet took 2 s and ~120 MB as an element per tag
+    (November benchmark). The rule is the same -- the `<v>` directly inside a
+    `c t="s"` cell, by resolved name."""
+    cell, value = f"{MAIN_NS} c", f"{MAIN_NS} v"
+    depth, cell_depth, text = 0, -1, None
+    p = xmlspans.parser(body, name)
+
+    def start(tag, attrs):
+        nonlocal depth, cell_depth, text
+        depth += 1
+        if tag == cell and attrs.get("t") == "s":
+            cell_depth = depth
+        elif tag == value and cell_depth == depth - 1:
+            text = []
+
+    def end(tag):
+        nonlocal depth, cell_depth, text
+        if text is not None and tag == value:
+            try:
+                used.add(int("".join(text).strip()))
+            except ValueError:
+                raise ParseError(f"{name}: a shared-string cell whose "
+                                 "index is not a number") from None
+            text = None
+        if depth == cell_depth:
+            cell_depth = -1
+        depth -= 1
+
+    def chars(t):
+        if text is not None:
+            text.append(t)
+
+    p.StartElementHandler, p.EndElementHandler = start, end
+    p.CharacterDataHandler = chars
+    xmlspans.run(p, body, name)
 
 
 def _blank_unused_strings(body: bytes, used: set[int]) -> bytes:
@@ -350,19 +378,46 @@ def advisories(data: bytes) -> list[str]:
     for entry in pkg.archive.entries:
         if not (pkg.content_type(entry.name) or "").endswith(".worksheet+xml"):
             continue
-        for el in xmlspans.parse(entry.content(), entry.name):
-            if el.uri != MAIN_NS:
-                continue
-            if el.local == "row" and el.attr("hidden") in ("1", "true"):
-                rows += 1
-            elif el.local == "col" and el.attr("hidden") in ("1", "true"):
-                cols += 1
-            elif el.local in ("oddHeader", "oddFooter", "evenHeader", "evenFooter",
-                              "firstHeader", "firstFooter") and el.text.strip():
-                headers += 1
+        r, c, h = _sheet_counts(entry.name, entry.content())
+        rows, cols, headers = rows + r, cols + c, headers + h
     if rows or cols:
         out.append(f"{rows} hidden row(s) and {cols} hidden column range(s) kept")
     if headers:
         out.append(f"{headers} header/footer text(s) kept: printed content, may name "
                    "a person or a file")
     return out
+
+
+_HEADER_TAGS = frozenset(f"{MAIN_NS} {t}" for t in (
+    "oddHeader", "oddFooter", "evenHeader", "evenFooter", "firstHeader", "firstFooter"))
+
+
+def _sheet_counts(name: str, body: bytes) -> tuple[int, int, int]:
+    """(hidden rows, hidden column ranges, headers/footers with text) in one sheet,
+    streamed: as an element per tag this was most of a workbook's clean -- 1.9 s and
+    ~200x the file for the report's counts alone (November benchmark). A header
+    counts when its OWN text is not blank, as `Element.text` had it."""
+    row, col = f"{MAIN_NS} row", f"{MAIN_NS} col"
+    counts = [0, 0, 0]
+    stack: list[list[str] | None] = []
+    p = xmlspans.parser(body, name)
+
+    def start(tag, attrs):
+        if tag in (row, col) and attrs.get("hidden") in ("1", "true"):
+            counts[0 if tag == row else 1] += 1
+        stack.append([] if tag in _HEADER_TAGS else None)
+
+    def end(_tag):
+        text = stack.pop()
+        if text is not None and "".join(text).strip():
+            counts[2] += 1
+
+    def chars(t):
+        if stack and stack[-1] is not None:
+            stack[-1].append(t)
+
+    p.StartElementHandler, p.EndElementHandler = start, end
+    p.CharacterDataHandler = chars
+    xmlspans.run(p, body, name)
+    return counts[0], counts[1], counts[2]
+

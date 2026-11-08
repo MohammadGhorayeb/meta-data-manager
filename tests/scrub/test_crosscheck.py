@@ -310,3 +310,22 @@ def test_a_long_value_is_searched_for_in_full(tmp_path):
                            [i.raw_before or i.before for i in report.items])
     assert any(long_value in value for value, _where in check.leaked), \
         "a long value that is still present must be caught"
+
+
+@pytest.mark.skipif(shutil.which("exiftool") is None, reason="exiftool absent")
+def test_a_session_reads_what_a_one_off_read_does(photo, tmp_path):
+    """Folder mode keeps one ExifTool running (November plan N3c); its reads must be
+    the same, and a path it cannot carry (a newline) or a session that died must
+    still be read, the one-off way or by a new session."""
+    one = crosscheck.read_tags(photo)
+    odd = tmp_path / "a\nb.jpg"
+    odd.write_bytes(open(photo, "rb").read())
+    crosscheck.open_session()
+    try:
+        assert crosscheck.read_tags(photo) == one
+        assert crosscheck.read_tags(str(odd)) == one
+        crosscheck._session.proc.kill()
+        crosscheck._session.proc.wait()
+        assert crosscheck.read_tags(photo) == one
+    finally:
+        crosscheck.close_session()

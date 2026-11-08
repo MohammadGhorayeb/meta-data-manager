@@ -40,11 +40,14 @@ def test_a_file_the_machine_cannot_hold_is_refused_before_any_scrub(tmp_path,
                                                                      monkeypatch):
     src = _write(tmp_path, "v.mp4", c.handbuilt())
     out = str(tmp_path / "out.mp4")
-    monkeypatch.setattr(resources, "available_memory", lambda: 1000)
+    # One byte: a streamed video needs little (STREAM_MEMORY_FACTOR), and the
+    # handbuilt clip is small, so 1000 bytes no longer refuses it.
+    monkeypatch.setattr(resources, "available_memory", lambda: 1)
 
     def never(*_a, **_k):
         raise AssertionError("the scrub ran although the preflight should refuse")
     monkeypatch.setattr(Mp4Handler, "scrub_f1", never)
+    monkeypatch.setattr(Mp4Handler, "scrub_to", never)
 
     with pytest.raises(ResourceError) as exc:
         cli.scrub_file(src, out, "F1")
@@ -57,7 +60,7 @@ def test_a_file_the_machine_cannot_hold_is_refused_before_any_scrub(tmp_path,
 def test_the_cli_exits_7_and_the_override_flag_scrubs_anyway(tmp_path, monkeypatch):
     src = _write(tmp_path, "v.mp4", c.handbuilt())
     out = str(tmp_path / "out.mp4")
-    monkeypatch.setattr(resources, "available_memory", lambda: 1000)
+    monkeypatch.setattr(resources, "available_memory", lambda: 1)
     assert cli.main([src, out, "--no-report"]) == 7
     assert not os.path.exists(out)
     assert cli.main([src, out, "--no-report", "--skip-memory-check"]) == 0
@@ -117,9 +120,58 @@ def peak():
                     return int(line.split()[1]) * 1024
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss     # bytes on macOS
 
+d = default_dispatcher()
+base = peak()
+# The IN-MEMORY route (`handler.scrub`), which `memory_factor` prices: video inside
+# an archive still takes it. The CLI streams a video file (STREAM below).
+data = open(sys.argv[1], "rb").read()
+out = d.resolve(data).scrub(data, "F1")
+open(sys.argv[2], "wb").write(out)
+print(peak() - base)
+"""
+
+# What a STREAMED clean cannot give back: macOS's physical footprint, or on Linux the
+# anonymous resident memory, sampled (there is no high-water mark for it alone).
+_STREAM = r"""
+import ctypes, os, sys, threading, time
+sys.path.insert(0, os.environ["REPO"])
+from src.scrub import cli
+from src.scrub.dispatch import default_dispatcher
+
+def anon():
+    with open("/proc/self/status") as f:
+        for line in f:
+            if line.startswith("RssAnon:"):
+                return int(line.split()[1]) * 1024
+    return 0
+
+if sys.platform == "darwin":
+    class RU(ctypes.Structure):
+        _fields_ = [("uuid", ctypes.c_uint8 * 16)] + [(f"f{i}", ctypes.c_uint64)
+                                                      for i in range(37)]
+    lib = ctypes.CDLL("/usr/lib/libproc.dylib")
+    def peak():
+        ru = RU()
+        lib.proc_pid_rusage(os.getpid(), 4, ctypes.byref(ru))
+        return ru.f28                     # lifetime_max_phys_footprint
+    stop = None
+else:
+    top = [0]
+    stop = threading.Event()
+    def sample():
+        while not stop.is_set():
+            top[0] = max(top[0], anon())
+            time.sleep(0.002)
+    def peak():
+        return max(top[0], anon())
+
 default_dispatcher()
 base = peak()
+if stop is not None:
+    threading.Thread(target=sample, daemon=True).start()
 cli.scrub_file(sys.argv[1], sys.argv[2], "F1", check_memory=False)
+if stop is not None:
+    stop.set()
 print(peak() - base)
 """
 
@@ -149,3 +201,86 @@ def test_the_declared_factor_is_what_a_large_scrub_actually_uses(label, handler,
         f"{label}: measured {measured:.2f}x exceeds the declared {declared}x"
     assert declared <= measured * 1.5, \
         f"{label}: declared {declared}x is far above the measured {measured:.2f}x"
+
+
+@pytest.mark.skipif(not (sys.platform == "darwin" or sys.platform.startswith("linux")),
+                    reason="no way to read unreclaimable memory here")
+def test_a_streamed_video_needs_memory_that_does_not_grow_with_it(tmp_path):
+    """The CLI streams a video's light clean (November plan N3b). Its peak memory
+    that cannot be reclaimed must not grow with the file: the difference between a
+    200 MB and a 40 MB clip, per byte, stays under the declared streaming factor --
+    which is what the preflight multiplies the file size by."""
+    peaks = {}
+    for mb in (40, 200):
+        src = _write(tmp_path, f"v{mb}.mp4",
+                     c.handbuilt(media=bytes(range(256)) * (mb * 4096)))
+        r = subprocess.run([sys.executable, "-c", _STREAM, src,
+                            str(tmp_path / f"out{mb}.mp4")],
+                           env=dict(os.environ, REPO=REPO), capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        peaks[mb] = int(r.stdout.strip())
+        os.unlink(src)
+        os.unlink(tmp_path / f"out{mb}.mp4")
+    growth = (peaks[200] - peaks[40]) / (160 * 1024 * 1024)
+    assert growth <= Mp4Handler.stream_memory_factor, peaks
+    assert peaks[200] <= Mp4Handler.stream_memory_factor * 200 * 1024 * 1024, peaks
+
+
+
+def test_each_level_is_priced_at_its_own_factor(tmp_path):
+    """A light clean that only deletes and a full clean that decodes are priced
+    apart (November benchmark: JPEG 3x light, 67x full)."""
+    from src.scrub.formats.jpeg.handler import JpegHandler
+    from tests.scrub import corpus as imgc
+    d = default_dispatcher()
+    jpeg = _write(tmp_path, "p.jpg", imgc.build_torture_jpeg())
+    assert resources.factor_for(jpeg, d) is None              # light: never checked
+    assert resources.factor_for(jpeg, d, "F3") == JpegHandler.memory_factors["F3"]
+    assert resources.factor_for(jpeg, d, "F2") == JpegHandler.memory_factors["F2"]
+
+
+_LEVEL_PEAK = r"""
+import io, os, resource, sys
+sys.path.insert(0, os.environ["REPO"])
+from src.scrub.dispatch import default_dispatcher
+
+def peak():
+    if sys.platform.startswith("linux"):
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+d = default_dispatcher()
+data = open(sys.argv[1], "rb").read()
+base = peak()
+d.resolve(data).scrub(data, sys.argv[2])
+print(peak() - base)
+"""
+
+
+def test_the_jpeg_full_clean_factor_is_what_it_uses(tmp_path):
+    """Re-measured in a fresh process on a ~5 MB photo with edges and noise (the
+    benchmark's kind): at or under the declared factor, and not far under it."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+
+    from src.scrub.formats.jpeg.handler import JpegHandler
+    rng = np.random.default_rng(1)
+    w, h = 3200, 2400
+    img = Image.new("RGB", (w, h), (90, 140, 200))
+    draw = ImageDraw.Draw(img)
+    for _ in range(60):
+        x, y = int(rng.integers(0, w)), int(rng.integers(0, h))
+        draw.ellipse((x, y, x + 400, y + 300), fill=tuple(int(v) for v in rng.integers(0, 256, 3)))
+    arr = np.clip(np.asarray(img, "int16") + rng.normal(0, 12, (h, w, 3)), 0, 255)
+    src = str(tmp_path / "p.jpg")
+    Image.fromarray(arr.astype("uint8")).save(src, "JPEG", quality=92)
+    r = subprocess.run([sys.executable, "-c", _LEVEL_PEAK, src, "F3"],
+                       env=dict(os.environ, REPO=REPO), capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    measured = int(r.stdout.strip()) / os.path.getsize(src)
+    declared = JpegHandler.memory_factors["F3"]
+    assert measured <= declared, f"measured {measured:.1f}x over the declared {declared}x"
+    assert declared <= measured * 1.5, f"declared {declared}x far above {measured:.1f}x"

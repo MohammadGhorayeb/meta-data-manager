@@ -19,6 +19,9 @@ class PngHandler(BaseHandler):
     format_id = "png"
     magic = PNG_MAGIC
     fidelities = ("F1", "F2")   # F3 not_applicable (lossless format)
+    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
+    # run, with ~10% margin; held by test_memory_preflight.py.
+    memory_factors = {"F2": 18.0}                  # 14-16x: decoded pixels
 
     def scrub_f1(self, data: bytes) -> bytes:
         return f1.scrub(data)

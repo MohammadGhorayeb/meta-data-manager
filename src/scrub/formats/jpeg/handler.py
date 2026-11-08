@@ -18,6 +18,9 @@ class JpegHandler(BaseHandler):
     format_id = "jpeg"
     magic = JPEG_MAGIC
     fidelities = ("F1", "F2", "F3")
+    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
+    # run, with ~10% margin; held by test_memory_preflight.py.
+    memory_factors = {"F2": 50.0, "F3": 75.0}      # 45-47x, 67x: decoded pixels
 
     def scrub_f1(self, data: bytes) -> bytes:
         return f1.scrub(data)

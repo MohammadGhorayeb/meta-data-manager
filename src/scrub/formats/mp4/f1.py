@@ -194,6 +194,49 @@ def _layout(data: bytes) -> tuple[list[iso.Box], iso.Box, iso.Box]:
 
 
 def scrub(data: bytes, drop_subtitles: bool = False) -> bytes:
+    """The cleaned file, in memory."""
+    parts, before = _plan(data, drop_subtitles)
+    # Assembled as a list of views and joined ONCE: a bytearray grown chunk by
+    # chunk and then copied into `bytes` holds the whole output twice at its peak,
+    # which was a third full copy of the video beside the input (limit #38).
+    result = b"".join(parts)
+    del parts
+    _check_samples(result, before)
+    return result
+
+
+def scrub_to(data, out_path: str, drop_subtitles: bool = False) -> None:
+    """The cleaned file, written to `out_path` part by part (November plan N3b).
+
+    `data` may be an mmap of the input: the output is ftyp, moov and then slices of
+    the input in order, so nothing the size of the video is ever held -- a 1 GB clip
+    peaked at 2.07 GB in memory through `scrub`. The samples are then checked
+    against the written file, read back the same way."""
+    import mmap
+    parts, before = _plan(data, drop_subtitles)
+    with open(out_path, "wb") as f:
+        for part in parts:
+            f.write(part)
+    del parts
+    with open(out_path, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as out:
+        _check_samples(out, before)
+
+
+def _check_samples(result, before: list[str]) -> None:
+    """The promise of this tier, checked on the output as a reader would find it:
+    every kept track's samples are the same bytes, in the same order."""
+    _, out_moov_hdr, _ = _layout(result)
+    out_moov = iso.parse(result[out_moov_hdr.offset:out_moov_hdr.end])[0]
+    after = _track_digests(result, [iso.chunks(t.box.find(b"mdia/minf/stbl"),
+                                               limit=len(result))
+                                    for t in _tracks(out_moov)])
+    if after != before:
+        raise ContentError("MP4 F1 altered the samples of a kept track")
+
+
+def _plan(data, drop_subtitles: bool = False) -> tuple[list, list[str]]:
+    """The output as an ordered list of parts (new boxes, and views of the input's
+    samples), and the kept tracks' sample digests to check it against."""
     tops, moov_hdr, mdat_hdr = _layout(data)
     ftyp = iso.parse(data[tops[0].offset:tops[0].end])[0] \
         if tops[0].type == b"ftyp" else None
@@ -278,9 +321,6 @@ def scrub(data: bytes, drop_subtitles: bool = False) -> bytes:
     if len(moov_bytes) != moov_len:
         raise ContentError("MP4: moov changed size when offsets were filled in")
 
-    # Assembled as a list of views and joined ONCE: a bytearray grown chunk by
-    # chunk and then copied into `bytes` holds the whole output twice at its peak,
-    # which was a third full copy of the video beside the input (limit #38).
     view = memoryview(data)
     parts: list = []
     for btype in out_order:
@@ -293,19 +333,7 @@ def scrub(data: bytes, drop_subtitles: bool = False) -> bytes:
             parts.append(total.to_bytes(4, "big") + b"mdat" if mdat_header == 8 else
                          (1).to_bytes(4, "big") + b"mdat" + total.to_bytes(8, "big"))
             parts.extend(view[c.offset:c.end] for _, _, c in order)
-    result = b"".join(parts)
-    del parts, view
-
-    # The promise of this tier, checked on the output as a reader would find it:
-    # every kept track's samples are the same bytes, in the same order.
-    _, out_moov_hdr, _ = _layout(result)
-    out_moov = iso.parse(result[out_moov_hdr.offset:out_moov_hdr.end])[0]
-    after = _track_digests(result, [iso.chunks(t.box.find(b"mdia/minf/stbl"),
-                                               limit=len(result))
-                                    for t in _tracks(out_moov)])
-    if after != before:
-        raise ContentError("MP4 F1 altered the samples of a kept track")
-    return result
+    return parts, before
 
 
 def _track_digests(data: bytes, per_track: list[list[iso.Chunk]]) -> list[str]:

@@ -333,7 +333,7 @@ def malformed_parts(pkg: Package, is_dropped) -> list[str]:
                 or is_dropped(entry.name)):
             continue
         try:
-            xmlspans.parse(entry.content(), entry.name)
+            xmlspans.check(entry.content(), entry.name)
         except ParseError as exc:
             out.append(str(exc))
     return out

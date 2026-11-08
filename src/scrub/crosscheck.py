@@ -117,6 +117,89 @@ def read_tags(path: str) -> tuple[dict[str, str], str]:
     return tags, error
 
 
+class _Session:
+    """One ExifTool kept running (`-stay_open`), for runs that read many files.
+
+    Starting ExifTool is most of what a read costs -- about 0.2 s of Perl start-up
+    against a few milliseconds of reading (November benchmark) -- so folder mode,
+    which reads every file twice, opens one session per process and sends each read
+    down it. Arguments go one per line, so a path holding a newline is read the
+    one-off way instead; a read that does not answer within TIMEOUT ends the
+    session, and the next read starts afresh.
+    """
+
+    def __init__(self) -> None:
+        self.proc = subprocess.Popen(
+            [TOOL, "-stay_open", "True", "-@", "-"], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+    def read(self, args: list[str]) -> bytes | None:
+        import selectors
+        import time
+        if self.proc.poll() is not None:
+            return None
+        self.proc.stdin.write(("\n".join(args) + "\n-execute\n").encode())
+        self.proc.stdin.flush()
+        out, deadline = bytearray(), time.monotonic() + TIMEOUT
+        sel = selectors.DefaultSelector()
+        sel.register(self.proc.stdout, selectors.EVENT_READ)
+        try:
+            while not out.endswith(b"{ready}\n"):
+                if not sel.select(max(0.0, deadline - time.monotonic())):
+                    self.close()
+                    return None
+                chunk = os.read(self.proc.stdout.fileno(), 1 << 16)
+                if not chunk:
+                    return None
+                out += chunk
+        finally:
+            sel.close()
+        return bytes(out[:-len(b"{ready}\n")])
+
+    def close(self) -> None:
+        try:
+            if self.proc.poll() is None:
+                self.proc.stdin.write(b"-stay_open\nFalse\n")
+                self.proc.stdin.flush()
+                self.proc.wait(timeout=5)
+        except Exception:                                 # noqa: BLE001
+            self.proc.kill()
+
+
+_session: _Session | None = None
+
+
+def open_session() -> None:
+    """Keep one ExifTool running for this process's reads (folder mode)."""
+    global _session
+    if _session is None and available():
+        import atexit
+        _session = _Session()
+        atexit.register(close_session)
+
+
+def close_session() -> None:
+    global _session
+    if _session is not None:
+        _session.close()
+        _session = None
+
+
+def _run_read(path: str) -> tuple[bytes, bytes]:
+    """ExifTool's JSON for `path` (stdout, stderr), through the session if one is
+    open and the path can travel down it."""
+    global _session
+    args = ["-json", *_READ_ARGS, path]
+    if _session is not None and "\n" not in path:
+        out = _session.read(args)
+        if out is not None:
+            return out, b""
+        close_session()                    # dead or hung: the next read starts afresh
+        open_session()
+    proc = subprocess.run([TOOL, *args], capture_output=True, timeout=TIMEOUT)
+    return proc.stdout, proc.stderr
+
+
 def _read(path: str) -> tuple[dict[str, str], str, str]:
     """`(Group:Tag -> value, error)` for the metadata ExifTool reads out of a file.
 
@@ -136,14 +219,13 @@ def _read(path: str) -> tuple[dict[str, str], str, str]:
     # directory the reader happens to be in.
     path = os.path.abspath(path)
     try:
-        proc = subprocess.run([TOOL, "-json", *_READ_ARGS, path],
-                              capture_output=True, timeout=TIMEOUT)
+        stdout, stderr = _run_read(path)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {}, f"exiftool could not be run ({exc})", ""
 
-    raw = proc.stdout.decode("utf-8", "replace").strip()
+    raw = stdout.decode("utf-8", "replace").strip()
     if not raw:
-        detail = proc.stderr.decode("utf-8", "replace").strip()
+        detail = stderr.decode("utf-8", "replace").strip()
         return {}, f"exiftool returned nothing ({detail or 'no output'})", ""
     try:
         payload = json.loads(raw)

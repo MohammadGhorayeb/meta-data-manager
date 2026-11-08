@@ -31,6 +31,9 @@ class M4aHandler(BaseHandler):
     memory_factor = 4.5
     magic = ()                     # no leading magic; see matches()
     fidelities = ("F1", "F2", "F3")
+    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
+    # run, with ~10% margin; held by test_memory_preflight.py.
+    memory_factors = {"F2": 22.0, "F3": 16.0}      # 20x, 14x (F1: memory_factor)
 
     def matches(self, header: bytes) -> bool:
         return len(header) >= 12 and header[4:8] == b"ftyp"

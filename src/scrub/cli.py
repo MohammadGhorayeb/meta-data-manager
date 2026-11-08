@@ -163,10 +163,14 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
     dispatcher = dispatcher or default_dispatcher(
         keep_unknown_members=keep_unknown_members, check_memory=check_memory,
         drop_subtitles=drop_subtitles)
+    streamer = _streaming_handler(in_path, dispatcher, fidelity)
+    if streamer is not None:
+        return _scrub_streamed(streamer, in_path, out_path, fidelity,
+                               verify_with_exiftool, check_memory)
     if check_memory:
         # Before the read: loading a file the machine cannot hold is itself the
         # failure this check exists to prevent.
-        resources.preflight(in_path, resources.factor_for(in_path, dispatcher))
+        resources.preflight(in_path, resources.factor_for(in_path, dispatcher, fidelity))
     with open(in_path, "rb") as f:
         data = f.read()
 
@@ -195,6 +199,72 @@ def scrub_file_reported(in_path: str, out_path: str, fidelity: str,
                                         frozenset()),
                 expected_tags=getattr(handler, "expected_residual_tags",
                                       frozenset()))
+        except Exception:                                 # noqa: BLE001
+            report.check = None
+    return advisories, report
+
+
+def _streaming_handler(in_path: str, dispatcher, fidelity: str):
+    """The handler that will clean this file STREAMED, or None (November plan N3b).
+
+    Decided from the file's skeleton -- every top-level box but the media -- so a
+    video is never read to find out: video's light clean writes slices of the
+    input straight to the output and holds nothing the size of the file."""
+    with open(in_path, "rb") as f:
+        head = f.read(16)
+    if head[4:8] != b"ftyp":
+        return None
+    skeleton = resources._isobmff_skeleton(in_path)
+    if skeleton is None:
+        return None
+    try:
+        handler = dispatcher.resolve(skeleton)
+    except ScrubError:
+        return None
+    if fidelity in getattr(handler, "stream_fidelities", ()):
+        return handler
+    return None
+
+
+def _scrub_streamed(handler, in_path: str, out_path: str, fidelity: str,
+                    verify_with_exiftool: bool, check_memory: bool
+                    ) -> tuple[list[str], rep.Report]:
+    """`scrub_file_reported` for a streaming handler: the input is mapped, not read;
+    the output is written to a temporary file beside its destination, checked
+    there (residuals, report) and only then renamed into place."""
+    import mmap
+    if check_memory:
+        resources.preflight(in_path, getattr(handler, "stream_memory_factor", None))
+    d = os.path.dirname(os.path.abspath(out_path))
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
+    os.close(fd)
+    try:
+        with open(in_path, "rb") as f, \
+                mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            advisories = _advise(handler, data)
+            handler.scrub_to(data, tmp, fidelity)
+            with open(tmp, "rb") as g, \
+                    mmap.mmap(g.fileno(), 0, access=mmap.ACCESS_READ) as out:
+                residuals = handler.verify(out, fidelity)
+                if residuals:
+                    raise ContentError("post-scrub verification found residual "
+                                       "metadata: " + "; ".join(residuals))
+                report = rep.build(handler, data, out, fidelity, advisories)
+                report.advisories.extend(_kept(handler, out, fidelity))
+        os.chmod(tmp, output_mode(in_path))
+        os.replace(tmp, out_path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    if verify_with_exiftool:
+        try:
+            report.check = crosscheck.run(
+                in_path, out_path, report.removed_values,
+                expected_groups=getattr(handler, "expected_residual_groups", frozenset()),
+                expected_tags=getattr(handler, "expected_residual_tags", frozenset()))
         except Exception:                                 # noqa: BLE001
             report.check = None
     return advisories, report
@@ -256,6 +326,9 @@ def main(argv: list[str] | None = None) -> int:
                         "refusing the file. Drones and dash cams print their "
                         "position on every frame there; for a film they are the "
                         "subtitles, and they are lost")
+    p.add_argument("--jobs", type=int, default=1, metavar="N",
+                   help="folder mode: clean N files at once (0 = one per CPU). Each "
+                        "counts 1/N of the free memory as its own")
     p.add_argument("--no-verify", action="store_true",
                    help="skip the independent exiftool check at the end of the "
                         "report (it reads the file twice, which costs a moment)")
@@ -309,7 +382,8 @@ def _main_folder(args) -> int:
             drop_subtitles=args.drop_subtitles,
             check_memory=not args.skip_memory_check,
             verify=not (args.no_report or args.no_verify),
-            progress=None if args.no_report else line)
+            progress=None if args.no_report else line,
+            jobs=args.jobs if args.jobs > 0 else (os.cpu_count() or 1))
     except ValueError as e:
         print(f"scrub: {e}", file=sys.stderr)
         return 2

@@ -71,7 +71,7 @@ class ZipEntry:
     comment: bytes
     local_offset: int
     data_offset: int
-    raw: bytes                      # still compressed
+    raw: bytes | memoryview         # still compressed; a view into the archive
     header_disagreements: list[str] = field(default_factory=list)
     name_bytes: bytes = b""         # the name as stored, before any decoding
 
@@ -83,7 +83,7 @@ class ZipEntry:
         """The entry's bytes, decompressed. Raises rather than returning a partial
         read: a part we cannot fully decode is a part we cannot vouch for."""
         if self.method == STORED:
-            body = self.raw
+            body = bytes(self.raw)
         elif self.method == DEFLATED:
             # Bounded by the declared size: a member that inflates past it is a
             # decompression bomb or a lie, and is refused after one byte too many
@@ -214,7 +214,9 @@ def _read(data: bytes) -> ZipArchive:
          nlen_l, elen_l) = struct.unpack_from("<HHHHHIIIHH", data, loff + 4)
         extra_loc = data[loff + 30 + nlen_l:loff + 30 + nlen_l + elen_l]
         start = loff + 30 + nlen_l + elen_l
-        raw = data[start:start + csize]
+        # A view, not a copy: a copy of every member's compressed bytes was a whole
+        # second input held for the length of the clean (November benchmark).
+        raw = memoryview(data)[start:start + csize]
         if len(raw) != csize:
             raise ParseError(f"{name}: entry data truncated")
 

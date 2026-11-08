@@ -25,6 +25,10 @@ class PdfHandler(BaseHandler):
     format_id = "pdf"
     magic = PDF_MAGIC
     fidelities = ("F1", "F2", "F3")
+    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
+    # run, with ~10% margin; held by test_memory_preflight.py.
+    memory_factor = 7.0                            # 6.2x F1, 4.8-5.4x F2
+    memory_factors = {"F3": 8.0}                   # 7.0x at 9.5 MB
 
     def _tier(self, fn, data: bytes) -> bytes:
         """Run a tier, converting pikepdf's own exception into a ParseError.

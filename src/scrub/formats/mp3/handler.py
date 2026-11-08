@@ -19,6 +19,9 @@ class Mp3Handler(BaseHandler):
     # No fixed magic prefix — matches() sniffs ID3 or an MPEG frame sync.
     magic = ()
     fidelities = ("F1", "F3")   # F2 = not_applicable (see module docstring)
+    # Measured by scripts/perf_bench.py (docs/performance.md, November), largest size
+    # run, with ~10% margin; held by test_memory_preflight.py.
+    memory_factors = {"F3": 15.0}                  # 12.9x at 10 MB
 
     def matches(self, header: bytes) -> bool:
         if header[:3] == b"ID3":

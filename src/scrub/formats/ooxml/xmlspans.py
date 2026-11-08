@@ -44,15 +44,51 @@ class Element:
         return self.attrs.get(f"{uri} {local}" if uri else local)
 
 
+def parser(data: bytes, what: str = "XML"):
+    """An expat parser with this module's refusals installed (UTF-16, external,
+    parameter or non-plain entities); the caller adds element handlers and calls
+    `run`. Shared by `parse`, `check` and the streaming scans that need neither
+    spans nor element objects."""
+    if data[:2] in (b"\xfe\xff", b"\xff\xfe"):
+        raise ParseError(f"{what}: UTF-16 is not supported")
+    p = xml.parsers.expat.ParserCreate(namespace_separator=" ")
+    p.SetParamEntityParsing(xml.parsers.expat.XML_PARAM_ENTITY_PARSING_NEVER)
+
+    def external(*_):
+        raise ParseError(f"{what}: an external entity reference; refused")
+
+    def entity(name, is_param, value, base, system_id, public_id, notation):
+        if is_param or system_id or public_id or notation:
+            raise ParseError(f"{what}: entity {name!r} is not a plain string; refused")
+
+    p.ExternalEntityRefHandler = external
+    p.EntityDeclHandler = entity
+    return p
+
+
+def run(p, data: bytes, what: str = "XML") -> None:
+    try:
+        p.Parse(data, True)
+    except xml.parsers.expat.ExpatError as exc:
+        raise ParseError(f"{what}: not well-formed XML ({exc})") from None
+    except LookupError:
+        # `encoding="K8"`: expat asks Python for the codec and gets LookupError.
+        raise ParseError(f"{what}: declares an unknown character encoding") from None
+
+
+def check(data: bytes, what: str = "XML") -> None:
+    """Refuse what `parse` refuses, without building an element per tag: a 4.8 MB
+    worksheet took 1.9 s and ~120 MB to `parse` just to learn it was well-formed
+    (November benchmark); expat alone does it in C."""
+    run(parser(data, what), data, what)
+
+
 def parse(data: bytes, what: str = "XML") -> list[Element]:
     """Every element, in document order, with its span. Refuses what is not
     well-formed, and external or parameter entities (nothing here fetches)."""
-    if data[:2] in (b"\xfe\xff", b"\xff\xfe"):
-        raise ParseError(f"{what}: UTF-16 is not supported")
     els: list[Element] = []
     stack: list[int] = []
-    p = xml.parsers.expat.ParserCreate(namespace_separator=" ")
-    p.SetParamEntityParsing(xml.parsers.expat.XML_PARAM_ENTITY_PARSING_NEVER)
+    p = parser(data, what)
 
     def start(name, attrs):
         uri, _, local = name.rpartition(" ")
@@ -82,25 +118,10 @@ def parse(data: bytes, what: str = "XML") -> list[Element]:
         if stack:
             els[stack[-1]].text += t
 
-    def external(*_):
-        raise ParseError(f"{what}: an external entity reference; refused")
-
-    def entity(name, is_param, value, base, system_id, public_id, notation):
-        if is_param or system_id or public_id or notation:
-            raise ParseError(f"{what}: entity {name!r} is not a plain string; refused")
-
     p.StartElementHandler = start
     p.EndElementHandler = finish
     p.CharacterDataHandler = text
-    p.ExternalEntityRefHandler = external
-    p.EntityDeclHandler = entity
-    try:
-        p.Parse(data, True)
-    except xml.parsers.expat.ExpatError as exc:
-        raise ParseError(f"{what}: not well-formed XML ({exc})") from None
-    except LookupError:
-        # `encoding="K8"`: expat asks Python for the codec and gets LookupError.
-        raise ParseError(f"{what}: declares an unknown character encoding") from None
+    run(p, data, what)
     return els
 
 

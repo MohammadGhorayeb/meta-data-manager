@@ -19,14 +19,14 @@ class Dispatcher:
     def register(self, handler) -> None:
         self._handlers.append(handler)
 
-    def memory_factor(self, header: bytes) -> float | None:
+    def memory_factor(self, header: bytes, fidelity: str | None = None) -> float | None:
         """An UPPER BOUND on the memory a file with this header may need, as a
         multiple of its size: the largest factor among the handlers whose prefix
         matches. Every ISOBMFF format shares `....ftyp`, so for those it is
         `resources.factor_for()` that narrows it to the handler that will actually
         run, without reading the media."""
-        factors = [h.memory_factor for h in self._handlers
-                   if getattr(h, "memory_factor", None) and h.matches(header)]
+        factors = [_factor(h, fidelity) for h in self._handlers if h.matches(header)]
+        factors = [f for f in factors if f]
         return max(factors) if factors else None
 
     def resolve(self, data: bytes):
@@ -129,3 +129,12 @@ def default_dispatcher(keep_unknown_members: bool = False,
     d.register(ZipHandler(keep_unknown=keep_unknown_members,
                           check_memory=check_memory))
     return d
+
+
+def _factor(handler, fidelity: str | None) -> float | None:
+    """A handler's memory factor for this level (`BaseHandler.factor`), or its one
+    factor if it has no per-level ones."""
+    per_level = getattr(handler, "factor", None)
+    if callable(per_level):
+        return per_level(fidelity)
+    return getattr(handler, "memory_factor", None)

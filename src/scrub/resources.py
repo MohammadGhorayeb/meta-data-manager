@@ -29,7 +29,20 @@ from .errors import ResourceError, ScrubError
 _SKELETON_BOX_LIMIT = 64 << 20
 
 
+# Folder mode with --jobs N runs N cleans at once, each checking memory on its own:
+# without a share, N large files would each see the whole machine free and together
+# need N times it. A worker counts 1/N of what is free as its own.
+MEMORY_SHARE = 1
+
+
 def available_memory() -> int | None:
+    """Bytes this process may count on without swapping, or None: what the system
+    could give it, divided among the parallel cleans (`MEMORY_SHARE`)."""
+    free = _system_available_memory()
+    return free // MEMORY_SHARE if free is not None else None
+
+
+def _system_available_memory() -> int | None:
     """Bytes the system could give this process without swapping, or None."""
     try:
         if sys.platform.startswith("linux"):
@@ -83,7 +96,7 @@ def _isobmff_skeleton(path: str) -> bytes | None:
     return b"".join(parts) or None
 
 
-def factor_for(path: str, dispatcher) -> float | None:
+def factor_for(path: str, dispatcher, fidelity: str | None = None) -> float | None:
     """The measured memory factor of the handler that will scrub `path`, decided
     without reading the file's media.
 
@@ -95,14 +108,15 @@ def factor_for(path: str, dispatcher) -> float | None:
     """
     with open(path, "rb") as f:
         head = f.read(16)
-    bound = dispatcher.memory_factor(head)
+    bound = dispatcher.memory_factor(head, fidelity)
     if bound is None or head[4:8] != b"ftyp":
         return bound
     skeleton = _isobmff_skeleton(path)
     if skeleton is None:
         return bound
     try:
-        return getattr(dispatcher.resolve(skeleton), "memory_factor", None)
+        from .dispatch import _factor
+        return _factor(dispatcher.resolve(skeleton), fidelity)
     except ScrubError:
         return bound
 
