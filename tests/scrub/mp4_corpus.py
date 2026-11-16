@@ -45,7 +45,11 @@ STALE = b"STALE-SENTINEL"
 FREE_TAIL = b"FREE-TAIL-SENTINEL"
 UDTA = b"UDTA-SENTINEL"
 XMP = b"XMP-SENTINEL"
-STAMP = 0xE0000000                          # a nonzero QuickTime-epoch time
+# A nonzero QuickTime-epoch time (2023-12-16). No zero byte, so a whole-file search
+# for it cannot match across sample-table entries: every stsz/stco entry here has a
+# zero top byte. 0xE0000000 did -- a 224-byte AAC frame (00 00 00 e0) followed by the
+# next size's high bytes, from Ubuntu 26.04's ffmpeg (CI, 16 Nov).
+STAMP = 0xE1A2B3C4
 SECRETS = (GPS, MAKE, MODEL, LENS, FACE_KEY, FACE_SAMPLE, STALE, FREE_TAIL, UDTA,
            XMP, b"Core Media", b"appl")
 
