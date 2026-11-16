@@ -142,13 +142,10 @@ ROADMAP = [
 # What is coming that is not a file type, listed after the formats still to come and
 # removed when it ships, like a ROADMAP entry with no matrix to retire it.
 FEATURES_PLANNED = [
-    # November: production readiness (docs/schedule_report.pdf), after every file
-    # type and folder mode shipped.
-    "Robustness: broken or hostile files refused safely, measured across every type",
-    "Performance: speed and memory measured on large files, and very large files "
-    "cleaned without loading them whole",
-    "Packaging: a proper install",
-    "Documentation and a release",
+    # November: production readiness (docs/november_plan.md). Robustness (N2),
+    # performance (N3) and packaging (N4) shipped; after 1.0, the README's list.
+    "A user guide, a test by someone who did not build the tool, and the first "
+    "release candidate (30 November)",
 ]
 
 FORMAT_LABEL = {"jpeg": "JPEG (photos)", "png": "PNG (graphics / screenshots)",
