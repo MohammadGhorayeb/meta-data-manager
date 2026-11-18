@@ -189,6 +189,23 @@ def test_cli_folder_mode_exit_codes(tmp_path, capsys):
     assert cli.main([str(src), str(src / "inside")]) == 2
 
 
+@pytest.mark.parametrize("flags, verify", [([], True), (["--no-report"], True),
+                                            (["--no-verify"], False)])
+def test_only_no_verify_turns_off_the_folder_check(tmp_path, monkeypatch, flags, verify):
+    """In folder mode the ExifTool check deletes a file it contradicts; --no-report
+    silences the per-file lines (which never show values) and must not drop that net."""
+    src = tmp_path / "in"
+    src.mkdir()
+    seen = {}
+
+    def fake(_src, _dst, _fidelity, **kw):
+        seen.update(kw)
+        return folder.Summary(sheet="x")
+    monkeypatch.setattr(folder, "clean_folder", fake)
+    assert cli.main([str(src), str(tmp_path / "out"), *flags]) == 0
+    assert seen["verify"] is verify
+
+
 def test_a_single_cleaned_program_stays_executable(tmp_path):
     from tests.scrub import elf_corpus as elc
     src = tmp_path / "tool"

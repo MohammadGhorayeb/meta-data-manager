@@ -391,7 +391,10 @@ def _main_folder(args) -> int:
             keep_unknown=args.keep_unknown_members,
             drop_subtitles=args.drop_subtitles,
             check_memory=not args.skip_memory_check,
-            verify=not (args.no_report or args.no_verify),
+            # Only --no-verify: here the check is not just printed, a disagreement
+            # deletes the file (folder.clean_one), and these lines never echo values,
+            # so silencing them is no reason to ship a file ExifTool would contradict.
+            verify=not args.no_verify,
             progress=None if args.no_report else line,
             jobs=args.jobs if args.jobs > 0 else (os.cpu_count() or 1))
     except ValueError as e:
