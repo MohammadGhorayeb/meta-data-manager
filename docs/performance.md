@@ -137,10 +137,82 @@ or a re-typeset -- above 10 MB; "refused" is a deliberate refusal (limit #84).
   mapped, and the system counts their pages while it can give them back at once. "Our
   peak" counts only what it cannot give back -- macOS's physical footprint.
 
+## A video past 4 GiB (19 November)
+
+The plan's target was a clip of several gigabytes cleaned within the memory target, with
+the same output as the clean that holds the whole file. Past 4 GiB a QuickTime file's
+chunk offsets become 64-bit (`co64`), where a streamed writer that patches offsets would
+go wrong, so the clip is 4.5 GB: 75 minutes of 720p test pattern with sound.
+`scripts/perf_big_video.py` builds it, cleans it both ways and compares.
+
+| clean | time | our peak |
+|---|--:|--:|
+| streamed (the command's path) | 11-27 s over five runs | **220 MB** every run |
+| whole file in memory (an archive member's path) | 7-10 s over two runs | 9.2 GB |
+
+- **The two outputs are byte-identical** (sha256), keep `co64`, and carry the input's
+  coded video and sound packet for packet (ffmpeg's `streamhash`, no decode).
+- **Memory grows with the recording's length, not its size**: what the streamed clean
+  holds is the clip's index of frames and sound packets, about 3 MB a minute at 30 frames
+  a second with sound -- 44 MB for 17 minutes, 220 MB for 75. So the plan's "independent
+  of the file's size" is not what was built; the memory check charges 0.1x the file,
+  twice what this clip needed ([limit #38](limits.md)).
+- Streaming is slower than holding the file once it is this large, and its time varies
+  more (the output is written through mapped pages, so it waits on the disk: three runs
+  in a row took 11 s, two others 20 and 27 s on a disk 84% full); it needs 40 times less
+  memory, and that did not vary.
+
+## Linux (19 November)
+
+The same benchmark in the pinned image (`Dockerfile`: Ubuntu 24.04, Python 3.12.3,
+ffmpeg 6.1.1, LibreOffice 24.2), on aarch64 Linux in Docker's VM on the same M1 Pro
+(10 CPUs, 8 GB) -- so the difference from the table above is the system and the
+programs, not the processor. The Mac has ffmpeg 8.1.1 and LibreOffice 26.2. Pictures
+ran at 1 and 10 MB only: generating the 100 MB test photo needs more than the VM's
+8 GB (the generator, not the clean).
+
+```
+./.venv/bin/python scripts/perf_bench.py --only jpeg png tiff --sizes 1 10 --big
+./.venv/bin/python scripts/perf_bench.py --only mp3 flac m4a mp4 pdf docx xlsx pptx zip --sizes 1 10 100 --big 1000
+```
+
+| clean | file | macOS (8 Nov) | Linux (19 Nov) |
+|---|--:|--:|--:|
+| JPEG light | 9 MB | 0.03 s, 36 MB | 0.03 s, 18 MB |
+| JPEG deep | 9 MB | 0.68 s, 407 MB | 0.59 s, 302 MB |
+| JPEG full | 9 MB | 0.91 s, 597 MB | 0.85 s, 523 MB |
+| PNG deep | 10 MB | 0.62 s, 154 MB | 0.73 s, 109 MB |
+| MP3 full | 10 MB | 7.0 s, 129 MB | 10.1 s, 117 MB |
+| M4A full | 8.7 MB | 4.7 s, 123 MB | 8.2 s, 88 MB |
+| FLAC light | 97 MB | 0.08 s, 291 MB | 0.05 s, 194 MB |
+| video light | 1 GB | 2.9 s, 44 MB | 2.4 s, 39 MB |
+| PDF light | 94 MB | 11.7 s, 584 MB | 7.1 s, 460 MB |
+| PDF full | 9.5 MB | 6.6 s, 66 MB | 5.1 s, 41 MB |
+| Word light | 94 MB | 3.6 s, 487 MB | 3.6 s, 373 MB |
+| Word full | 9.4 MB | 3.4 s, 66 MB | 0.9 s, 47 MB |
+| Excel light | 9.7 MB | 11.6 s, 285 MB | 8.2 s, 196 MB |
+| Excel light | 98 MB | not run | **82.7 s, 2.2 GB** |
+| PowerPoint light | 94 MB | 4.1 s, 494 MB | 4.1 s, 378 MB |
+| ZIP of photos | 903 MB | 43.3 s, 4.59 GB | 46.4 s, 4.53 GB |
+
+- **Every Linux peak is at or below the Mac's**, so the memory check's factors, measured
+  on the Mac, hold on Linux. (macOS's footprint also counts memory the allocator has
+  freed but kept.)
+- **The strongest audio cleans are 1.4-1.7x slower on Linux** and Word's strongest clean
+  3.7x faster: those levels hand the file to ffmpeg and LibreOffice, whose versions
+  differ (above). The light and deep cleans run our own code and stay within 1.7x of
+  each other in either direction (the Mac ran Python 3.14, the image 3.12); PDF's light
+  clean is the widest gap, 11.7 s against 7.1 s.
+- **Excel's light clean is the slowest light clean in the tool**, about 1 MB/s on both
+  systems: a 98 MB workbook (about 500 MB of XML) takes 83 s and 2.2 GB, 23x its file.
+- Linux's peak is sampled every 2 ms, so the shortest cleans can finish between samples
+  and read under their true peak (a 1 MB JPEG's light clean reads 0.7 MB, less than the
+  file it holds); the rows above are long enough to be sampled.
+
 ## What is not measured
 
-- **Linux.** These are an Apple M1 Pro's numbers. The benchmark runs on Linux (memory
-  as sampled anonymous memory) but has not been run there.
+- **x86-64.** Every number here is an Apple M1 Pro's: macOS natively, Linux in Docker's
+  arm64 VM.
 - HEIC, camera RAW, programs, GIF, WebP, BMP, SVG, EMF/WMF and EPUB are not in the
   ladder.
 - The deeper levels above 10 MB, and real files: these files are generated -- photos

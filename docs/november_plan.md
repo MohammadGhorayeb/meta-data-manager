@@ -60,7 +60,11 @@ named failure in the model channel, guard pass. Office could not be a producer
 (scripted Excel refused every save), so the peer sets are LibreOffice, openpyxl,
 XlsxWriter and python-pptx. Found and fixed on the way: a per-save GUID in every
 LibreOffice text field (limit #81). Word adopted the malformed-part rule (682/102).
-Still open: O0b (needs D6) and the live MAT2 section in `benchmark.py`.
+Still open: O0b (needs D6). The live MAT2 section in `benchmark.py` was added on
+19 Nov ([`benchmark.md`](benchmark.md)): one package per locus. MAT2 0.14.0 leaves planted
+values in 6 of the 10 Excel loci it cleans and 4 of the 11 PowerPoint loci, refuses 6
+loci in each, and keeps a chart workbook with all 25 of its values; ours leaves none in
+the 25 loci it cleans and refuses the other 11.
 
 ### N2 — robustness: hostile files refused safely, every type (12–18 Nov)
 Schedule item 1. Two halves: random damage (fuzzing) and deliberate attacks.
@@ -146,8 +150,17 @@ folder mode: one ExifTool per process and `--jobs N` (300 photos: 48.5 s -> 1.8 
 size is the wrong unit (`memory_need`), ZIP 3.0 -> 3.5. Found
 on the way: JPEG F3's perceptual-hash gate refused sky and night photos and passed
 colour swaps -- replaced by PSNR (limit #87). Targets (D4): the 1 GB video peak is
-44 MB; 300 photos in 1.8 s. Provisional numbers to confirm: PSNR 25 dB. Not done:
-Linux numbers; real-file timings; the 4 GB video (1 GB measured).
+44 MB; 300 photos in 1.8 s. Not done: real-file timings.
+
+**Status (19 Nov): the rest measured.** A 4.5 GB clip, past 4 GiB (`co64`): streamed in
+11-27 s and 220 MB, byte-identical to the in-memory clean (7-10 s, 9.2 GB), coded packets
+unchanged (`scripts/perf_big_video.py`). Memory grows with the recording's length (about
+3 MB a minute), so "independent of size" was not met; the 0.1x factor covers it twice.
+Linux, in the pinned image on arm64: every peak at or below the Mac's; the strongest
+audio cleans 1.4-1.7x slower (ffmpeg 6.1 against 8.1); a 98 MB workbook 83 s and 2.2 GB
+([`performance.md`](performance.md)). PSNR 25 dB confirmed on 1,258 real JPEGs, none
+refused, lowest 27.0 dB (#87). Still not measured: x86-64 (a manual workflow,
+`e-install.yml`, compares the pinned image on both).
 
 ### N4 — packaging: one install, one fingerprint (19–26 Nov)
 Schedule item 3.
@@ -232,8 +245,8 @@ guide check, blind test, CHANGELOG/tag, README Status, progress report.
 every command run; folder mode's `--no-report` no longer turns off the ExifTool check).
 README Status rewritten for the release. Version `1.0.0rc1`, CHANGELOG dated 19 Nov,
 by decision: the blind test runs on the release candidate, and what it finds goes into
-rc2 or 1.0.0. Remaining: the `v1.0.0rc1` tag after a green CI run, the blind test,
-the 30 November progress report.
+rc2 or 1.0.0. Tagged `v1.0.0rc1` on 580e071 the same day, after CI run 44584742579 passed 9/9.
+Remaining: the blind test, the 30 November progress report.
 
 ---
 

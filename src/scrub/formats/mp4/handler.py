@@ -23,7 +23,9 @@ from . import inspect as _inspect
 # size: the input and output are mapped files whose pages the system reclaims at
 # will. A 1 GB clip: 45 MB (0.045x; its 30,000 frames' sample tables), against
 # 2.07 GB in memory before. A synthetic 40 or 200 MB file: 4 MB either way -- it
-# grows with the sample count, not the bytes. Held by test_memory_preflight.py.
+# grows with the sample count, not the bytes. 4.5 GB, 75 min with co64 offsets: 220 MB
+# (0.05x), output byte-identical to the in-memory path. Held by
+# test_memory_preflight.py.
 STREAM_MEMORY_FACTOR = 0.1
 
 # Major or compatible brands meaning "a movie". QuickTime first: every iPhone video.
@@ -83,7 +85,7 @@ class Mp4Handler(BaseHandler):
         return f1.scrub(data, drop_subtitles=self.drop_subtitles)
 
     # Streamed from a mapped input straight to the output file (November plan N3b):
-    # the CLI takes this path for F1, so memory no longer grows with the video.
+    # the CLI takes this path for F1, so memory grows with the sample count only.
     stream_fidelities = ("F1",)
     stream_memory_factor = STREAM_MEMORY_FACTOR
 

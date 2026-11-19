@@ -242,6 +242,113 @@ def docx_session_id_section():
           "`tests/corpus/docx/README.md`.\n")
 
 
+def _office_texts(data: bytes) -> list[bytes]:
+    """Every member's bytes, decompressed, recursing into packages inside the package
+    (a chart's workbook inside a deck is itself a ZIP)."""
+    import io
+    import zipfile
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        return [data]
+    out = []
+    with z:
+        for name in z.namelist():
+            body = z.read(name)
+            out += _office_texts(body) if body[:4] == b"PK\x03\x04" else [body]
+    return out
+
+
+def _office_sentinels(data: bytes) -> set[bytes]:
+    import re
+    return {m for t in _office_texts(data)
+            for m in re.findall(rb"SENTINEL-[A-Z0-9-]+?-V\d\d", t)}
+
+
+def _office_left(data: bytes, values: list[bytes]) -> int:
+    texts = _office_texts(data)
+    return sum(any(v in t for t in texts) for v in values)
+
+
+def office_section():
+    """Excel and PowerPoint: O0's MAT2 probes (docs/office_plan.md §2), re-run live.
+
+    Each locus gets a package of its own from the format's corpus, so each verdict is
+    one feature's. For a locus our F1 removes, the cells count the planted values
+    left anywhere in the output, nested packages included. For a locus our F1
+    refuses, MAT2's cell says whether it refused too or cleaned, and what of the
+    planted values survived its clean.
+    """
+    from src.scrub.errors import ScrubError
+    from tests.scrub import pptx_corpus as pc
+    from tests.scrub import xlsx_corpus as xc
+
+    tmp = tempfile.mkdtemp(prefix="bench_office_")
+    have_mat2 = HAVE["mat2"]
+    version = (subprocess.run(["mat2", "--version"], capture_output=True, text=True)
+               .stdout.strip() if have_mat2 else "MAT2 (not installed)")
+    P("\n### Excel and PowerPoint: what each tool leaves\n")
+    P("One package per locus, each carrying only that feature, built by the test "
+      "corpora (`tests/scrub/xlsx_corpus.py`, `pptx_corpus.py`); a cell counts the "
+      "planted values still anywhere in the output, packages inside it included. "
+      f"Measured with `{version}`.\n")
+
+    for label, mod, ext in (("Excel (XLSX)", xc, ".xlsx"), ("PowerPoint (PPTX)", pc, ".pptx")):
+        if HAVE["exiftool"]:
+            probe = os.path.join(tmp, f"probe{ext}")
+            open(probe, "wb").write(mod.build(1, loci=("properties",)))
+            r = subprocess.run(["exiftool", "-all=", "-o", probe + ".out", probe],
+                               capture_output=True, text=True)
+            said = (r.stderr + r.stdout).strip().splitlines()
+            said = next((s for s in said if s.startswith("Error")), said[0] if said else "")
+            said = said.removeprefix("Error:").split(" - ")[0].strip()
+            P(f"**{label}.** ExifTool cannot write it: `{said}`\n")
+        else:
+            P(f"**{label}.**\n")
+        P(f"| Locus | Planted | {version.split()[0]} | Ours (F1) |")
+        P("|---|:-:|:-:|:-:|")
+        for locus in mod.REMOVED + mod.REFUSED:
+            refused_by_us = locus in mod.REFUSED
+            src = os.path.join(tmp, f"{locus}{ext}")
+            open(src, "wb").write(mod.build(1, loci=(locus,)))
+            data = open(src, "rb").read()
+            values = (sorted(_office_sentinels(data)) if refused_by_us
+                      else mod.planted(1, locus))
+            if not values:
+                continue
+            n = len(values)
+
+            m_cell = "—"
+            if have_mat2:
+                m_out = os.path.join(tmp, f"m_{locus}{ext}")
+                shutil.copy(src, m_out)
+                r = subprocess.run(["mat2", "--inplace", m_out], capture_output=True)
+                if r.returncode != 0:
+                    m_cell = "refuses"
+                else:
+                    left = _office_left(open(m_out, "rb").read(), values)
+                    m_cell = f"**{left} left**" if left else "0 left"
+
+            o_out = os.path.join(tmp, f"o_{locus}{ext}")
+            try:
+                cli.scrub_file(src, o_out, "F1")
+                left = _office_left(open(o_out, "rb").read(), values)
+                o_cell = f"**{left} left**" if left else "0 left"
+            except ScrubError as exc:
+                o_cell = f"refuses (exit {cli.exit_code(exc)})"
+            name = f"`{locus}`" + (" _(refused by us)_" if refused_by_us else "")
+            P(f"| {name} | {n} | {m_cell} | {o_cell} |")
+        P("")
+
+    P("A refusal is the honest answer for a feature a tool has no rule for; what "
+      "matters is a tool that **cleans and leaves values behind**, since its user "
+      "believes the file is clean. Ours refuses comments, links to other workbooks, "
+      "pivot records, data connections, Power Query, revision logs, embedded fonts and "
+      "chart workbooks ([limits #76](limits.md), [#78](limits.md)), and MAT2's "
+      "allowlist keeps a chart workbook named `Microsoft_Excel_Worksheet<digit>.xlsx` "
+      "as it is ([`office_plan.md`](office_plan.md) §2).\n")
+
+
 def audio_gap():
     """Audio: the measured gap against the other tools.
 
@@ -410,6 +517,21 @@ def main():
         ("Clears OOXML RSIDs", "✅", "❌ cannot write", "✅", "n/a"),
         ("Removes `docProps/thumbnail.jpeg` (a possibly-stale page render)", "✅",
          "❌ cannot write", "⚠️ strips its EXIF, keeps the picture", "n/a"),
+        # Excel and PowerPoint: re-measured live by office_section() on every run.
+        ("**Writes an Excel or PowerPoint file at all**", "✅ F1",
+         "❌ **cannot write either**", "✅ (refuses some, below)", "n/a"),
+        ("**Removes a workbook's save folder** (`x15ac:absPath`, `C:\\Users\\<name>\\…`)",
+         "✅", "❌ cannot write", "❌ **leaves it**", "n/a"),
+        ("Removes a workbook's document, save, view and sheet GUIDs and password hash",
+         "✅", "❌ cannot write", "❌ leaves them", "n/a"),
+        ("**Clears every shape's GUID in a deck** (`a16:creationId`, table IDs)", "✅",
+         "❌ cannot write", "❌ **leaves them** (randomizes `p14:creationId` only)", "n/a"),
+        ("Replaces the per-save field IDs LibreOffice writes into every deck", "✅",
+         "❌ cannot write", "❌ leaves them", "n/a"),
+        ("Cleans a deck with co-authoring history (`revisionInfo`, `changesInfos`, "
+         "comment authors)", "✅ F1", "❌ cannot write", "❌ **refuses the file**", "n/a"),
+        ("Never passes a chart's workbook through uncleaned", "✅ refuses it (#78)",
+         "❌ cannot write", "❌ **keeps it as is: every planted value left**", "n/a"),
         ("**A PDF clean that is neither an append nor a re-render**", "✅ F1/F2",
          "❌ appends", "❌ both paths re-render", "n/a"),
         ("Collapses a PDF's revision history with the text intact", "✅",
@@ -438,6 +560,7 @@ def main():
 
     audio_gap()
     docx_session_id_section()
+    office_section()
 
     tools = available_tools()
 

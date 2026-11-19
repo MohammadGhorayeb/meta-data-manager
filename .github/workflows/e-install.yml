@@ -1,0 +1,120 @@
+name: E-INSTALL across architectures
+
+# N4 measured whether two installs clean a file into different bytes (limit #88) on a
+# Mac and on Ubuntu, and two copies of the pinned image on one arm64 Mac. Never
+# measured: the same pinned image built on x86-64 and on arm64. If they differ, a set
+# of cleaned files tells an investigator which kind of machine cleaned them, even for
+# users of the "same bytes for everyone" image.
+#
+# One set of inputs is built once, then cleaned by the image built natively on each
+# architecture; the last job compares the outcomes. Manual only: it builds the image
+# twice, which no ordinary push needs.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  inputs:
+    name: Build the inputs once
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            tests/harness/requirements.txt
+
+      # The corpora build some of their files with these (programs, pictures, sound).
+      - name: Install external tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libimage-exiftool-perl libjpeg-turbo-progs ffmpeg lame poppler-utils unzip \
+            libreoffice-writer gcc clang binutils git golang-go \
+            gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 lld libtiff-tools webp gifsicle \
+            zip libarchive-tools pandoc imagemagick
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Build the inputs
+        run: python scripts/e_install.py build e-install-inputs
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: e-install-inputs
+          path: e-install-inputs
+          retention-days: 7
+
+  clean:
+    name: Clean them in the image (${{ matrix.runner }})
+    needs: inputs
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: e-install-inputs
+          path: inputs
+
+      - name: Build the pinned image natively
+        run: docker build -t scrubmeta .
+
+      # The installed package, not the checkout: the script imports `scrubmeta` first.
+      - name: Clean every input inside it
+        run: |
+          mkdir -m 0777 out
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/inputs":/in:ro -v "$PWD/out":/out \
+            -v "$PWD/scripts/e_install.py":/e_install.py:ro \
+            --entrypoint /opt/scrubmeta/bin/python scrubmeta \
+            -I /e_install.py run /in "/out/${{ runner.arch }}.json"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: e-install-${{ runner.arch }}
+          path: out/${{ runner.arch }}.json
+          retention-days: 30
+
+  compare:
+    name: Compare x86-64 with arm64
+    needs: clean
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: e-install-*
+          path: results
+          merge-multiple: true
+
+      # A difference is the finding, so it is written to the run page first; the exit
+      # code then turns the run red, which is how it is noticed.
+      - name: Compare
+        run: |
+          set -o pipefail
+          {
+            echo '### E-INSTALL: the pinned image, x86-64 against arm64'
+            echo '```'
+            python scripts/e_install.py compare results/X64.json results/ARM64.json
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

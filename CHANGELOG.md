@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+Measurements after the tag; the tool's behaviour is unchanged.
+
+- A 4.5 GB video, past the 4 GiB mark: streamed in 220 MB, byte for byte the same output
+  as holding it whole (`scripts/perf_big_video.py`, limit #38).
+- The benchmark on Linux, in the pinned image: every memory peak at or below the Mac's
+  (`docs/performance.md`).
+- JPEG's strongest clean on 1,258 real JPEGs: none refused, the lowest 27.0 dB against
+  the 25 dB cut-off, which is no longer provisional (limit #87).
+- The MAT2 comparison covers Excel and PowerPoint, re-measured on every run
+  (`docs/benchmark.md`).
+- A manual workflow compares the pinned image's output on x86-64 and arm64
+  (`.github/workflows/e-install.yml`).
+
 ## 1.0.0rc1 (2026-11-19)
 
 The first release candidate. Every result it claims is measured and re-measured by

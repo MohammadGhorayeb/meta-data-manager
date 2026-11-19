@@ -30,6 +30,13 @@ _Comparison against the tools the field already uses (W9). Findings were reprodu
 | **Clears the per-document GUID** (`w14`/`w15:docId`) | ✅ | ❌ cannot write | ❌ **leaves it** | n/a |
 | Clears OOXML RSIDs | ✅ | ❌ cannot write | ✅ | n/a |
 | Removes `docProps/thumbnail.jpeg` (a possibly-stale page render) | ✅ | ❌ cannot write | ⚠️ strips its EXIF, keeps the picture | n/a |
+| **Writes an Excel or PowerPoint file at all** | ✅ F1 | ❌ **cannot write either** | ✅ (refuses some, below) | n/a |
+| **Removes a workbook's save folder** (`x15ac:absPath`, `C:\Users\<name>\…`) | ✅ | ❌ cannot write | ❌ **leaves it** | n/a |
+| Removes a workbook's document, save, view and sheet GUIDs and password hash | ✅ | ❌ cannot write | ❌ leaves them | n/a |
+| **Clears every shape's GUID in a deck** (`a16:creationId`, table IDs) | ✅ | ❌ cannot write | ❌ **leaves them** (randomizes `p14:creationId` only) | n/a |
+| Replaces the per-save field IDs LibreOffice writes into every deck | ✅ | ❌ cannot write | ❌ leaves them | n/a |
+| Cleans a deck with co-authoring history (`revisionInfo`, `changesInfos`, comment authors) | ✅ F1 | ❌ cannot write | ❌ **refuses the file** | n/a |
+| Never passes a chart's workbook through uncleaned | ✅ refuses it (#78) | ❌ cannot write | ❌ **keeps it as is: every planted value left** | n/a |
 | **A PDF clean that is neither an append nor a re-render** | ✅ F1/F2 | ❌ appends | ❌ both paths re-render | n/a |
 | Collapses a PDF's revision history with the text intact | ✅ | ❌ **adds a revision** | ⚠️ default path destroys the text | n/a |
 | Warns that text is still hiding under a black box | ✅ advisory | ❌ | ❌ | n/a |
@@ -98,6 +105,58 @@ Source: **a real Word document**. Counts are occurrences remaining after each to
 **ExifTool cannot write DOCX at all** — it answers `Can't write DOCX files`. That is a capability gap rather than a failure, and the difference matters: a tool that declines leaves the file untouched, while a tool that writes an output still carrying the ids has told the user their document is clean when it is not.
 
 **`w14:paraId`/`w14:textId` are the sharp ones.** They are *per paragraph*, and they travel with a paragraph pasted into another document — so they link **files to each other**, which is not an A1, A2 or A3 question at all.
+
+### Excel and PowerPoint: what each tool leaves
+
+One package per locus, each carrying only that feature, built by the test corpora (`tests/scrub/xlsx_corpus.py`, `pptx_corpus.py`); a cell counts the planted values still anywhere in the output, packages inside it included. Measured with `mat2 0.14.0`.
+
+**Excel (XLSX).** ExifTool cannot write it: `Writing of XLSX files is not yet supported`
+
+| Locus | Planted | mat2 | Ours (F1) |
+|---|:-:|:-:|:-:|
+| `properties` | 5 | 0 left | 0 left |
+| `abspath` | 1 | **1 left** | 0 left |
+| `revision_ids` | 4 | **4 left** | 0 left |
+| `protection` | 5 | **5 left** | 0 left |
+| `custom_views` | 3 | **3 left** | 0 left |
+| `orphan_string` | 1 | **1 left** | 0 left |
+| `printer_settings` | 1 | 0 left | 0 left |
+| `picture` | 3 | **1 left** | 0 left |
+| `persons` | 2 | 0 left | 0 left |
+| `pivot_definition` | 1 | refuses | 0 left |
+| `xml_comment` | 1 | 0 left | 0 left |
+| `comments` _(refused by us)_ | 1 | 0 left | refuses (exit 6) |
+| `threaded` _(refused by us)_ | 3 | 0 left | refuses (exit 6) |
+| `extlink` _(refused by us)_ | 2 | refuses | refuses (exit 6) |
+| `pivot_records` _(refused by us)_ | 2 | refuses | refuses (exit 6) |
+| `connections` _(refused by us)_ | 1 | refuses | refuses (exit 6) |
+| `power_query` _(refused by us)_ | 1 | refuses | refuses (exit 6) |
+| `revision_log` _(refused by us)_ | 3 | refuses | refuses (exit 6) |
+
+**PowerPoint (PPTX).** ExifTool cannot write it: `Writing of PPTX files is not yet supported`
+
+| Locus | Planted | mat2 | Ours (F1) |
+|---|:-:|:-:|:-:|
+| `properties` | 5 | 0 left | 0 left |
+| `thumbnail` | 1 | 0 left | 0 left |
+| `creation_ids` | 2 | **1 left** | 0 left |
+| `table_ids` | 2 | **2 left** | 0 left |
+| `revision_info` | 1 | refuses | 0 left |
+| `changes_info` | 3 | refuses | 0 left |
+| `recent_colours` | 1 | 0 left | 0 left |
+| `view_props` | 1 | 0 left | 0 left |
+| `tags` | 1 | 0 left | 0 left |
+| `printer_settings` | 1 | 0 left | 0 left |
+| `picture` | 3 | **1 left** | 0 left |
+| `comment_authors` | 3 | refuses | 0 left |
+| `xml_comment` | 1 | 0 left | 0 left |
+| `field_ids` | 1 | **1 left** | 0 left |
+| `legacy_comments` _(refused by us)_ | 1 | refuses | refuses (exit 6) |
+| `modern_comments` _(refused by us)_ | 3 | refuses | refuses (exit 6) |
+| `embedded_font` _(refused by us)_ | 1 | refuses | refuses (exit 6) |
+| `chart_workbook` _(refused by us)_ | 25 | **25 left** | refuses (exit 6) |
+
+A refusal is the honest answer for a feature a tool has no rule for; what matters is a tool that **cleans and leaves values behind**, since its user believes the file is clean. Ours refuses comments, links to other workbooks, pivot records, data connections, Power Query, revision logs, embedded fonts and chart workbooks ([limits #76](limits.md), [#78](limits.md)), and MAT2's allowlist keeps a chart workbook named `Microsoft_Excel_Worksheet<digit>.xlsx` as it is ([`office_plan.md`](office_plan.md) §2).
 
 ## Evidence 1 — content preservation (a normal JPEG)
 
