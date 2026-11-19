@@ -12,4 +12,4 @@ Shared standard modules are written ONCE and called by every handler — a misse
 copy is a leak (CLAUDE.md).
 """
 
-__version__ = "1.0.0.dev0"
+__version__ = "1.0.0rc1"

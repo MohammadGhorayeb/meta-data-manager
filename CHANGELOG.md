@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0rc1 (unreleased)
+## 1.0.0rc1 (2026-11-19)
 
 The first release candidate. Every result it claims is measured and re-measured by
 the test suite; what it cannot do is in [`docs/limits.md`](docs/limits.md).
@@ -20,8 +20,8 @@ how they write the document (limit #82). LibreOffice's per-save field IDs are re
 (limit #81).
 
 **Robustness.** 160,476 deliberately damaged files and 15 purpose-built attacks: every
-one is cleaned or refused with its own exit code, nothing is left behind, and nothing
-hangs. Every external program has a time limit. A clean that is killed outright leaves
+one is cleaned or refused with its own exit code, no refusal leaves a file behind, and
+nothing hangs. Every external program has a time limit. A clean that is killed outright leaves
 its copy of the original only in a private folder, removed by the next run.
 
 **Performance** (`docs/performance.md`). Video's light clean is streamed: a 1 GB clip
@@ -29,10 +29,18 @@ needs 44 MB of memory, not 2 GB. Folder mode keeps one ExifTool running and take
 `--jobs N`: 300 photos with the check, 48.5 s to 1.8 s. The memory check prices each
 level by what drives its cost: file size, pixels, or length.
 
-**Installing.** `scrubmeta doctor` shows what an install can do. Three Python libraries
+**Installing.** The tool installs as `scrubmeta` (`pipx install .`, Apache-2.0; a
+checkout still runs as `python -m src.scrub`). `scrubmeta doctor` shows what an install
+can do. Three Python libraries
 at run time. A container image with every program at one exact version, because files
 cleaned at the strongest level can otherwise show which versions cleaned them
 (limit #88).
+
+**Documentation.** A user guide (`docs/user_guide.md`), every command in it run from
+a clean install: install, the three levels, folders, the report, every exit code and
+refusal. The plain-language *What scrubmeta can't do yet* is generated from
+`docs/limits.md`, and a test fails if the two disagree or a limit promises work no list
+carries.
 
 **Behaviour changes to know about.**
 - The output may no longer be the input itself: `a.jpg a.jpg` used to replace the
@@ -44,3 +52,10 @@ cleaned at the strongest level can otherwise show which versions cleaned them
 - JPEG's full clean checks pixels (PSNR) instead of a perceptual hash: photos of clear
   skies and night scenes are no longer refused, and colour or brightness faults no
   longer pass (limit #87).
+- In folder mode, `--no-report` only hides the per-file lines; the ExifTool check, which
+  there deletes a file it contradicts, is turned off only by `--no-verify`.
+
+**Known before release.** A deliberate refusal shares its exit code with a fault of the
+same class: Word's tracked changes exit 6, a signed PDF or a video with subtitles exit 4,
+a .NET or identity-signed program exit 3. The message says which; the user guide says to
+read it first.

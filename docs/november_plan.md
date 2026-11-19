@@ -228,6 +228,13 @@ matrices, a stale page, or an after-1.0 row the README does not list. The PDF is
 printed by Chrome and cleaned by the tool's own light clean. Remaining in N5: user
 guide check, blind test, CHANGELOG/tag, README Status, progress report.
 
+**Status (19 Nov): release candidate set.** Guide checked from a clean install (18 Nov:
+every command run; folder mode's `--no-report` no longer turns off the ExifTool check).
+README Status rewritten for the release. Version `1.0.0rc1`, CHANGELOG dated 19 Nov,
+by decision: the blind test runs on the release candidate, and what it finds goes into
+rc2 or 1.0.0. Remaining: the `v1.0.0rc1` tag after a green CI run, the blind test,
+the 30 November progress report.
+
 ---
 
 ## 3. Calendar
