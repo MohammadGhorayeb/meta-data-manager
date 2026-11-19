@@ -188,7 +188,7 @@ Every file is cleaned by its own format's rules into the same place under the ou
 
 **What this install can do**: `scrubmeta doctor` lists the external programs and their versions, and which cleaning levels each enables. The light clean of every format needs none of them.
 
-**Everything included**: the [`Dockerfile`](Dockerfile) builds an image with every program at one exact version, so everyone using it produces the same bytes ([limit #88](docs/limits.md)):
+**Everything included**: the [`Dockerfile`](Dockerfile) builds an image with every program at one exact version, so everyone using it on the same kind of processor produces the same bytes; between Intel and ARM machines the strongest cleans of MP3, M4A and PDF still differ ([limit #88](docs/limits.md)):
 ```
 docker build -t scrubmeta .
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work scrubmeta in.jpg out.jpg

@@ -12,8 +12,9 @@ Measurements after the tag; the tool's behaviour is unchanged.
   the 25 dB cut-off, which is no longer provisional (limit #87).
 - The MAT2 comparison covers Excel and PowerPoint, re-measured on every run
   (`docs/benchmark.md`).
-- A manual workflow compares the pinned image's output on x86-64 and arm64
-  (`.github/workflows/e-install.yml`).
+- The pinned image on x86-64 and on arm64 (`.github/workflows/e-install.yml`): 39 of 42
+  cleans byte for byte the same; the strongest cleans of MP3, M4A and PDF differ, so they
+  can show the kind of processor that cleaned them (limit #88).
 
 ## 1.0.0rc1 (2026-11-19)
 

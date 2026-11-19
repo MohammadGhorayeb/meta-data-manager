@@ -40,7 +40,8 @@ works with none of the helpers. The rest need:
 | LibreOffice (`soffice`) | Word full clean | from libreoffice.org | `apt install libreoffice-writer` |
 
 **Or use the container**, which has all of them at one exact version. Everyone using it
-produces the same bytes, which matters for the full clean (see *What it cannot do*):
+on the same kind of processor produces the same bytes, which matters for the full clean
+(see *What it cannot do*):
 
 ```
 docker build -t scrubmeta .
@@ -196,7 +197,8 @@ Every refusal is listed in plain words in
   run removes it.
 - **The full clean can show which versions of its helper programs ran**, as a group of
   software versions rather than a person. The container avoids that: everyone using it
-  has the same versions.
+  has the same versions. For MP3, M4A and PDF the full clean also differs between Intel
+  and ARM processors (Apple's chips), even in the container.
 
 ## All options
 

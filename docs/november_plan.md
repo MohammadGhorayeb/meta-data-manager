@@ -200,7 +200,9 @@ the OS byte on Python 3.11-3.12 -- fixed: 38. The other four are the strongest c
 of Word, PDF, MP3, M4A, which re-encode through another program (limit #88). The
 `Dockerfile` pins every program to an exact version: two containers agree 42/42, run as
 an arbitrary non-root user. Waiting on D1 (name) and D2 (licence) for the package and
-the clean-install CI job. Not measured: x86-64 against arm64 images.
+the clean-install CI job. x86-64 against arm64 images, measured 19 Nov
+(`e-install.yml`, run 44594425613): 39 of 42 identical; the strongest cleans of MP3, M4A
+and PDF differ by processor (#88).
 
 **Status (8 Nov): done, local.** D1 = `scrubmeta`, D2 = Apache-2.0. The distribution maps
 the import package `scrubmeta` onto `src/scrub`, so a checkout still runs as
